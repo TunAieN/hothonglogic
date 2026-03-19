@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tmall Product Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h2>🛒 Tmall Product Scraper</h2>
+      <div class="cart-badge" id="cartBadge">0</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="product">Sản phẩm</button>
+      <button class="tab" data-tab="cart">Giỏ hàng</button>
+      <button class="tab" data-tab="settings">Cài đặt</button>
+    </div>
+
+    <!-- Product Tab -->
+    <div class="tab-content active" id="productTab">
+      <div id="productInfo">
+        <div class="loading" id="loading">
+          <div class="spinner"></div>
+          <p>Đang tải thông tin sản phẩm...</p>
+        </div>
+        
+        <div id="productDetails" style="display: none;">
+          <div class="product-image">
+            <img id="productImage" src="" alt="Product">
+          </div>
+          
+          <div class="product-info">
+            <h3 id="productTitle">-</h3>
+            <div class="price-info">
+              <span class="label">Giá:</span>
+              <span class="price" id="productPrice">-</span>
+              <span class="currency">¥</span>
+            </div>
+           
+           <div id ="original-price-info">
+            <span class="label">Giá gốc:</span>
+            <span class="original-price" id="productOriginalPrice">-</span>
+            <span class="currency">¥</span>
+           </div>
+            <div id="productSize">
+              <span class="label">Kích thước:</span>
+              <span id="productSizeValue">-</span>
+            </div>
+            <div id="productColor">
+              <span class="label">Màu sắc:</span>
+              <span id="productColorValue">-</span>
+            </div>
+            <div class="seller-info">
+              <span class="label">Shop:</span>
+              <span id="productSeller">-</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="quantity">Số lượng:</label>
+            <input type="number" id="quantity" class="quantity-input" min="1" value="1">
+          </div>
+          <div class="form-group">
+              <label for="productLink">Link sản phẩm:</label>
+              <input type="text" id="productLink" readonly>
+          </div>
+          <div class="form-group">
+            <label for="note">Ghi chú:</label>
+            <textarea id="note" rows="2" placeholder="Thêm ghi chú về sản phẩm..."></textarea>
+          </div>
+
+          <button class="btn btn-primary" id="addToCartBtn">
+            ➕ Thêm vào giỏ
+          </button>
+
+          <button class="btn btn-secondary" id="refreshBtn">
+            🔄 Làm mới
+          </button>
+        </div>
+
+        <div id="noProduct" style="display: none;">
+          <p class="info-message">⚠️ Không phát hiện sản phẩm trên trang này. Vui lòng truy cập trang chi tiết sản phẩm Tmall/Taobao.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart Tab -->
+    <div class="tab-content" id="cartTab">
+      <div class="cart-toolbar">
+        <label>
+          <input type="checkbox" id="selectAllProducts">
+            Chọn tất cả
+        </label>
+      </div>
+      <div id="cartItems"></div>
+      
+      <div class="cart-summary" id="cartSummary" style="display: none;">
+        <div class="summary-row">
+          <span>Tổng số sản phẩm:</span>
+          <span id="totalItems">0</span>
+        </div>
+        <div class="summary-row">
+          <span>Tổng tiền (¥):</span>
+          <span id="totalAmount">0</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="customerSelect">Khách hàng:</label>
+          <select id="customerSelect">
+            <option value="">-- Chọn khách hàng --</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" id="createOrderBtn">
+          📦 Tạo đơn hàng
+        </button>
+        <button class="btn btn-danger" id="clearCartBtn">
+          🗑️ Xóa giỏ hàng
+        </button>
+      </div>
+
+      <div id="emptyCart" style="display: none;">
+        <p class="info-message">🛒 Giỏ hàng trống</p>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content" id="settingsTab">
+      <div class="form-group">
+        <label for="apiEndpoint">API Endpoint:</label>
+        <input type="text" id="apiEndpoint" placeholder="http://localhost:8000/api">
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="autoExtract">
+          Tự động trích xuất khi tải trang
+        </label>
+      </div>
+
+      <button class="btn btn-primary" id="saveSettingsBtn">
+        💾 Lưu cài đặt
+      </button>
+
+      <div class="info-section">
+        <h4>Hướng dẫn sử dụng:</h4>
+        <ol>
+          <li>Truy cập trang chi tiết sản phẩm trên Tmall/Taobao</li>
+          <li>Click vào icon extension để xem thông tin</li>
+          <li>Điều chỉnh số lượng và thêm ghi chú nếu cần</li>
+          <li>Click "Thêm vào giỏ" để lưu sản phẩm</li>
+          <li>Chuyển sang tab "Giỏ hàng" để tạo đơn</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Status messages -->
+    <div id="statusMessage" class="status-message"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,554 @@
+// Popup script for managing UI and interactions
+let currentProduct = null;
+let cart = [];
+let settings = {};
+
+// Initialize popup
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSettings();
+    await loadCart();
+    await loadCustomers();
+    setupTabs();
+    setupEventListeners();
+    loadCurrentProduct();
+    updateCartBadge();
+});
+
+// Load customers from API or use demo data
+async function loadCustomers() {
+    const customerSelect = document.getElementById('customerSelect');
+
+    // API endpoints to try (in order)
+    const apiEndpoints = [
+        `${settings.apiEndpoint}/customers`,           // Laravel API
+        'http://extention.test/api/customers.php',     // Laragon virtual host
+        'http://localhost/extention/api/customers.php' // Direct localhost
+    ];
+
+    for (const endpoint of apiEndpoints) {
+        try {
+            console.log('Trying API endpoint:', endpoint);
+            const response = await fetch(endpoint);
+
+            if (response.ok) {
+                const result = await response.json();
+                const customers = result.data || result;
+
+                if (Array.isArray(customers) && customers.length > 0) {
+                    customerSelect.innerHTML = '<option value="">-- Chọn khách hàng --</option>';
+                    customers.forEach(customer => {
+                        const option = document.createElement('option');
+                        option.value = customer.id;
+                        option.textContent = `${customer.code} - ${customer.name} (${customer.phone})`;
+                        customerSelect.appendChild(option);
+                    });
+                    console.log('Loaded customers from API:', customers.length);
+                    return; // Success, stop trying
+                }
+            }
+        } catch (error) {
+            console.log('API endpoint failed:', endpoint, error.message);
+        }
+    }
+
+    // Use demo data if all APIs failed
+    console.log('All APIs failed, loading demo customers');
+    loadDemoCustomers();
+}
+
+// Load demo customers when API is not available
+function loadDemoCustomers() {
+    const customerSelect = document.getElementById('customerSelect');
+
+    const demoCustomers = [
+        { id: 1, code: 'KH001', name: 'Nguyễn Văn A', phone: '0901234567' },
+        { id: 2, code: 'KH002', name: 'Trần Thị B', phone: '0912345678' },
+        { id: 3, code: 'KH003', name: 'Lê Văn C', phone: '0923456789' },
+        { id: 4, code: 'KH004', name: 'Phạm Thị D', phone: '0934567890' },
+        { id: 5, code: 'KH005', name: 'Hoàng Văn E', phone: '0945678901' }
+    ];
+
+    customerSelect.innerHTML = '<option value="">-- Chọn khách hàng --</option>';
+    demoCustomers.forEach(customer => {
+        const option = document.createElement('option');
+        option.value = customer.id;
+        option.textContent = `${customer.code} - ${customer.name} (${customer.phone})`;
+        customerSelect.appendChild(option);
+    });
+
+    console.log('Loaded demo customers:', demoCustomers.length);
+}
+
+// Load settings from storage
+async function loadSettings() {
+    const result = await chrome.storage.local.get(['apiEndpoint', 'autoExtract']);
+    settings = {
+        apiEndpoint: result.apiEndpoint || 'http://localhost:8000/api',
+        autoExtract: result.autoExtract !== false
+    };
+
+    document.getElementById('apiEndpoint').value = settings.apiEndpoint;
+    document.getElementById('autoExtract').checked = settings.autoExtract;
+}
+
+// Load cart from storage
+async function loadCart() {
+    const result = await chrome.storage.local.get(['cart']);
+    cart = result.cart || [];
+    renderCart();
+    updateCartBadge();
+}
+
+// Setup tab switching
+function setupTabs() {
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Remove active class from all tabs and contents
+            tabs.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(tc => tc.classList.remove('active'));
+
+            // Add active class to clicked tab
+            tab.classList.add('active');
+
+            // Show corresponding content
+            const tabName = tab.dataset.tab;
+            const content = document.getElementById(`${tabName}Tab`);
+            if (content) {
+                content.classList.add('active');
+            }
+        });
+    });
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    document.getElementById('addToCartBtn')?.addEventListener('click', addToCart);
+    document.getElementById('refreshBtn')?.addEventListener('click', loadCurrentProduct);
+    document.getElementById('createOrderBtn')?.addEventListener('click', createOrder);
+    document.getElementById('clearCartBtn')?.addEventListener('click', clearCart);
+    document.getElementById('saveSettingsBtn')?.addEventListener('click', saveSettings);
+}
+
+// Load current product from page
+async function loadCurrentProduct() {
+    showLoading(true);
+
+    try {
+        // Get active tab
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        // Check if it's a Tmall/Taobao page
+        if (!tab.url.includes('tmall.com') && !tab.url.includes('taobao.com')) {
+            showNoProduct();
+            return;
+        }
+
+        // Helper function to send message
+        const sendMessage = async () => {
+            return await chrome.tabs.sendMessage(tab.id, { action: 'extractProduct' });
+        };
+
+        let response;
+        try {
+            response = await sendMessage();
+        } catch (error) {
+            // If connection fails, try injecting the content script dynamically
+            if (error.message.includes('Receiving end does not exist')) {
+                console.log('Content script not active, injecting dynamically...');
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['content.js']
+                });
+                // Retry after injection
+                response = await sendMessage();
+            } else {
+                throw error;
+            }
+        }
+
+        if (response && response.success && response.data.title) {
+            currentProduct = response.data;
+            displayProduct(currentProduct);
+        } else {
+            showNoProduct();
+        }
+    } catch (error) {
+        console.error('Error loading product:', error);
+        showNoProduct();
+    } finally {
+        showLoading(false);
+    }
+}
+async function translateChineseToVietnamese(text) {
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=vi&dt=t&q=${encodeURIComponent(text)}`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        let translatedText = '';
+        data[0].forEach(item => {
+            translatedText += item[0];
+        });
+
+        return translatedText;
+    } catch (error) {
+        console.error("Lỗi dịch:", error);
+        return text; // nếu lỗi thì trả lại text gốc
+    }
+}
+
+async function renderProductTitle(x,id) {
+   
+    const title = x;
+    if (/[\u4e00-\u9fa5]/.test(title)) {
+        const translated = await translateChineseToVietnamese(title);
+        document.getElementById(id).textContent = translated || title;
+    }
+        else {
+            document.getElementById(id).textContent = title;
+        }
+}
+
+// Display product information
+async function displayProduct(product) {
+    
+  
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('noProduct').style.display = 'none';
+    document.getElementById('productDetails').style.display = 'block';
+    // await renderProductTitle(product.title, 'productTitle');
+    document.getElementById('productTitle').textContent = product.title || 'N/A';
+    document.getElementById('productPrice').textContent = product.price || '0';
+    document.getElementById('quantity').value = product.quantity || '1';
+    
+    document.getElementById('productSeller').textContent = product.seller || 'N/A';
+    // await renderProductTitle(product.seller, 'productSeller');
+    // document.getElementById('productSizeValue').textContent = product.size || 'N/A';
+    await renderProductTitle(product.size, 'productSizeValue');
+    document.getElementById('productColorValue').textContent = product.color || 'N/A';
+    await renderProductTitle(product.color, 'productColorValue');
+    document.getElementById('productLink').value = product.url || '';
+    const productImage = document.getElementById('productImage');
+
+    if (product.img) {
+        productImage.src = product.img;
+        productImage.style.display = 'block';
+    } else {
+        productImage.style.display = 'none';
+    }
+
+    // Handle Original Price Display
+    const originalPriceInfo = document.getElementById('original-price-info');
+    const productOriginalPrice = document.getElementById('productOriginalPrice');
+
+    if (product.originalPrice && product.originalPrice !== product.price) {
+        productOriginalPrice.textContent = product.originalPrice;
+        originalPriceInfo.style.display = 'block'; // Or 'flex' depending on your CSS, 'block' is safe for div
+    } else {
+        originalPriceInfo.style.display = 'none';
+        productOriginalPrice.textContent = '';
+    }
+    //handle size display
+    const sizeInfo = document.getElementById('productSize');
+    if (product.size && product.size !== 'N/A') {
+        sizeInfo.style.display = 'block';
+    }else { 
+        sizeInfo.style.display = 'none';
+    }
+
+    //handle color display 
+    const colorInfo = document.getElementById('productColor');
+    if (product.color && product.color !== 'N/A') {
+        colorInfo.style.display = 'block';
+    } else {
+        colorInfo.style.display = 'none';
+    }
+    
+}
+    
+
+
+
+// Show/hide loading state
+function showLoading(show) {
+    document.getElementById('loading').style.display = show ? 'block' : 'none';
+    document.getElementById('productDetails').style.display = show ? 'none' : 'block';
+}
+
+// Show no product message
+function showNoProduct() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('productDetails').style.display = 'none';
+    document.getElementById('noProduct').style.display = 'block';
+}
+
+// Add product to cart
+async function addToCart() {
+    if (!currentProduct || !currentProduct.title) {
+        showStatus('⚠️ Không có sản phẩm để thêm vào giỏ', 'error');
+        return;
+    }
+
+    const quantity = parseInt(document.getElementById('quantity').value) || 1;
+    const note = document.getElementById('note').value.trim();
+
+    const cartItem = {
+        ...currentProduct,
+        quantity,
+        note,
+        id: Date.now(),
+        addedAt: new Date().toISOString()
+    };
+
+    try {
+        const response = await chrome.runtime.sendMessage({
+            action: 'addToCart',
+            data: cartItem
+        });
+
+        if (response.success) {
+            showStatus('✅ Đã thêm vào giỏ hàng', 'success');
+            await loadCart();
+
+            // Reset form
+            document.getElementById('quantity').value = 1;
+            document.getElementById('note').value = '';
+        }
+    } catch (error) {
+        showStatus('❌ Lỗi khi thêm vào giỏ', 'error');
+        console.error(error);
+    }
+}
+
+// Render cart items
+function renderCart() {
+    const cartItems = document.getElementById('cartItems');
+    const cartSummary = document.getElementById('cartSummary');
+    const emptyCart = document.getElementById('emptyCart');
+
+    if (cart.length === 0) {
+        cartItems.innerHTML = '';
+        cartSummary.style.display = 'none';
+        emptyCart.style.display = 'block';
+        return;
+    }
+
+    emptyCart.style.display = 'none';
+    cartSummary.style.display = 'block';
+
+    let totalAmount = 0;
+    let totalItems = 0;
+
+    cartItems.innerHTML = cart.map((item, index) => {
+        const itemTotal = (parseFloat(item.price) || 0) * (item.quantity || 1);
+        totalAmount += itemTotal;
+        totalItems += item.quantity || 1;
+
+    //     return `
+    //   <div class="cart-item">
+    //     <div class="cart-item-image">
+    //       ${item.img ? `<img src="${item.img}" alt="${item.title}">` : '📦'}
+    //     </div>
+       
+
+    //     <div class="cart-item-info">
+    //       <div class="cart-item-title">${item.title || 'N/A'}</div>
+    //       <div class="cart-item-price">¥${item.price || '0'} × ${item.quantity}</div>
+    //       ${item.note ? `<div class="cart-item-note">📝 ${item.note}</div>` : ''}
+    //     </div>
+    //     <button class="btn-remove" data-index="${index}">✖</button>
+    //   </div>
+    // `;
+    // }).join('');
+    return `
+<div class="cart-item">
+  
+  <div class="cart-item-image">
+    ${item.img ? `<img src="${item.img}" alt="${item.title}">` : '📦'} 
+  </div>
+
+  <div class="cart-item-form">
+
+      <div class="form-row">
+        
+          <div class="form-field">
+              <label>Kích cỡ*</label>
+              <input type="text" value="${item.size || 'N/A'}">
+          </div>
+
+          <div class="form-field">
+              <label>Màu*</label>
+              <input type="text" value="${item.color || 'N/A'}">
+          </div>
+
+          <div class="form-field">
+              <label>Đơn vị*</label>
+              <input type="text" value="${item.seller || ''}">
+          </div>
+
+          <div class="form-field small">
+              <label>Số lượng*</label>
+              <input type="number" value="${item.quantity}">
+          </div>
+
+          <div class="form-field small">
+              <label>Giá web*</label>
+              <input type="text" value="${item.price}">
+          </div>
+      </div>
+
+      <div class="form-row">
+          <div class="form-field full">
+              <label>Tên sản phẩm*</label>
+              <input type="text" value="${item.title}">
+          </div>
+      </div>
+      <div class="form-row">
+          <div class="form-field full">
+              <label>Link sản phẩm*</label>
+              <input type="text" value="${item.url || ''}">
+          </div>
+      </div>
+      <div class="form-row">
+          <div class="form-field full">
+              <label>Ghi chú*</label>
+              <textarea>${item.note || ''}</textarea>
+          </div>
+      </div>
+
+  </div>
+
+  <button class="btn-remove" data-index="${index}">✖</button>
+
+</div>
+`;}).join('');
+    // Update summary
+    document.getElementById('totalItems').textContent = totalItems;
+    document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
+
+    // Add remove listeners
+    document.querySAll('.btn-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeFromCart(parseInt(btn.dataset.index)));
+    });
+}
+
+// Remove item from cart
+async function removeFromCart(index) {
+    try {
+        await chrome.runtime.sendMessage({
+            action: 'removeFromCart',
+            index
+        });
+        await loadCart();
+        showStatus('✅ Đã xóa khỏi giỏ hàng', 'success');
+    } catch (error) {
+        showStatus('❌ Lỗi khi xóa', 'error');
+    }
+}
+
+// Clear entire cart
+async function clearCart() {
+    if (!confirm('Bạn có chắc muốn xóa toàn bộ giỏ hàng?')) {
+        return;
+    }
+
+    try {
+        await chrome.runtime.sendMessage({ action: 'clearCart' });
+        await loadCart();
+        showStatus('✅ Đã xóa giỏ hàng', 'success');
+    } catch (error) {
+        showStatus('❌ Lỗi khi xóa giỏ hàng', 'error');
+    }
+}
+
+// Create order from cart
+async function createOrder() {
+    if (cart.length === 0) {
+        showStatus('⚠️ Giỏ hàng trống', 'error');
+        return;
+    }
+
+    const customerSelect = document.getElementById('customerSelect');
+    const customerId = customerSelect.value;
+
+    if (!customerId) {
+        showStatus('⚠️ Vui lòng chọn khách hàng', 'error');
+        return;
+    }
+
+    const orderData = {
+        customer_id: customerId,
+        items: cart.map(item => ({
+            product_name: item.title,
+            product_link: item.url,
+            price_cny: parseFloat(item.price) || 0,
+            quantity: item.quantity || 1,
+            note: item.note || '',
+            product_image: item.image || ''
+        }))
+    };
+
+    try {
+        showStatus('⏳ Đang tạo đơn hàng...', 'info');
+
+        const response = await chrome.runtime.sendMessage({
+            action: 'submitOrder',
+            data: orderData
+        });
+
+        if (response.success) {
+            showStatus('✅ Đã tạo đơn hàng thành công!', 'success');
+            await chrome.runtime.sendMessage({ action: 'clearCart' });
+            await loadCart();
+        } else {
+            showStatus(`❌ Lỗi: ${response.error}`, 'error');
+        }
+    } catch (error) {
+        showStatus('❌ Không thể kết nối với server', 'error');
+        console.error(error);
+    }
+}
+
+// Save settings
+async function saveSettings() {
+    const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
+    const autoExtract = document.getElementById('autoExtract').checked;
+
+    try {
+        await chrome.storage.local.set({
+            apiEndpoint,
+            autoExtract
+        });
+
+        settings = { apiEndpoint, autoExtract };
+        showStatus('✅ Đã lưu cài đặt', 'success');
+    } catch (error) {
+        showStatus('❌ Lỗi khi lưu cài đặt', 'error');
+    }
+}
+
+// Update cart badge
+function updateCartBadge() {
+    const badge = document.getElementById('cartBadge');
+    badge.textContent = cart.length;
+    badge.style.display = cart.length > 0 ? 'block' : 'none';
+}
+
+// Show status message
+function showStatus(message, type = 'info') {
+    const statusEl = document.getElementById('statusMessage');
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+    statusEl.style.display = 'block';
+
+    setTimeout(() => {
+        statusEl.style.display = 'none';
+    }, 3000);
+}
+
+// Fix typo in querySelector
+document.querySAll = document.querySelectorAll;
