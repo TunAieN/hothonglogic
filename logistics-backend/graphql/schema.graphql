@@ -1,0 +1,104 @@
+scalar DateTime @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
+
+type Query {
+  # Users
+  user(
+    id: ID @eq @rules(apply: ["prohibits:email", "required_without:email"])
+    email: String @eq @rules(apply: ["prohibits:id", "required_without:id", "email"])
+  ): User @find
+
+  users(
+    name: String @where(operator: "like")
+  ): [User!]! @paginate(defaultCount: 10)
+
+  # Customers
+  customers: [Customer!]! @all
+  customer(id: ID! @eq): Customer @find
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  email_verified_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+}
+
+# Customers
+
+type Customer {
+  id: ID!
+  code: String!
+  name: String!
+  phone: String!
+  email: String
+  address: String
+  note: String
+  status: String
+  created_at: DateTime
+}
+
+input CreateCustomerInput {
+  code: String!
+  name: String!
+  phone: String!
+  email: String
+  address: String
+  note: String
+}
+
+type AuthPayload {
+  access_token: String!
+  token_type: String!
+  user: User!
+}
+
+type Mutation {
+  # Customer
+  createCustomer(input: CreateCustomerInput! @spread): Customer @create
+
+  # Auth
+  login(
+    email: String!
+    password: String!
+  ): AuthPayload
+    @field(resolver: "App\\GraphQL\\Resolvers\\LoginResolver@login")
+
+  # Order
+  createOrder(input: CreateOrderInput!): Order
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@create")
+}
+# Orders
+input OrderItemInput {
+    product_name: String!
+    product_link: String
+    price_cny: Float!
+    quantity: Int!
+    note: String
+    product_image: String
+}
+
+input CreateOrderInput {
+    customer_id: ID!
+    items: [OrderItemInput!]!
+}
+
+type OrderItem {
+    id: ID!
+    product_name: String!
+    price_cny: Float!
+    quantity: Int!
+    note: String
+}
+
+type Order {
+    id: ID!
+    customer: Customer!
+    total_amount: Float!
+    items: [OrderItem!]!
+}
+
+
+

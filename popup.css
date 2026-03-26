@@ -13,12 +13,15 @@ body {
   width: 800px;
   min-height: 400px;
   max-height: 600px;
+  
 }
+
 
 .container {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow-y: scroll;
 }
 
 /* Header */
@@ -31,23 +34,59 @@ body {
   align-items: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+.auth-wrapper {
+  position: relative;
+}
+
+.auth-btn {
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 35px;
+  right: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  /* border: 1px solid #ddd; */
+  border-radius: 6px;
+  width: 120px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.dropdown-item {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
 
 .header h2 {
   font-size: 18px;
   font-weight: 600;
 }
 
-.cart-badge {
-  background: #ff5722;
+.cart-icon {
+  position: relative;
+  cursor: pointer;
+  color: white;
+}
+
+.cart-count {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: red;
   color: white;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: bold;
+  font-size: 10px;
+  padding: 2px 5px;
 }
 
 /* Tabs */
