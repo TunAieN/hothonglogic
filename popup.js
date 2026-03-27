@@ -229,6 +229,14 @@ function setupEventListeners() {
     document.getElementById('createOrderBtn')?.addEventListener('click', createOrder);
     document.getElementById('clearCartBtn')?.addEventListener('click', clearCart);
     document.getElementById('saveSettingsBtn')?.addEventListener('click', saveSettings);
+
+    // Thêm event listener cho checkbox chọn tất cả
+    document.getElementById('selectAllProducts')?.addEventListener('change', async (e) => {
+        const isChecked = e.target.checked;
+        cart.forEach(item => item.selected = isChecked);
+        await chrome.storage.local.set({ cart });
+        renderCart();
+    });
 }
 
 // Load current product from page
@@ -443,9 +451,12 @@ function renderCart() {
     let totalItems = 0;
 
     cartItems.innerHTML = cart.map((item, index) => {
-        const itemTotal = (parseFloat(item.price) || 0) * (item.quantity || 1);
-        totalAmount += itemTotal;
-        totalItems += item.quantity || 1;
+        const isSelected = item.selected !== false; // Mặc định là true nếu chưa set
+        if (isSelected) {
+            const itemTotal = (parseFloat(item.price) || 0) * (item.quantity || 1);
+            totalAmount += itemTotal;
+            totalItems += item.quantity || 1;
+        }
 
         //     return `
         //   <div class="cart-item">
@@ -465,57 +476,62 @@ function renderCart() {
         // }).join('');
         return `
 <div class="cart-item">
+
+  <div class="cart-item-checkbox" style="display: flex; align-items: center; justify-content: center; align-self: center;">
+    <input type="checkbox" class="item-checkbox" data-index="${index}" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer;">
+  </div>
   
-  <div class="cart-item-image">
-    ${item.img ? `<img src="${item.img}" alt="${item.title}">` : '📦'} 
+  <div class="cart-item-image-wrapper" style="display: flex; flex-direction: column; gap: 8px;">
+    <div class="cart-item-image" style="margin-right: 0;">
+      ${item.img ? `<img src="${item.img}" alt="${item.title}">` : '📦'} 
+    </div>
+    <div style="display: flex; gap: 4px;">
+      <button class="btn btn-secondary btn-upload" data-index="${index}" style="flex: 1; padding: 4px; font-size: 11px; margin-bottom: 0;">Upload</button>
+      <button class="btn btn-secondary btn-link" data-index="${index}" style="flex: 1; padding: 4px; font-size: 11px; margin-bottom: 0;" data-url="${item.url || ''}">Link</button>
+    </div>
   </div>
 
   <div class="cart-item-form">
 
       <div class="form-row">
-        
           <div class="form-field">
               <label>Kích cỡ*</label>
-              <input type="text" value="${item.size || 'N/A'}">
+              <input type="text" class="item-field" data-field="size" data-index="${index}" value="${item.size || 'N/A'}">
           </div>
-
           <div class="form-field">
               <label>Màu*</label>
-              <input type="text" value="${item.color || 'N/A'}">
+              <input type="text" class="item-field" data-field="color" data-index="${index}" value="${item.color || 'N/A'}">
           </div>
-
           <div class="form-field">
               <label>Đơn vị*</label>
-              <input type="text" value="${item.seller || ''}">
+              <input type="text" class="item-field" data-field="seller" data-index="${index}" value="${item.seller || ''}">
           </div>
-
           <div class="form-field small">
               <label>Số lượng*</label>
-              <input type="number" value="${item.quantity}">
+              <input type="number" class="item-field" data-field="quantity" data-index="${index}" value="${item.quantity}" min="1">
           </div>
-
           <div class="form-field small">
               <label>Giá web*</label>
-              <input type="text" value="${item.price}">
+              <input type="text" class="item-field" data-field="price" data-index="${index}" value="${item.price}">
           </div>
       </div>
 
       <div class="form-row">
           <div class="form-field full">
               <label>Tên sản phẩm*</label>
-              <input type="text" value="${item.title}">
+              <input type="text" class="item-field" data-field="title" data-index="${index}" value="${item.title}">
           </div>
       </div>
       <div class="form-row">
           <div class="form-field full">
               <label>Link sản phẩm*</label>
-              <input type="text" value="${item.url || ''}">
+              <input type="text" class="item-field" data-field="url" data-index="${index}" value="${item.url || ''}">
           </div>
       </div>
       <div class="form-row">
           <div class="form-field full">
               <label>Ghi chú*</label>
-              <textarea>${item.note || ''}</textarea>
+              <textarea class="item-field" data-field="note" data-index="${index}">${item.note || ''}</textarea>
           </div>
       </div>
 
@@ -529,6 +545,56 @@ function renderCart() {
     // Update summary
     document.getElementById('totalItems').textContent = totalItems;
     document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
+
+    // Cập nhật trạng thái "Chọn tất cả"
+    const selectAllCheckbox = document.getElementById('selectAllProducts');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = cart.length > 0 && cart.every(item => item.selected !== false);
+    }
+
+    // Lắng nghe sự kiện click trên từng checkbox
+    document.querySelectorAll('.item-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', async (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            cart[idx].selected = e.target.checked;
+            await chrome.storage.local.set({ cart });
+            renderCart();
+        });
+    });
+
+    // Lắng nghe thay đổi dữ liệu trên các ô input của cart-item (số lượng, màu, giá...)
+    document.querySelectorAll('.item-field').forEach(field => {
+        field.addEventListener('change', async (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            const fieldName = e.target.dataset.field;
+            let value = e.target.value;
+
+            if (fieldName === 'quantity') {
+                value = parseInt(value) || 1;
+                if (value < 1) value = 1;
+            }
+
+            cart[idx][fieldName] = value;
+            cart[idx].selected = true;
+            await chrome.storage.local.set({ cart });
+            renderCart(); // Cập nhật lại UI số tiền
+        });
+    });
+
+    // Nút Upload & Link
+    document.querySelectorAll('.btn-link').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const url = e.currentTarget.dataset.url;
+            if (url) window.open(url, '_blank');
+        });
+    });
+
+    document.querySelectorAll('.btn-upload').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // TODO: Chức năng Upload
+            alert('Chức năng Upload đang được xây dựng!');
+        });
+    });
 
     // Add remove listeners
     document.querySAll('.btn-remove').forEach(btn => {
@@ -567,13 +633,29 @@ async function clearCart() {
 
 // Create order from cart
 async function createOrder() {
-    const token = chrome.storage.local.get("token");
-    if (!token) {
-        showStatus("Vui lòng đăng nhập", "error");
+    const token = await chrome.storage.local.get("token");
+    console.log(token);
+    if (!token.token) {
+        chrome.windows.create({
+            url: chrome.runtime.getURL("login.html"),
+            type: "popup",
+            width: 400,
+            height: 600
+        });
+
         return;
     }
+
+    // Lọc ra các sản phẩm đã chọn
+    const selectedItems = cart.filter(item => item.selected !== false);
+
     if (cart.length === 0) {
         showStatus('⚠️ Giỏ hàng trống', 'error');
+        return;
+    }
+
+    if (selectedItems.length === 0) {
+        showStatus('⚠️ Vui lòng chọn ít nhất 1 sản phẩm để đặt hàng', 'error');
         return;
     }
 
@@ -587,13 +669,13 @@ async function createOrder() {
 
     const orderData = {
         customer_id: customerId,
-        items: cart.map(item => ({
+        items: selectedItems.map(item => ({
             product_name: item.title,
             product_link: item.url,
             price_cny: parseFloat(item.price) || 0,
             quantity: item.quantity || 1,
             note: item.note || '',
-            product_image: item.image || ''
+            product_image: item.img || '' // Lấy từ img thay vì image nếu image undef
         }))
     };
 
@@ -607,7 +689,14 @@ async function createOrder() {
 
         if (response.success) {
             showStatus('✅ Đã tạo đơn hàng thành công!', 'success');
-            await chrome.runtime.sendMessage({ action: 'clearCart' });
+
+            // Xóa dần các item đã order khỏi giỏ (xóa từ cuối để không bị lệch index)
+            for (let i = cart.length - 1; i >= 0; i--) {
+                if (cart[i].selected !== false) {
+                    await chrome.runtime.sendMessage({ action: 'removeFromCart', index: i });
+                }
+            }
+
             await loadCart();
         } else {
             showStatus(`❌ Lỗi: ${response.error}`, 'error');

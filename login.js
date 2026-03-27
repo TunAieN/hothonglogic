@@ -35,14 +35,24 @@ document.getElementById("loginSubmit").addEventListener("click", async () => {
             user: user
         });
 
-        alert("Đăng nhập thành công!");
+        showToast("Đăng nhập thành công!");
 
-        window.close(); // đóng popup
+        setTimeout(() => {
+            window.close();
+        }, 2500);
     } else {
-        alert("Sai tài khoản hoặc mật khẩu!");
+        showToast("Sai tài khoản hoặc mật khẩu!");
     }
 });
 
+function showToast(message) {
+    const toast = document.getElementById("toast");
+    toast.textContent = message;
+    toast.style.display = "block";
 
+    setTimeout(() => {
+        toast.style.display = "none";
+    }, 2000);
+}
 
 

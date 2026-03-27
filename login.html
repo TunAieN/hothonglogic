@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <div id="toast" class="toast">Đăng nhập thành công!</div>
     <title>Đăng nhập</title>
     <style>
         body {
@@ -31,5 +32,33 @@
     <button id="loginSubmit">Đăng nhập</button>
     <script src="login.js"></script>
 </body>
+<div id="toast" class="toast">Đăng nhập thành công!</div>
+<style>
+    .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #28a745;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        display: none;
+        z-index: 9999;
+        animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+        from {
+            transform: translateY(20px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+</style>
 
 </html>

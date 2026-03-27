@@ -47,44 +47,50 @@
         </div>
 
         <div id="productDetails" style="display: none;">
-          <div class="product-image">
-            <img id="productImage" src="" alt="Product">
-          </div>
-
-          <div class="product-info">
-            <h3 id="productTitle">-</h3>
-            <div class="price-info">
-              <span class="label">Giá:</span>
-              <span class="price" id="productPrice">-</span>
-              <span class="currency">¥</span>
+          <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
+            <div class="product-image" style="margin-bottom: 0; flex-shrink: 0; width: 160px;">
+              <img id="productImage" src="" alt="Product" style="width: 100%; height: auto; object-fit: cover;">
             </div>
 
-            <div id="original-price-info">
-              <span class="label">Giá gốc:</span>
-              <span class="original-price" id="productOriginalPrice">-</span>
-              <span class="currency">¥</span>
-            </div>
-            <div id="productSize">
-              <span class="label">Kích thước:</span>
-              <span id="productSizeValue">-</span>
-            </div>
-            <div id="productColor">
-              <span class="label">Màu sắc:</span>
-              <span id="productColorValue">-</span>
-            </div>
-            <div class="seller-info">
-              <span class="label">Shop:</span>
-              <span id="productSeller">-</span>
+            <div class="product-info" style="margin-bottom: 0; flex: 1; min-width: 0;">
+              <h3 id="productTitle">-</h3>
+              <div class="price-info">
+                <span class="label">Giá:</span>
+                <span class="price" id="productPrice">-</span>
+                <span class="currency">¥</span>
+              </div>
+
+              <div id="original-price-info">
+                <span class="label">Giá gốc:</span>
+                <span class="original-price" id="productOriginalPrice">-</span>
+                <span class="currency">¥</span>
+              </div>
+              <div id="productSize">
+                <span class="label">Kích thước:</span>
+                <span id="productSizeValue">-</span>
+              </div>
+              <div id="productColor">
+                <span class="label">Màu sắc:</span>
+                <span id="productColorValue">-</span>
+              </div>
+              <div class="seller-info">
+                <span class="label">Shop:</span>
+                <span id="productSeller">-</span>
+              </div>
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="quantity">Số lượng:</label>
-            <input type="number" id="quantity" class="quantity-input" min="1" value="1">
-          </div>
-          <div class="form-group">
-            <label for="productLink">Link sản phẩm:</label>
-            <input type="text" id="productLink" readonly>
+          <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
+            <div class="form-group" style="margin-bottom: 0; width: 80px; flex-shrink: 0;">
+              <label for="quantity">Số lượng:</label>
+              <input type="number" id="quantity" class="quantity-input" min="1" value="1"
+                style="width: 100% !important; box-sizing: border-box;">
+            </div>
+            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 0;">
+              <label for="productLink">Link sản phẩm:</label>
+              <input type="text" id="productLink" readonly
+                style="width: 100%; box-sizing: border-box; text-overflow: ellipsis;">
+            </div>
           </div>
           <div class="form-group">
             <label for="note">Ghi chú:</label>
@@ -109,9 +115,9 @@
 
     <!-- Cart Tab -->
     <div class="tab-content" id="cartTab">
-      <div class="cart-toolbar">
-        <label>
-          <input type="checkbox" id="selectAllProducts">
+      <div class="cart-toolbar" style="margin-bottom: 12px;">
+        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+          <input type="checkbox" id="selectAllProducts" style="width: 16px; height: 16px; cursor: pointer;">
           Chọn tất cả
         </label>
       </div>

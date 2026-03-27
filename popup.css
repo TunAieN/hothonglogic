@@ -308,7 +308,7 @@ body {
 } */
 .cart-item {
   display: grid;
-  grid-template-columns: 100px 1fr;
+  grid-template-columns: 24px 130px 1fr;
   gap: 12px;
   align-items: start;
   background: white;
@@ -319,8 +319,8 @@ body {
   position: relative;
 }
 .cart-item-image {
-  width: 100px;
-  height: 100px;
+  width: 130px;
+  height: 130px;
   flex-shrink: 0;
   margin-right: 12px;
   display: flex;
