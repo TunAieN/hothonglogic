@@ -14,6 +14,10 @@ type Query {
   # Customers
   customers: [Customer!]! @all
   customer(id: ID! @eq): Customer @find
+
+  # Orders
+  orders: [Order!]! @all
+  order(id: ID! @eq): Order @find
 }
 
 type User {

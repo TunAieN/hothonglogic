@@ -5,7 +5,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class OrderResolver
-{
+{   
+    public function orders()
+    {
+        return Order::with(['customer', 'items'])->get();
+    }
     public function create($_, array $args)
     {
         if (!Auth::check()) {
