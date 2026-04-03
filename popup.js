@@ -10,8 +10,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCustomers();
     setupTabs();
     setupEventListeners();
+
+    // Initial load
     loadCurrentProduct();
     updateCartBadge();
+
+    // Listen for tab updates (navigation) to auto-reload product info
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+        if (changeInfo.status === 'complete' && tab.active) {
+            loadCurrentProduct();
+        }
+    });
+
+    // Listen for tab switching
+    chrome.tabs.onActivated.addListener(() => {
+        loadCurrentProduct();
+    });
 });
 
 // Load customers from API or use demo data
@@ -241,7 +255,7 @@ function setupEventListeners() {
 
 // Load current product from page
 async function loadCurrentProduct() {
-    showLoading(true);
+    setLoadingOverlay(true);
 
     try {
         // Get active tab
@@ -249,7 +263,7 @@ async function loadCurrentProduct() {
 
         // Check if it's a Tmall/Taobao page
         if (!tab.url.includes('tmall.com') && !tab.url.includes('taobao.com')) {
-            showNoProduct();
+            showEmptyProduct('⚠️ Không phải trang Tmall/Taobao');
             return;
         }
 
@@ -280,13 +294,13 @@ async function loadCurrentProduct() {
             currentProduct = response.data;
             displayProduct(currentProduct);
         } else {
-            showNoProduct();
+            showEmptyProduct('⚠️ Không phát hiện sản phẩm trên trang này');
         }
     } catch (error) {
         console.error('Error loading product:', error);
-        showNoProduct();
+        showEmptyProduct('❌ Lỗi khi tải sản phẩm');
     } finally {
-        showLoading(false);
+        setLoadingOverlay(false);
     }
 }
 async function translateChineseToVietnamese(text) {
@@ -322,11 +336,9 @@ async function renderProductTitle(x, id) {
 
 // Display product information
 async function displayProduct(product) {
-
-
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('noProduct').style.display = 'none';
-    document.getElementById('productDetails').style.display = 'block';
+    // Re-enable add to cart button
+    document.getElementById('addToCartBtn').disabled = false;
+    document.getElementById('addToCartBtn').style.opacity = '1';
     // await renderProductTitle(product.title, 'productTitle');
     document.getElementById('productTitle').textContent = product.title || 'N/A';
     document.getElementById('productPrice').textContent = product.price || '0';
@@ -380,17 +392,38 @@ async function displayProduct(product) {
 
 
 
-// Show/hide loading state
-function showLoading(show) {
-    document.getElementById('loading').style.display = show ? 'block' : 'none';
-    document.getElementById('productDetails').style.display = show ? 'none' : 'block';
+// Show/hide loading overlay (productDetails stays visible)
+function setLoadingOverlay(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = show ? 'flex' : 'none';
 }
 
-// Show no product message
+// Show empty/error state — UI stays visible, fields show placeholder
+function showEmptyProduct(message) {
+    currentProduct = null;
+    document.getElementById('productTitle').innerHTML = `<span style="font-size: 0.9em;"> ${message || 'Mời bạn mở trang sản phẩm Tmall hoặc Taobao!'} </span>`;
+    document.getElementById('productPrice').textContent = '–';
+    document.getElementById('productSeller').textContent = '–';
+    document.getElementById('productSizeValue').textContent = '–';
+    document.getElementById('productColorValue').textContent = '–';
+    document.getElementById('productLink').value = '';
+    document.getElementById('quantity').value = 1;
+    document.getElementById('note').value = '';
+    document.getElementById('productImage').style.display = 'none';
+    document.getElementById('original-price-info').style.display = 'none';
+    document.getElementById('productSize').style.display = 'none';
+    document.getElementById('productColor').style.display = 'none';
+
+    const addToCartBtn = document.getElementById('addToCartBtn');
+    if (addToCartBtn) {
+        addToCartBtn.disabled = true;
+        addToCartBtn.style.opacity = '0.5';
+    }
+}
+
+// Show no product message (legacy — kept for compatibility)
 function showNoProduct() {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('productDetails').style.display = 'none';
-    document.getElementById('noProduct').style.display = 'block';
+    showEmptyProduct('⚠️ Không phát hiện sản phẩm');
 }
 
 // Add product to cart
@@ -476,69 +509,73 @@ function renderCart() {
         // }).join('');
         return `
 <div class="cart-item">
-
-  <div class="cart-item-checkbox" style="display: flex; align-items: center; justify-content: center; align-self: center;">
-    <input type="checkbox" class="item-checkbox" data-index="${index}" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer;">
-  </div>
-  
-  <div class="cart-item-image-wrapper" style="display: flex; flex-direction: column; gap: 8px;">
-    <div class="cart-item-image" style="margin-right: 0;">
-      ${item.img ? `<img src="${item.img}" alt="${item.title}">` : '📦'} 
-    </div>
-    <div style="display: flex; gap: 4px;">
-      <button class="btn btn-secondary btn-upload" data-index="${index}" style="flex: 1; padding: 4px; font-size: 11px; margin-bottom: 0;">Upload</button>
-      <button class="btn btn-secondary btn-link" data-index="${index}" style="flex: 1; padding: 4px; font-size: 11px; margin-bottom: 0;" data-url="${item.url || ''}">Link</button>
-    </div>
+  <!-- Checkbox chọn sản phẩm (bên trái cùng) -->
+  <div class="cart-item-checkbox">
+    <input type="checkbox" class="item-checkbox" data-index="${index}" ${isSelected ? 'checked' : ''}>
   </div>
 
+  <!-- Phần hình ảnh và nút Upload/Link -->
+  <div class="cart-item-visual">
+    <div class="cart-item-image">
+      ${item.img ? `<img src="${item.img}" alt="${item.title}">` : '📦'}
+    </div>
+    <div class="cart-item-visual-btns">
+      <button class="btn btn-secondary btn-upload" data-index="${index}">Upload</button>
+      <button class="btn btn-secondary btn-link" data-index="${index}" data-url="${item.url || ''}">Link</button>
+    </div>
+  </div>
+
+  <!-- Phần Form nhập liệu -->
   <div class="cart-item-form">
+    <!-- Hàng 1: Kích cỡ, Màu, Đơn vị, Số lượng, Giá web -->
+    <div class="form-row-top">
+      <div class="form-field">
+        <label>Kích cỡ*</label>
+        <input type="text" class="item-field" data-field="size" data-index="${index}" value="${item.size || 'N/A'}">
+      </div>
+      <div class="form-field">
+        <label>Màu*</label>
+        <input type="text" class="item-field" data-field="color" data-index="${index}" value="${item.color || 'N/A'}">
+      </div>
+      <div class="form-field">
+        <label>Đơn vị*</label>
+        <input type="text" class="item-field" data-field="seller" data-index="${index}" value="${item.seller || ''}">
+      </div>
+      <div class="form-field">
+        <label>Số lượng*</label>
+        <input type="number" class="item-field" data-field="quantity" data-index="${index}" value="${item.quantity}" min="1">
+      </div>
+      <div class="form-field">
+        <label>Giá web*</label>
+        <input type="text" class="item-field" data-field="price" data-index="${index}" value="${item.price}">
+      </div>
+    </div>
 
-      <div class="form-row">
-          <div class="form-field">
-              <label>Kích cỡ*</label>
-              <input type="text" class="item-field" data-field="size" data-index="${index}" value="${item.size || 'N/A'}">
-          </div>
-          <div class="form-field">
-              <label>Màu*</label>
-              <input type="text" class="item-field" data-field="color" data-index="${index}" value="${item.color || 'N/A'}">
-          </div>
-          <div class="form-field">
-              <label>Đơn vị*</label>
-              <input type="text" class="item-field" data-field="seller" data-index="${index}" value="${item.seller || ''}">
-          </div>
-          <div class="form-field small">
-              <label>Số lượng*</label>
-              <input type="number" class="item-field" data-field="quantity" data-index="${index}" value="${item.quantity}" min="1">
-          </div>
-          <div class="form-field small">
-              <label>Giá web*</label>
-              <input type="text" class="item-field" data-field="price" data-index="${index}" value="${item.price}">
-          </div>
+    <!-- Hàng 2: Tên sản phẩm -->
+    <div class="form-row">
+      <div class="form-field full">
+        <label>Tên sản phẩm*</label>
+        <input type="text" class="item-field" data-field="title" data-index="${index}" value="${item.title}">
       </div>
+    </div>
 
-      <div class="form-row">
-          <div class="form-field full">
-              <label>Tên sản phẩm*</label>
-              <input type="text" class="item-field" data-field="title" data-index="${index}" value="${item.title}">
-          </div>
+    <!-- Hàng 3: Link sản phẩm + Nút Xóa -->
+    <div class="form-row link-row">
+      <div class="form-field full">
+        <label>Link sản phẩm*</label>
+        <input type="text" class="item-field" data-field="url" data-index="${index}" value="${item.url || ''}">
       </div>
-      <div class="form-row">
-          <div class="form-field full">
-              <label>Link sản phẩm*</label>
-              <input type="text" class="item-field" data-field="url" data-index="${index}" value="${item.url || ''}">
-          </div>
-      </div>
-      <div class="form-row">
-          <div class="form-field full">
-              <label>Ghi chú*</label>
-              <textarea class="item-field" data-field="note" data-index="${index}">${item.note || ''}</textarea>
-          </div>
-      </div>
+      <button class="btn-remove" data-index="${index}">✖</button>
+    </div>
 
+    <!-- Hàng 4: Ghi chú -->
+    <div class="form-row">
+      <div class="form-field full">
+        <label>Ghi chú*</label>
+        <textarea class="item-field" data-field="note" data-index="${index}">${item.note || ''}</textarea>
+      </div>
+    </div>
   </div>
-
-  <button class="btn-remove" data-index="${index}">✖</button>
-
 </div>
 `;
     }).join('');

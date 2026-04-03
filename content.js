@@ -48,9 +48,9 @@ function extractProductInfo() {
     // Extract product title - Try XPath first, then CSS selectors
     const titleXPaths = [
         '//span[contains(@class,"mainTitle")]',
-    '//div[contains(@class,"MainTitle")]//span',
-    '//div[contains(@class,"ItemTitle")]//span'
-        
+        '//div[contains(@class,"MainTitle")]//span',
+        '//div[contains(@class,"ItemTitle")]//span'
+
     ];
 
     // Try XPath selectors first
@@ -67,9 +67,9 @@ function extractProductInfo() {
     if (!productData.title) {
         const titleSelectors = [
             '[class*="mainTitle"]',
-        '[class*="MainTitle"] span',
-        '[class*="ItemTitle"] span'
-            
+            '[class*="MainTitle"] span',
+            '[class*="ItemTitle"] span'
+
         ];
 
         for (const selector of titleSelectors) {
@@ -158,8 +158,8 @@ function extractProductInfo() {
     console.log("Original Price:", productData.originalPrice);
 
     // Extract size information if available
-        productData.size =  extractSkuOption(['尺码', '尺寸', '大小','鞋码', 'Size']);
-        console.log("Size:", productData.size);
+    productData.size = extractSkuOption(['尺码', '尺寸', '大小', '鞋码', 'Size']);
+    console.log("Size:", productData.size);
     // const sizeSelectors = [
     //    '#skuOptionsArea > div > div.skuValueWrap--aEfxuhNr > div > div > div:nth-child(1) > span.valueItemText--T7YrR8tO.f-els-1',
     //    '#skuOptionsArea > div:nth-child(1) > div.skuValueWrap--aEfxuhNr > div > div > div.valueItem--smR4pNt4.isSelected--_a9zOp7C > span'
@@ -173,19 +173,19 @@ function extractProductInfo() {
     // }
     // console.log("Size:", productData.size);
 
-//    const sizeXPaths = [
-//         '//*[@id="skuOptionsArea"]/div/div[2]/div/div/div[1]/span[1]', // User-verified working XPath for size
-//     ];
-//     if (!productData.size) {
-//         for (const xpath of sizeXPaths) {
-//         const element = getElementByXPath(xpath);
-//         if (element) {
-//             productData.size = element.textContent.trim();
-//             break;
-//         }
-//         }
-//     }
-//     console.log("Size:", productData.size);
+    //    const sizeXPaths = [
+    //         '//*[@id="skuOptionsArea"]/div/div[2]/div/div/div[1]/span[1]', // User-verified working XPath for size
+    //     ];
+    //     if (!productData.size) {
+    //         for (const xpath of sizeXPaths) {
+    //         const element = getElementByXPath(xpath);
+    //         if (element) {
+    //             productData.size = element.textContent.trim();
+    //             break;
+    //         }
+    //         }
+    //     }
+    //     console.log("Size:", productData.size);
     // Extract quantity information if available
     const quantitySelectors = [
         '#tbpcDetail_SkuPanelBody > div.body--FO6TDxA0 > div > div.root--uHUOEAcH > div.content--mUAk6rrf > div.countWrapper--EEYLrWjn > div.countValueWrapper--NsSDP4ir > input'
@@ -200,7 +200,7 @@ function extractProductInfo() {
     console.log("Quantity:", productData.quantity);
 
     // Extract color information if available
-    productData.color =  extractSkuOption(['颜色', '颜色分类','商品规格', 'Color']);
+    productData.color = extractSkuOption(['颜色', '颜色分类', '商品规格', 'Color']);
     console.log("Color:", productData.color);
     // const colorSelectors = [
     //     '#skuOptionsArea > div:nth-child(2) > div.skuValueWrap--aEfxuhNr > div > div > div.valueItem--smR4pNt4.isSelected--_a9zOp7C.hasImg--K82HLg1O > span.valueItemText--T7YrR8tO.f-els-1',

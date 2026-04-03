@@ -40,42 +40,45 @@
 
     <!-- Product Tab -->
     <div class="tab-content active" id="productTab">
-      <div id="productInfo">
-        <div class="loading" id="loading">
+      <div id="productInfo" style="position: relative;">
+
+        <!-- Loading overlay — appears on top of existing content -->
+        <div id="loadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(245,247,250,0.88); z-index:10; align-items:center; justify-content:center; flex-direction:column; gap:10px; border-radius:8px;">
           <div class="spinner"></div>
-          <p>Đang tải thông tin sản phẩm...</p>
+          <p style="color:#667eea; font-weight:500; margin:0;">Đang tải sản phẩm...</p>
         </div>
 
-        <div id="productDetails" style="display: none;">
-          <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
-            <div class="product-image" style="margin-bottom: 0; flex-shrink: 0; width: 160px;">
-              <img id="productImage" src="" alt="Product" style="width: 100%; height: auto; object-fit: cover;">
+        <!-- Product details — always visible, content updates in-place -->
+        <div id="productDetails">
+          <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap;">
+            <div class="product-image" style="margin-bottom: 0; flex-shrink: 0; width: 160px; margin: 0 auto;">
+              <img id="productImage" src="" alt="Product" style="width: 100%; height: auto; border-radius: 8px; display:none;">
             </div>
 
-            <div class="product-info" style="margin-bottom: 0; flex: 1; min-width: 0;">
-              <h3 id="productTitle">-</h3>
+            <div class="product-info" style="margin-bottom: 0; flex: 1; min-width: 250px;">
+              <h3 id="productTitle">Mời bạn mở trang sản phẩm...</h3>
               <div class="price-info">
                 <span class="label">Giá:</span>
-                <span class="price" id="productPrice">-</span>
-                <span class="currency">¥</span>
+                <span class="price" id="productPrice" style="color:#ccc;">–</span>
+                <span class="currency" style="color:#ccc;">¥</span>
               </div>
 
-              <div id="original-price-info">
+              <div id="original-price-info" style="display:none;">
                 <span class="label">Giá gốc:</span>
-                <span class="original-price" id="productOriginalPrice">-</span>
+                <span class="original-price" id="productOriginalPrice">–</span>
                 <span class="currency">¥</span>
               </div>
-              <div id="productSize">
+              <div id="productSize" style="display:none;">
                 <span class="label">Kích thước:</span>
-                <span id="productSizeValue">-</span>
+                <span id="productSizeValue">–</span>
               </div>
-              <div id="productColor">
+              <div id="productColor" style="display:none;">
                 <span class="label">Màu sắc:</span>
-                <span id="productColorValue">-</span>
+                <span id="productColorValue">–</span>
               </div>
               <div class="seller-info">
                 <span class="label">Shop:</span>
-                <span id="productSeller">-</span>
+                <span id="productSeller" style="color:#ccc;">–</span>
               </div>
             </div>
           </div>
@@ -97,7 +100,7 @@
             <textarea id="note" rows="2" placeholder="Thêm ghi chú về sản phẩm..."></textarea>
           </div>
 
-          <button class="btn btn-primary" id="addToCartBtn">
+          <button class="btn btn-primary" id="addToCartBtn" disabled style="opacity:0.5;">
             ➕ Thêm vào giỏ
           </button>
 
@@ -106,10 +109,6 @@
           </button>
         </div>
 
-        <div id="noProduct" style="display: none;">
-          <p class="info-message">⚠️ Không phát hiện sản phẩm trên trang này. Vui lòng truy cập trang chi tiết sản phẩm
-            Tmall/Taobao.</p>
-        </div>
       </div>
     </div>
 
