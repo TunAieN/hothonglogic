@@ -78,10 +78,15 @@ async function loadCustomers() {
     const query = `
         query {
             customers {
-                id
-                code
-                name
-                phone
+                data {
+                    id
+                    code
+                    name
+                    phone
+                }
+                paginatorInfo {
+                    total
+                }
             }
         }
     `;
@@ -91,6 +96,7 @@ async function loadCustomers() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${settings.token}`
             },
             body: JSON.stringify({
                 query: query
@@ -100,9 +106,9 @@ async function loadCustomers() {
         const result = await response.json();
         console.log('GraphQL response:', result);
         console.log('GraphQL data:', result.data);
-        console.log('GraphQL customer:', result.data.customers);
+        console.log('GraphQL customer:', result.data.customers.data);
         if (result.data && result.data.customers) {
-            const customers = result.data.customers;
+            const customers = result.data.customers.data;
 
             customerSelect.innerHTML = '<option value="">-- Chọn khách hàng --</option>';
 

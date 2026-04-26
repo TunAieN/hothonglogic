@@ -19,7 +19,7 @@ class LoginResolver
         $user->tokens()->delete();
 
         $token = $user->createToken('api-token')->plainTextToken;
-
+        
         return [
             'access_token' => $token,
             'token_type'   => 'Bearer',
