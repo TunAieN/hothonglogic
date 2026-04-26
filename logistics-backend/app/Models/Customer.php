@@ -16,4 +16,15 @@ class Customer extends Model
         'note',
         'status'
     ];
+    public function getOrdersCountAttribute()
+    {
+        return $this->orders()->count();
+    }
+    protected $appends = ['orders_count'];
+
+    function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
 }
+    

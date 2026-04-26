@@ -25,4 +25,9 @@ class Order extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

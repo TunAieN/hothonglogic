@@ -1,111 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  --font-family: 'Inter', sans-serif;
+  --bg-dark: #0B192C; /* Sidebar and dark cards */
+  --bg-darker: #081221;
+  --bg-light: #F5F7FA; /* Main content bg */
+  --text-primary: #1A202C;
+  --text-secondary: #718096;
+  --text-light: #E2E8F0;
+  --primary-color: #0B192C;
+  --accent-color: #3182CE;
+  --danger-color: #E53E3E;
+  --success-color: #38A169;
+  --border-color: #E2E8F0;
 }
 
 body {
   margin: 0;
+  font-family: var(--font-family);
+  background-color: var(--bg-light);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
+/* Ant Design overrides */
+.ant-layout {
+  background: var(--bg-light) !important;
+}
+
+.ant-menu-dark {
+  background: var(--bg-dark) !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background-color: #1A2B45 !important;
+  border-radius: 8px;
+}
+
+.ant-menu-dark .ant-menu-item {
+  margin: 8px 16px !important;
+  width: auto !important;
+  border-radius: 8px;
   font-weight: 500;
-  color: var(--text-h);
+  color: #94A3B8;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+.ant-menu-dark .ant-menu-item-selected {
+  color: #fff !important;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
   border-radius: 4px;
-  color: var(--text-h);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* Base Card utility */
+.panel-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  padding: 24px;
+}
+
+.panel-card-dark {
+  background: var(--bg-dark);
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+}
+
+/* Driver Status Badges */
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-badge::before {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.status-active {
+  background: #D1FAE5;
+  color: #047857;
+}
+.status-active::before { background: #10B981; }
+
+.status-rest {
+  background: #FEF3C7;
+  color: #B45309;
+}
+.status-rest::before { background: #F59E0B; }
+
+.status-delayed {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+.status-delayed::before { background: #EF4444; }
+
+/* Progress bar wrapper */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.progress-bar-bg {
+  height: 6px;
+  background: #E2E8F0;
+  border-radius: 3px;
+  flex: 1;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--bg-dark);
+  border-radius: 3px;
+}
+.progress-bar-fill.danger {
+  background: #EF4444;
+}
+.progress-text {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: right;
 }
