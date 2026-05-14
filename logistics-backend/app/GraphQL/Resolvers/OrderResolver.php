@@ -30,6 +30,7 @@ class OrderResolver
                 'order_code'  => 'ORD-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6)),
                 'customer_id' => $input['customer_id'],
                 'total_amount' => $total,
+                'note'        => $input['note'] ?? null,
                 'status'      => 'pending',
                 'created_by'  => Auth::id(),
             ]);
@@ -39,7 +40,7 @@ class OrderResolver
                 $order->items()->create($item);
             }
 
-            return $order->load('items', 'customer');
+            return $order->load('items', 'customer', 'creator');
         });
     }
 }

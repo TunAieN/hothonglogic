@@ -200,14 +200,20 @@ function loadDemoCustomers() {
 
 // Load settings from storage
 async function loadSettings() {
-    const result = await chrome.storage.local.get(['apiEndpoint', 'autoExtract']);
+    const result = await chrome.storage.local.get(['apiEndpoint', 'autoExtract', 'frontendOrderUrl', 'token']);
     settings = {
-        apiEndpoint: result.apiEndpoint || 'http://localhost:8000/api',
-        autoExtract: result.autoExtract !== false
+        apiEndpoint: result.apiEndpoint || 'http://127.0.0.1:8000/graphql',
+        autoExtract: result.autoExtract !== false,
+        frontendOrderUrl: result.frontendOrderUrl || 'http://localhost:5173/orders/external/create',
+        token: result.token || null
     };
 
     document.getElementById('apiEndpoint').value = settings.apiEndpoint;
     document.getElementById('autoExtract').checked = settings.autoExtract;
+    const frontendOrderUrlInput = document.getElementById('frontendOrderUrl');
+    if (frontendOrderUrlInput) {
+        frontendOrderUrlInput.value = settings.frontendOrderUrl;
+    }
 }
 
 // Load cart from storage
@@ -249,6 +255,7 @@ function setupEventListeners() {
     document.getElementById('createOrderBtn')?.addEventListener('click', createOrder);
     document.getElementById('clearCartBtn')?.addEventListener('click', clearCart);
     document.getElementById('saveSettingsBtn')?.addEventListener('click', saveSettings);
+    document.getElementById('openExternalOrderFormBtn')?.addEventListener('click', openExternalOrderForm);
 
     // Thêm event listener cho checkbox chọn tất cả
     document.getElementById('selectAllProducts')?.addEventListener('change', async (e) => {
@@ -259,6 +266,42 @@ function setupEventListeners() {
     });
 }
 
+async function openExternalOrderForm() {
+
+    const url =
+        settings.frontendOrderUrl ||
+        'http://localhost:5173/orders/external/create';
+
+    try {
+
+        // Mở tab mới và focus luôn
+        await chrome.tabs.create({
+            url
+        });
+
+        await closeCurrentSidePanel();
+    } catch (error) {
+
+        showStatus(
+            'Không thể mở form tạo đơn hàng',
+            'error'
+        );
+
+        console.error(error);
+    }
+}
+async function closeCurrentSidePanel() {
+    try {
+        if (chrome.sidePanel?.close) {
+            await chrome.sidePanel.close({});
+            return;
+        }
+    } catch (error) {
+        console.warn('Unable to close side panel via API:', error);
+    }
+
+    window.close();
+}
 // Load current product from page
 async function loadCurrentProduct() {
     setLoadingOverlay(true);
@@ -675,20 +718,8 @@ async function clearCart() {
 }
 
 // Create order from cart
-async function createOrder() {
-    const token = await chrome.storage.local.get("token");
-    console.log(token);
-    if (!token.token) {
-        chrome.windows.create({
-            url: chrome.runtime.getURL("login.html"),
-            type: "popup",
-            width: 400,
-            height: 600
-        });
-
-        return;
-    }
-
+async function createOrderLegacy() {
+    
     // Lọc ra các sản phẩm đã chọn
     const selectedItems = cart.filter(item => item.selected !== false);
 
@@ -726,7 +757,7 @@ async function createOrder() {
         showStatus('⏳ Đang tạo đơn hàng...', 'info');
 
         const response = await chrome.runtime.sendMessage({
-            action: 'submitOrder',
+            action: 'submitOrder_legacy_disabled',
             data: orderData
         });
 
@@ -751,7 +782,7 @@ async function createOrder() {
 }
 
 // Save settings
-async function saveSettings() {
+async function saveSettingsLegacy() {
     const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
     const autoExtract = document.getElementById('autoExtract').checked;
 
@@ -789,3 +820,95 @@ function showStatus(message, type = 'info') {
 
 // Fix typo in querySelector
 document.querySAll = document.querySelectorAll;
+
+function buildVariantSummary(item) {
+    const parts = [];
+
+    if (item.size && item.size !== 'N/A') {
+        parts.push(`Kích thước: ${item.size}`);
+    }
+
+    if (item.color && item.color !== 'N/A') {
+        parts.push(`Màu sắc: ${item.color}`);
+    }
+
+    if (item.seller) {
+        parts.push(`Shop: ${item.seller}`);
+    }
+
+    return parts.join(' | ');
+}
+
+async function createOrder() {
+    
+    const selectedItems = cart.filter(item => item.selected !== false);
+
+    if (cart.length === 0) {
+        showStatus('Giỏ hàng trống', 'error');
+        return;
+    }
+
+    if (selectedItems.length === 0) {
+        showStatus('Vui lòng chọn ít nhất 1 sản phẩm để tạo đơn', 'error');
+        return;
+    }
+
+    const customerSelect = document.getElementById('customerSelect');
+    const customerId = customerSelect?.value || '';
+    const draftPayload = {
+        source: 'chrome-extension',
+        customer_id: customerId || null,
+        order_note: '',
+        created_at: new Date().toISOString(),
+        items: selectedItems.map(item => ({
+            source_item_id: item.id,
+            product_name: item.title || '',
+            product_link: item.url || '',
+            product_image: item.img || '',
+            variant: buildVariantSummary(item),
+            quantity: item.quantity || 1,
+            price_cny: parseFloat(item.price) || 0,
+            note: item.note || '',
+            seller: item.seller || '',
+            size: item.size || '',
+            color: item.color || ''
+        }))
+    };
+
+    try {
+         showStatus('Đang chuyển sang form tạo đơn hàng...', 'info');
+
+        const frontendOrderUrl =
+            settings.frontendOrderUrl || 'http://localhost:5173/orders/external/create';
+
+        const encodedPayload = encodeURIComponent(JSON.stringify(draftPayload));
+        const separator = frontendOrderUrl.includes('?') ? '&' : '?';
+        const targetUrl = `${frontendOrderUrl}${separator}payload=${encodedPayload}`;
+
+        await chrome.tabs.create({ url: targetUrl });
+        await closeCurrentSidePanel();
+        showStatus('Đã mở form tạo đơn hàng ngoài frontend', 'success');
+    } catch (error) {
+        showStatus('Không thể mở form tạo đơn hàng', 'error');
+        console.error(error);
+    }
+}
+
+async function saveSettings() {
+    const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
+    const autoExtract = document.getElementById('autoExtract').checked;
+    const frontendOrderUrl = document.getElementById('frontendOrderUrl')?.value.trim() || 'http://localhost:5173/orders/external/create';
+
+    try {
+        await chrome.storage.local.set({
+            apiEndpoint,
+            autoExtract,
+            frontendOrderUrl
+        });
+
+        settings = { ...settings, apiEndpoint, autoExtract, frontendOrderUrl };
+        showStatus('Đã lưu cài đặt', 'success');
+    } catch (error) {
+        showStatus('Lỗi khi lưu cài đặt', 'error');
+    }
+}

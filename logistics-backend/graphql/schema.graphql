@@ -12,9 +12,9 @@ type Query {
   ): [User!]! @paginate(defaultCount: 10)
 
   # Customers
-  customers: [Customer!]! @paginate(defaultCount: 10)
-  customer(id: ID! @eq): Customer @find
-
+  customers: [Customer!]! @paginate(defaultCount: 10,, scopes: ["withOrdersCount"])
+  customer(id: ID!): Customer
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@show")
   # Orders
   orders: [Order!]! @paginate(defaultCount: 10)
   order(id: ID! @eq): Order @find
@@ -54,6 +54,16 @@ input CreateCustomerInput {
   note: String
 }
 
+input UpdateCustomerInput {
+  code: String!
+  name: String!
+  phone: String!
+  email: String
+  address: String
+  note: String
+  status: String
+}
+
 type AuthPayload {
   access_token: String!
   token_type: String!
@@ -64,6 +74,9 @@ type Mutation {
   # Customer
   createCustomer(input: CreateCustomerInput! @spread): Customer
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@create")
+
+  updateCustomer(id: ID!, input: UpdateCustomerInput! @spread): Customer
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@update")
 
   # Auth
   login(
@@ -89,15 +102,18 @@ input OrderItemInput {
 
 input CreateOrderInput {
     customer_id: ID!
+    note: String
     items: [OrderItemInput!]!
 }
 
 type OrderItem {
     id: ID!
     product_name: String!
+    product_link: String
     price_cny: Float!
     quantity: Int!
     note: String
+    product_image: String
 }
 
 type Order {
@@ -105,10 +121,9 @@ type Order {
     order_code: String!
     status: String!
     total_amount: Float!
+    note: String
     creator: User!
     created_at: DateTime!
     customer: Customer!
     items: [OrderItem!]!
 }
-
-

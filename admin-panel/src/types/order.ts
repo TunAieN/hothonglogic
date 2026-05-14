@@ -30,6 +30,7 @@ export interface OrderSummary {
   creator: Pick<User, "id" | "name">;
   status: OrderStatus | string;
   total_amount: number;
+  note?: string | null;
   created_at: string;
   items: OrderItem[];
 }
@@ -42,6 +43,7 @@ export interface Order extends OrderSummary {
 
 export interface OrderCreateInput {
   customer_id: string;
+  note?: string | null;
   items: OrderItemInput[];
 }
 

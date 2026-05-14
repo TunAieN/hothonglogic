@@ -5,7 +5,7 @@ import type {
   GetListParams,
   GetOneParams,
 } from "@refinedev/core";
-import { client, GRAPHQL_API_URL } from "./graphqlClient";
+import { client, getGraphqlAuthHeaders, GRAPHQL_API_URL, syncGraphqlAuthToken } from "./graphqlClient";
 import { fieldMap, resourceGraphqlMap, type MutationConfig, type ResourceGraphqlConfig, type ResourceName } from "../graphql";
 import type {
   Customer,
@@ -117,6 +117,14 @@ const getMutationConfig = (
   return mutation;
 };
 
+const requestWithAuth = async <TResponse>(
+  query: string,
+  variables: object,
+) => {
+  syncGraphqlAuthToken();
+  return client.request<TResponse>(query, variables, getGraphqlAuthHeaders());
+};
+
 const getListByResource = async <TResource extends ResourceName>(
   resource: TResource,
   pagination?: GetListParams["pagination"],
@@ -125,7 +133,7 @@ const getListByResource = async <TResource extends ResourceName>(
   const fields = fieldMap[resource].list;
   const { page, perPage } = getPagination(pagination);
   const query = buildListQuery(config.listQueryName, fields);
-  const response = await client.request<ListGraphQLResponse<TResource>>(query, {
+  const response = await requestWithAuth<ListGraphQLResponse<TResource>>(query, {
     page,
     first: perPage,
   });
@@ -144,7 +152,7 @@ const getOneByResource = async <TResource extends ResourceName>(
   const config = getResourceConfig(resource);
   const fields = fieldMap[resource].detail;
   const query = buildDetailQuery(config.detailQueryName, fields);
-  const response = await client.request<DetailGraphQLResponse<TResource>>(query, { id });
+  const response = await requestWithAuth<DetailGraphQLResponse<TResource>>(query, { id });
   const data = response[config.detailQueryName];
 
   if (!data) {
@@ -160,7 +168,7 @@ const createByResource = async <TResource extends ResourceName>(
 ) => {
   const mutation = getMutationConfig(resource, "create");
   const query = buildMutation(mutation);
-  const response = await client.request<MutationGraphQLResponse<TResource>>(query, {
+  const response = await requestWithAuth<MutationGraphQLResponse<TResource>>(query, {
     input: values,
   });
   const data = response[mutation.operationName];
@@ -179,7 +187,7 @@ const updateByResource = async <TResource extends ResourceName>(
 ) => {
   const mutation = getMutationConfig(resource, "update");
   const query = buildMutation(mutation);
-  const response = await client.request<MutationGraphQLResponse<TResource>>(query, {
+  const response = await requestWithAuth<MutationGraphQLResponse<TResource>>(query, {
     id,
     input: values,
   });
@@ -198,7 +206,7 @@ const deleteByResource = async <TResource extends ResourceName>(
 ) => {
   const mutation = getMutationConfig(resource, "deleteOne");
   const query = buildMutation(mutation);
-  const response = await client.request<MutationGraphQLResponse<TResource>>(query, { id });
+  const response = await requestWithAuth<MutationGraphQLResponse<TResource>>(query, { id });
   const data = response[mutation.operationName];
 
   if (!data) {
