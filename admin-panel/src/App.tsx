@@ -1,22 +1,42 @@
-import { Refine } from "@refinedev/core";
+import { Authenticated, Refine } from "@refinedev/core";
 import { ErrorComponent } from "@refinedev/antd";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 import "@refinedev/antd/dist/reset.css";
 import routerProvider from "@refinedev/react-router";
+import { authProvider } from "./providers/authProvider";
 import { dataProvider } from "./providers/dataProvider";
+import { LoginPage } from "./pages/auth/LoginPage";
 import { CustomerCreate } from "./pages/customers/create";
+import { CustomerEdit } from "./pages/customers/edit";
 import { CustomerList } from "./pages/customers/list";
 import { CustomerShow } from "./pages/customers/show";
+import { ExternalOrderLayout } from "./layouts/ExternalOrderLayout";
+import { ExternalOrderCreate } from "./pages/external-orders/ExternalOrderCreate";
 import { OrderList } from "./pages/orders/list";
 import { OrderShow } from "./pages/orders/show";
 
 import { CustomLayout } from "./layout";
 import { DashboardPage } from "./pages/dashboard";
 
+const RequireAuth = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const redirect = `${location.pathname}${location.search}`;
+
+  return (
+    <Authenticated
+      key={`auth-${location.pathname}`}
+      fallback={<Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />}
+    >
+      <>{children}</>
+    </Authenticated>
+  );
+};
+
 function App() {
   return (
     <BrowserRouter>
       <Refine
+        authProvider={authProvider}
         dataProvider={dataProvider}
         routerProvider={routerProvider}
         resources={[
@@ -24,6 +44,7 @@ function App() {
             name: "customers",
             list: "/customers",
             create: "/customers/create",
+            edit: "/customers/edit/:id",
             show: "/customers/show/:id",
             meta: {
               canDelete: true,
@@ -32,6 +53,7 @@ function App() {
           {
             name: "orders",
             list: "/orders",
+            create: "/orders/external/create",
             show: "/orders/show/:id",
             meta: {
               canDelete: true,
@@ -40,11 +62,24 @@ function App() {
         ]}
       >
         <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/orders/external/create"
+            element={
+              <RequireAuth>
+                <ExternalOrderLayout>
+                  <ExternalOrderCreate />
+                </ExternalOrderLayout>
+              </RequireAuth>
+            }
+          />
           <Route
             element={
-              <CustomLayout>
-                <Outlet />
-              </CustomLayout>
+              <RequireAuth>
+                <CustomLayout>
+                  <Outlet />
+                </CustomLayout>
+              </RequireAuth>
             }
           >
             <Route index element={<DashboardPage />} />
@@ -52,6 +87,7 @@ function App() {
             <Route path="/customers">
               <Route index element={<CustomerList />} />
               <Route path="create" element={<CustomerCreate />} />
+              <Route path="edit/:id" element={<CustomerEdit />} />
               <Route path="show/:id" element={<CustomerShow />} />
             </Route>
             

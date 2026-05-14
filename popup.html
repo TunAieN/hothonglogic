@@ -16,7 +16,7 @@
       <div style="display: flex; align-items: center; gap: 10px;">
         <div class="auth-wrapper">
           <div id="authBtn" class="auth-btn">🔐 Đăng nhập</div>
-
+          <div id="openExternalOrderFormBtn" class="auth-btn">📦 Mở form đơn hàng</div>
           <div id="dropdownMenu" class="dropdown-menu" style="display: none;">
             <div id="logoutBtn" class="dropdown-item">🚪 Đăng xuất</div>
           </div>
@@ -157,6 +157,11 @@
       <div class="form-group">
         <label for="apiEndpoint">API Endpoint:</label>
         <input type="text" id="apiEndpoint" placeholder="http://localhost:8000/api">
+      </div>
+
+      <div class="form-group">
+        <label for="frontendOrderUrl">Frontend Order Form URL:</label>
+        <input type="text" id="frontendOrderUrl" placeholder="http://localhost:5173/orders/external/create">
       </div>
 
       <div class="form-group">

@@ -18,6 +18,7 @@ class CustomerInputService
             'email' => $this->normalizeNullableString($input['email'] ?? null, true),
             'address' => $this->normalizeNullableString($input['address'] ?? null),
             'note' => $this->normalizeNullableString($input['note'] ?? null),
+            'status' => $this->normalizeNullableString($input['status'] ?? null, true),
         ];
     }
 
@@ -47,6 +48,42 @@ class CustomerInputService
         )->validate();
 
         if ($this->phoneExists($sanitized['phone'])) {
+            throw ValidationException::withMessages([
+                'phone' => ['Phone number already exists.'],
+            ]);
+        }
+
+        return $sanitized;
+    }
+
+    public function validateForUpdate(array $input, Customer $customer): array
+    {
+        $sanitized = $this->sanitize($input);
+
+        Validator::make(
+            $sanitized,
+            [
+                'code' => ['required', 'string', 'max:50', Rule::unique('customers', 'code')->ignore($customer->id)],
+                'name' => ['required', 'string', 'max:100'],
+                'phone' => ['required', 'regex:/^\+?[1-9]\d{7,14}$/'],
+                'email' => ['nullable', 'string', 'max:100', 'email:rfc', Rule::unique('customers', 'email')->ignore($customer->id)],
+                'address' => ['nullable', 'string'],
+                'note' => ['nullable', 'string'],
+                'status' => ['nullable', 'string', Rule::in(['active', 'inactive', 'blocked'])],
+            ],
+            [
+                'code.required' => 'Customer code is required.',
+                'code.unique' => 'Customer code already exists.',
+                'name.required' => 'Customer name is required.',
+                'phone.required' => 'Phone number is required.',
+                'phone.regex' => 'Phone number format is invalid. Use 8 to 15 digits, optionally starting with +.',
+                'email.email' => 'Email format is invalid.',
+                'email.unique' => 'Email already exists.',
+                'status.in' => 'Customer status is invalid.',
+            ]
+        )->validate();
+
+        if ($this->phoneExists($sanitized['phone'], $customer->id)) {
             throw ValidationException::withMessages([
                 'phone' => ['Phone number already exists.'],
             ]);
@@ -88,15 +125,18 @@ class CustomerInputService
         return $hasLeadingPlus ? '+' . $digitsOnly : $digitsOnly;
     }
 
-    private function phoneExists(string $normalizedPhone): bool
+    private function phoneExists(string $normalizedPhone, ?int $ignoreCustomerId = null): bool
     {
         $digitsOnly = ltrim($normalizedPhone, '+');
+        $query = Customer::query()->whereRaw(
+            "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''), '+', '') = ?",
+            [$digitsOnly]
+        );
 
-        return Customer::query()
-            ->whereRaw(
-                "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''), '+', '') = ?",
-                [$digitsOnly]
-            )
-            ->exists();
+        if ($ignoreCustomerId !== null) {
+            $query->whereKeyNot($ignoreCustomerId);
+        }
+
+        return $query->exists();
     }
 }

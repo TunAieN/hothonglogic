@@ -4,6 +4,7 @@ export const ORDER_FIELDS = {
     order_code
     status
     total_amount
+    note
     created_at
     creator {
       id
@@ -20,6 +21,7 @@ export const ORDER_FIELDS = {
     order_code
     status
     total_amount
+    note
     created_at
     creator {
       id
@@ -48,6 +50,7 @@ export const ORDER_FIELDS = {
     order_code
     status
     total_amount
+    note
     created_at
     creator {
       id

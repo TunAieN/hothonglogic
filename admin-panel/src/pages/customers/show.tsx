@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Show } from "@refinedev/antd";
 import { useShow } from "@refinedev/core";
+import { useNavigate } from "react-router";
 import {
     Avatar,
     Breadcrumb,
@@ -227,6 +228,7 @@ const KpiCard = ({ label, value, helper, icon, color, bg }: any) => (
 );
 
 export const CustomerShow = () => {
+    const navigate = useNavigate();
     const { query } = useShow<ICustomer>({
         resource: "customers",
     });
@@ -310,7 +312,10 @@ export const CustomerShow = () => {
                     </Col>
                     <Col>
                         <Space wrap>
-                            <Button icon={<ExportOutlined />}>
+                            <Button
+                                icon={<ExportOutlined />}
+                                onClick={() => navigate(`/customers/edit/${customer.id}`)}
+                            >
                                 Edit Profile
                             </Button>
                             <Button icon={<MailOutlined />} type="primary">

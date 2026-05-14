@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { EditButton, List, NumberField, ShowButton, useTable } from "@refinedev/antd";
 import {
     Avatar,
@@ -184,7 +184,8 @@ export const OrderList = () => {
         resource: "orders",
         syncWithLocation: true,
     });
-    console.log("tableProps", tableProps);
+   
+    
     const orders = useMemo(
         () => tableProps.dataSource ?? [],
         [tableProps.dataSource],
@@ -193,6 +194,8 @@ export const OrderList = () => {
         () => orders.filter((order) => orderMatchesFilters(order, filters)),
         [orders, filters],
     );
+    console.log(tableProps.dataSource);
+    console.log(filteredOrders);
     const totalOrders =
         typeof tableProps.pagination === "object"
             ? tableProps.pagination.total ?? orders.length
@@ -209,7 +212,7 @@ export const OrderList = () => {
             : {
                   current: tableProps.pagination?.current,
                   pageSize: tableProps.pagination?.pageSize,
-                  total: filteredOrders.length,
+                  total: tableProps.pagination?.total,
                   showSizeChanger:
                       typeof tableProps.pagination?.showSizeChanger === "boolean"
                           ? tableProps.pagination.showSizeChanger
@@ -421,7 +424,6 @@ export const OrderList = () => {
                                         allowClear
                                         showSearch
                                         optionFilterProp="label"
-                                        // options={shippingCompanyOptions}
                                         placeholder="Chọn công ty chuyển phát"
                                     />
                                 </Form.Item>
