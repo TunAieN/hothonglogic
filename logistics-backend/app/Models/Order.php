@@ -10,10 +10,11 @@ class Order extends Model
     protected $fillable = [
         'order_code',
         'customer_id',
+        'note',
         'status',
         'total_amount',
-        'note',
         'created_by',
+        'accountManagerId'
     ];
 
     public function items()

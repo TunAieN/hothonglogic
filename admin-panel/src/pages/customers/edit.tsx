@@ -42,8 +42,12 @@ const { TextArea } = Input;
 type CustomerEditFormValues = {
     code: string;
     name: string;
+    vip_group?: string | null;
     email?: string | null;
     phone: string;
+    province?: string | null;
+    district?: string | null;
+    ward?: string | null;
     address?: string | null;
     note?: string | null;
     status: ICustomer["status"];
@@ -78,8 +82,12 @@ const getCustomerErrorMessage = (error: unknown) => {
 const buildCustomerPayload = (values: CustomerEditFormValues) => ({
     code: values.code.trim(),
     name: values.name.trim(),
+    vip_group: normalizeOptionalText(values.vip_group),
     phone: normalizeCustomerPhone(values.phone),
     email: normalizeCustomerEmail(values.email),
+    province: normalizeOptionalText(values.province),
+    district: normalizeOptionalText(values.district),
+    ward: normalizeOptionalText(values.ward),
     address: normalizeOptionalText(values.address),
     note: normalizeOptionalText(values.note),
     status: values.status,
@@ -93,8 +101,12 @@ const buildInitialValues = (customer?: ICustomer): CustomerEditFormValues | null
     return {
         code: customer.code ?? "",
         name: customer.name ?? "",
+        vip_group: customer.vip_group ?? null,
         email: customer.email ?? null,
         phone: customer.phone ?? "",
+        province: customer.province ?? null,
+        district: customer.district ?? null,
+        ward: customer.ward ?? null,
         address: customer.address ?? null,
         note: customer.note ?? null,
         status: customer.status ?? "active",
@@ -501,11 +513,35 @@ export const CustomerEdit = () => {
                                         </Form.Item>
                                     </Col>
 
+                                    <Col xs={24} md={12}>
+                                        <Form.Item label="VIP Group" name="vip_group">
+                                            <Input placeholder="VIP Gold" />
+                                        </Form.Item>
+                                    </Col>
+
+                                    <Col xs={24} md={12}>
+                                        <Form.Item label="Province / Tỉnh thành" name="province">
+                                            <Input placeholder="Hà Nội" />
+                                        </Form.Item>
+                                    </Col>
+
+                                    <Col xs={24} md={12}>
+                                        <Form.Item label="District / Quận huyện" name="district">
+                                            <Input placeholder="Nam Từ Liêm" />
+                                        </Form.Item>
+                                    </Col>
+
+                                    <Col xs={24} md={12}>
+                                        <Form.Item label="Ward / Phường xã" name="ward">
+                                            <Input placeholder="Mỹ Đình 2" />
+                                        </Form.Item>
+                                    </Col>
+
                                     <Col span={24}>
-                                        <Form.Item label="Address" name="address">
+                                        <Form.Item label="Address / Địa chỉ chi tiết" name="address">
                                             <TextArea
                                                 autoSize={{ minRows: 3, maxRows: 4 }}
-                                                placeholder="Street, Building, City, Country"
+                                                placeholder="Số nhà, tên đường, tòa nhà..."
                                             />
                                         </Form.Item>
                                     </Col>

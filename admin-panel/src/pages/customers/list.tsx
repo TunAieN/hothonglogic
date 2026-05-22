@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { EditButton, List, ShowButton, useTable } from "@refinedev/antd";
+import { DeleteButton, EditButton, List, ShowButton, useTable } from "@refinedev/antd";
 import { useNavigate } from "react-router";
 
 import {
@@ -17,6 +17,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import {
     CheckCircleOutlined,
+    DeleteOutlined,
     FilterOutlined,
     PlusOutlined,
     StopOutlined,
@@ -44,6 +45,9 @@ const formatStatus = (status: ICustomer["status"]) =>
 
 const getOrderCount = (customer: ICustomer) =>
      customer.orders_count ?? customer.orders?.length ?? 0;
+
+const getCustomerLocation = (customer: ICustomer) =>
+    [customer.ward, customer.district, customer.province].filter(Boolean).join(", ");
 
 const getCustomerActivityRate = (customers: readonly ICustomer[]) => {
     if (customers.length === 0) {
@@ -166,12 +170,21 @@ export const CustomerList = () => {
                 value ? <Text>{value}</Text> : <Text type="secondary">-</Text>,
         },
         {
-            title: "Address",
-            dataIndex: "address",
-            key: "address",
+            title: "VIP Group",
+            dataIndex: "vip_group",
+            key: "vip_group",
+            render: (value?: ICustomer["vip_group"]) =>
+                value ? <Tag color="gold">{value}</Tag> : <Text type="secondary">-</Text>,
+        },
+        {
+            title: "Location",
+            key: "location",
             ellipsis: true,
-            render: (value?: ICustomer["address"]) =>
-                value ? <Text>{value}</Text> : <Text type="secondary">-</Text>,
+            render: (_, record) => {
+                const location = getCustomerLocation(record);
+
+                return location ? <Text>{location}</Text> : <Text type="secondary">-</Text>;
+            },
         },
         {
             title: "Orders",
@@ -206,6 +219,13 @@ export const CustomerList = () => {
                 <Space>
                     <EditButton hideText size="small" recordItemId={record.id} />
                     <ShowButton hideText size="small" recordItemId={record.id} />
+                    <DeleteButton
+                        hideText
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        recordItemId={record.id}
+                        resource="customers"
+                    />
                 </Space>
             ),
         },

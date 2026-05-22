@@ -12,10 +12,14 @@ class CustomerInputService
     public function sanitize(array $input): array
     {
         return [
-            'code' => $this->normalizeRequiredString($input['code'] ?? null),
+            'code' => $this->normalizeNullableString($input['code'] ?? null),
             'name' => $this->normalizeRequiredString($input['name'] ?? null),
+            'vip_group' => $this->normalizeNullableString($input['vip_group'] ?? null),
             'phone' => $this->normalizePhone($input['phone'] ?? null),
             'email' => $this->normalizeNullableString($input['email'] ?? null, true),
+            'province' => $this->normalizeNullableString($input['province'] ?? null),
+            'district' => $this->normalizeNullableString($input['district'] ?? null),
+            'ward' => $this->normalizeNullableString($input['ward'] ?? null),
             'address' => $this->normalizeNullableString($input['address'] ?? null),
             'note' => $this->normalizeNullableString($input['note'] ?? null),
             'status' => $this->normalizeNullableString($input['status'] ?? null, true),
@@ -29,31 +33,47 @@ class CustomerInputService
         Validator::make(
             $sanitized,
             [
-                'code' => ['required', 'string', 'max:50', Rule::unique('customers', 'code')],
                 'name' => ['required', 'string', 'max:100'],
-                'phone' => ['required', 'regex:/^\+?[1-9]\d{7,14}$/'],
-                'email' => ['nullable', 'string', 'max:100', 'email:rfc', Rule::unique('customers', 'email')],
+                'vip_group' => ['nullable', 'string', 'max:50'],
+                'phone' => ['required', Rule::unique('customers', 'phone')],
+                'email' => ['nullable', 'email'],
+                'province' => ['nullable', 'string', 'max:100'],
+                'district' => ['nullable', 'string', 'max:100'],
+                'ward' => ['nullable', 'string', 'max:100'],
                 'address' => ['nullable', 'string'],
                 'note' => ['nullable', 'string'],
             ],
             [
-                'code.required' => 'Customer code is required.',
-                'code.unique' => 'Customer code already exists.',
                 'name.required' => 'Customer name is required.',
                 'phone.required' => 'Phone number is required.',
-                'phone.regex' => 'Phone number format is invalid. Use 8 to 15 digits, optionally starting with +.',
+                'phone.unique' => 'Phone number already exists.',
                 'email.email' => 'Email format is invalid.',
-                'email.unique' => 'Email already exists.',
             ]
         )->validate();
 
-        if ($this->phoneExists($sanitized['phone'])) {
-            throw ValidationException::withMessages([
-                'phone' => ['Phone number already exists.'],
-            ]);
-        }
-
         return $sanitized;
+    }
+
+    public function generateCustomerCode(): string
+    {
+        $lastCustomer = Customer::query()->latest('id')->first();
+        $nextId = $lastCustomer ? $lastCustomer->id + 1 : 1;
+
+        return 'KH' . str_pad((string) $nextId, 6, '0', STR_PAD_LEFT);
+    }
+
+    public function validateGeneratedCode(string $code): void
+    {
+        Validator::make(
+            ['code' => $code],
+            [
+                'code' => ['required', 'string', 'max:50', Rule::unique('customers', 'code')],
+            ],
+            [
+                'code.required' => 'Customer code is required.',
+                'code.unique' => 'Customer code already exists.',
+            ]
+        )->validate();
     }
 
     public function validateForUpdate(array $input, Customer $customer): array
@@ -65,8 +85,12 @@ class CustomerInputService
             [
                 'code' => ['required', 'string', 'max:50', Rule::unique('customers', 'code')->ignore($customer->id)],
                 'name' => ['required', 'string', 'max:100'],
+                'vip_group' => ['nullable', 'string', 'max:50'],
                 'phone' => ['required', 'regex:/^\+?[1-9]\d{7,14}$/'],
                 'email' => ['nullable', 'string', 'max:100', 'email:rfc', Rule::unique('customers', 'email')->ignore($customer->id)],
+                'province' => ['nullable', 'string', 'max:100'],
+                'district' => ['nullable', 'string', 'max:100'],
+                'ward' => ['nullable', 'string', 'max:100'],
                 'address' => ['nullable', 'string'],
                 'note' => ['nullable', 'string'],
                 'status' => ['nullable', 'string', Rule::in(['active', 'inactive', 'blocked'])],
