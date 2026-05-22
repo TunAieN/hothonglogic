@@ -12,6 +12,7 @@ import { CustomerList } from "./pages/customers/list";
 import { CustomerShow } from "./pages/customers/show";
 import { ExternalOrderLayout } from "./layouts/ExternalOrderLayout";
 import { ExternalOrderCreate } from "./pages/external-orders/ExternalOrderCreate";
+import { OrderEdit } from "./pages/orders/edit";
 import { OrderList } from "./pages/orders/list";
 import { OrderShow } from "./pages/orders/show";
 
@@ -25,7 +26,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   return (
     <Authenticated
       key={`auth-${location.pathname}`}
-      fallback={<Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />}
+     fallback={<Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />}
     >
       <>{children}</>
     </Authenticated>
@@ -54,6 +55,7 @@ function App() {
             name: "orders",
             list: "/orders",
             create: "/orders/external/create",
+            edit: "/orders/edit/:id",
             show: "/orders/show/:id",
             meta: {
               canDelete: true,
@@ -73,6 +75,14 @@ function App() {
               </RequireAuth>
             }
           />
+          {/* <Route
+            path="/orders/edit/:id"
+            element={
+              <RequireAuth>
+                <OrderEdit />
+              </RequireAuth>
+            }
+          /> */}
           <Route
             element={
               <RequireAuth>
@@ -94,6 +104,7 @@ function App() {
             <Route path="/orders">
               <Route index element={<OrderList />} />
               <Route path="show/:id" element={<OrderShow />} />
+              <Route path="edit/:id" element={<OrderEdit />} />
             </Route>
             
             {/* Added for menu items so they don't 404 immediately */}

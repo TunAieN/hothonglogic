@@ -3,9 +3,14 @@ export const CUSTOMER_FIELDS = {
     id
     code
     name
+    vip_group
     phone
     email
+    province
+    district
+    ward
     address
+    note
     status
     created_at
     orders_count
@@ -14,8 +19,12 @@ export const CUSTOMER_FIELDS = {
     id
     code
     name
+    vip_group
     phone
     email
+    province
+    district
+    ward
     address
     note
     status
@@ -33,8 +42,12 @@ export const CUSTOMER_FIELDS = {
     id
     code
     name
+    vip_group
     phone
     email
+    province
+    district
+    ward
     address
     note
     status

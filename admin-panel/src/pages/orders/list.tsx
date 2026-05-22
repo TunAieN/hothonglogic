@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { EditButton, List, NumberField, ShowButton, useTable } from "@refinedev/antd";
+import { DeleteButton, EditButton, List, NumberField, ShowButton, useTable } from "@refinedev/antd";
 import {
     Avatar,
     Button,
@@ -26,6 +26,7 @@ import type {
 import {
     CarOutlined,
     CheckCircleOutlined,
+    DeleteOutlined,
     ReloadOutlined,
     ShoppingOutlined,
     UserOutlined,
@@ -66,14 +67,14 @@ type SelectOption = {
 const STATUS_COLOR: Record<OrderStatus, string> = {
     pending: "orange",
     shipped: "cyan",
-    delivered: "green",
+    approved: "green",
     cancelled: "red",
 };
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
     pending: "Pending",
     shipped: "Shipped",
-    delivered: "Delivered",
+    approved: "Approved",
     cancelled: "Cancelled",
 };
 
@@ -97,6 +98,8 @@ const getOrderStaff = (order: IOrder): User | undefined => order.creator.id ? or
 
 const formatDate = (value?: string) =>
     value ? new Date(value).toLocaleDateString() : "-";
+
+const isOrderEditable = (status?: string) => normalizeText(status) === "pending";
 
 const getOrderCreatedTime = (value?: string) => {
     if (!value) {
@@ -201,8 +204,8 @@ export const OrderList = () => {
             ? tableProps.pagination.total ?? orders.length
             : orders.length;
     const pendingOrders = orders.filter((order) => order.status === "pending").length;
-    const deliveredOrders = orders.filter(
-        (order) => order.status === "delivered",
+    const approvedOrders = orders.filter(
+        (order) => order.status === "approved",
     ).length;
     const customerOptions = buildRelationOptions(orders, (order) => order.customer);
     const staffOptions = buildRelationOptions(orders, getOrderStaff);
@@ -329,8 +332,19 @@ export const OrderList = () => {
             align: "right",
             render: (_, record) => (
                 <Space>
-                    <EditButton hideText size="small" recordItemId={record.id} />
                     <ShowButton hideText size="small" recordItemId={record.id} />
+                    {isOrderEditable(record.status) ? (
+                        <EditButton hideText size="small" recordItemId={record.id} />
+                    ) : null}
+                    {isOrderEditable(record.status) ? (
+                        <DeleteButton
+                            hideText
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            recordItemId={record.id}
+                            resource="orders"
+                        />
+                    ) : null}
                 </Space>
             ),
         },
@@ -368,8 +382,8 @@ export const OrderList = () => {
                     <Col xs={24} md={8}>
                         <Card>
                             <Statistic
-                                title="Delivered Orders"
-                                value={deliveredOrders}
+                                title="Approved Orders"
+                                value={approvedOrders}
                                 prefix={<CheckCircleOutlined />}
                             />
                         </Card>

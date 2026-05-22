@@ -35,6 +35,15 @@ const LOGIN_MUTATION = `
   }
 `;
 
+const clearStoredAuth = () => {
+  setGraphqlAuthToken(null);
+  localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+};
+
+const isUnauthenticatedError = (error: unknown) =>
+  error instanceof ClientError &&
+  error.response.errors?.some((item) => item.message === "Unauthenticated.");
+
 const getStoredUser = () => {
   const rawUser = localStorage.getItem(AUTH_USER_STORAGE_KEY);
 
@@ -53,6 +62,11 @@ const getStoredUser = () => {
 const getLoginRedirect = (params?: { redirect?: string; to?: string }) =>
   params?.redirect || params?.to || "/orders/external/create";
 
+const getAuthRedirect = () =>
+  `/login?redirect=${encodeURIComponent(
+    `${window.location.pathname}${window.location.search}`,
+  )}`;
+
 export const authProvider: AuthProvider = {
   login: async (params) => {
     const email = typeof params?.email === "string" ? params.email.trim() : "";
@@ -61,7 +75,7 @@ export const authProvider: AuthProvider = {
     if (!email || !password) {
       return {
         success: false,
-        error: new Error("Vui lòng nhập email và mật khẩu."),
+        error: new Error("Vui lÃ²ng nháº­p email vÃ  máº­t kháº©u."),
       };
     }
 
@@ -75,7 +89,7 @@ export const authProvider: AuthProvider = {
       if (!payload?.access_token) {
         return {
           success: false,
-          error: new Error("Đăng nhập thất bại."),
+          error: new Error("ÄÄƒng nháº­p tháº¥t báº¡i."),
         };
       }
 
@@ -89,10 +103,10 @@ export const authProvider: AuthProvider = {
     } catch (error) {
       const errorMessage =
         error instanceof ClientError
-          ? error.response.errors?.[0]?.message || "Đăng nhập thất bại."
+          ? error.response.errors?.[0]?.message || "ÄÄƒng nháº­p tháº¥t báº¡i."
           : error instanceof Error
             ? error.message
-            : "Đăng nhập thất bại.";
+            : "ÄÄƒng nháº­p tháº¥t báº¡i.";
 
       return {
         success: false,
@@ -101,35 +115,81 @@ export const authProvider: AuthProvider = {
     }
   },
   logout: async () => {
-    setGraphqlAuthToken(null);
-    localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    clearStoredAuth();
 
     return {
       success: true,
       redirectTo: "/login",
     };
   },
+  // check: async () => {
+  //   const token = getGraphqlAuthToken();
+
+  //   if (!token) {
+  //     return {
+  //       authenticated: false,
+  //       redirectTo: getAuthRedirect(),
+  //       logout: false,
+  //     };
+  //   }
+
+  //   try {
+  //     const authClient = new GraphQLClient(GRAPHQL_API_URL, {
+  //       headers: {
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //     });
+  //     const response = await authClient.request<MeResponse>(ME_QUERY);
+
+  //     if (response.me) {
+  //       localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.me));
+
+  //       return {
+  //         authenticated: true,
+  //       };
+  //     }
+  //   } catch (error) {
+  //     if (!isUnauthenticatedError(error)) {
+  //       throw error;
+  //     }
+  //   }
+
+  //   clearStoredAuth();
+
+  //   return {
+  //     authenticated: false,
+  //     redirectTo: getAuthRedirect(),
+  //     logout: true,
+  //   };
+  // },
+  
   check: async () => {
-    const token = getGraphqlAuthToken();
+  const token = getGraphqlAuthToken();
 
-    if (token) {
-      return {
-        authenticated: true,
-      };
-    }
+  if (token) {
+    return { authenticated: true };
+  }
 
-    const redirect = `${window.location.pathname}${window.location.search}`;
-
-    return {
-      authenticated: false,
-      redirectTo: `/login?redirect=${encodeURIComponent(redirect)}`,
-      logout: false,
-    };
-  },
+  return {
+    authenticated: false,
+    redirectTo: getAuthRedirect(),
+    logout: false,
+  };
+},
   getIdentity: async () => {
     return getStoredUser();
   },
-  onError: async () => {
+  onError: async (error) => {
+    if (isUnauthenticatedError(error)) {
+      clearStoredAuth();
+
+      return {
+        logout: true,
+        redirectTo: "/login",
+        error: new Error("Phiên đăng nhập đã hết hạn."),
+      };
+    }
+
     return {};
   },
 };

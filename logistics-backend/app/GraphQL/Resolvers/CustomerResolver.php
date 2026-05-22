@@ -22,9 +22,14 @@ class CustomerResolver
                 'id',
                 'code',
                 'name',
+                'vip_group',
                 'phone',
                 'email',
+                'province',
+                'district',
+                'ward',
                 'address',
+                'note',
                 'status',
                 'created_at',
             ])
@@ -42,11 +47,16 @@ class CustomerResolver
     public function create($_, array $args): Customer
     {
         $validated = $this->customerInputService->validateForCreate($args);
+        $code = $this->customerInputService->generateCustomerCode();
+        $this->customerInputService->validateGeneratedCode($code);
 
-        return Customer::create([
+        $customer = Customer::create([
             ...$validated,
+            'code' => $code,
             'status' => 'active',
         ]);
+
+        return $customer->loadCount('orders');
     }
 
     public function update($_, array $args): Customer
@@ -56,6 +66,21 @@ class CustomerResolver
 
         $customer->update($validated);
 
-        return $customer->fresh();
+        return $customer->fresh()->loadCount('orders');
+    }
+
+    public function delete($_, array $args): Customer
+    {
+        $customer = Customer::query()
+            ->withCount('orders')
+            ->findOrFail($args['id']);
+
+        $deletedCustomer = $customer->replicate();
+        $deletedCustomer->setAttribute('id', $customer->id);
+        $deletedCustomer->setAttribute('orders_count', $customer->orders_count ?? 0);
+
+        $customer->delete();
+
+        return $deletedCustomer;
     }
 }

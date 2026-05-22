@@ -1,7 +1,17 @@
 import type { User } from "./common";
 import type { Customer } from "./customer";
 
-export type OrderStatus = "pending" | "shipped" | "delivered" | "cancelled";
+export type OrderStatus =
+  | "draft"
+  | "pending"
+  | "approved"
+  | "deposit"
+  | "receiving"
+  | "shipped"
+  | "delivered"
+  | "completed"
+  | "complaint"
+  | "cancelled";
 
 export interface OrderItem {
   id: string;
@@ -49,6 +59,9 @@ export interface OrderCreateInput {
 
 export interface OrderUpdateInput {
   customer_id?: string;
+  account_manager_id?: string;
+  total_amount?: number;
   items?: OrderItemInput[];
   status?: OrderStatus | string;
+  note?: string | null;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGetIdentity, useList } from "@refinedev/core";
+import { Dayjs } from "dayjs";
 import {
   Alert,
   Button,
@@ -164,8 +165,8 @@ export const ExternalOrderCreate = () => {
   const [filters, setFilters] = useState({
     orderCode: "",
     status: "all",
-    fromDate: null as any,
-    toDate: null as any,
+    fromDate: null as Dayjs | null,
+    toDate: null as Dayjs | null,
   });
   const { data: currentUser } = useGetIdentity<CurrentUser>();
   const { result: customerListResponse, query: customersQuery } =
@@ -573,7 +574,7 @@ export const ExternalOrderCreate = () => {
       order_code: getDraftOrderCode(draft),
       created_at: draft.created_at ?? new Date().toISOString(),
       total_amount: totalAmount,
-      status: "pending",
+      status: "draft",
       creator: {
         name: currentUserName,
       },

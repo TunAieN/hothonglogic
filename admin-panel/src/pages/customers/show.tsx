@@ -167,6 +167,38 @@ const formatDate = (value?: string) => {
     }).format(new Date(value));
 };
 
+const formatCustomerLocation = (customer: Partial<ICustomer>) =>
+    [customer.ward, customer.district, customer.province].filter(Boolean).join(", ");
+
+const normalizeAddressPart = (value?: string | null) =>
+    value
+        ?.trim()
+        .toLocaleLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/\s+/g, " ")
+        .replace(/[.,;/\\-]+/g, " ")
+        .replace(/,+/g, ",")
+        .replace(/^,|,$/g, "")
+        .trim() ?? "";
+
+const formatFullAddress = (customer: Partial<ICustomer>) => {
+    const address = customer.address?.trim();
+    const addressNormalized = normalizeAddressPart(address);
+
+    const locationParts = [customer.ward, customer.district, customer.province]
+        .map((part) => part?.trim())
+        .filter((part): part is string => Boolean(part))
+        .filter((part) => {
+            const normalizedPart = normalizeAddressPart(part);
+
+            return normalizedPart !== "" && !addressNormalized.includes(normalizedPart);
+        });
+
+    return [address, ...locationParts].filter(Boolean).join(", ");
+};
+
 const getProfileFromRecord = (record?: ICustomer): CustomerProfile => {
     if (!record) {
         return mockCustomer;
@@ -189,10 +221,10 @@ const getProfileFromRecord = (record?: ICustomer): CustomerProfile => {
 
     return {
         ...record,
-        tier: record.status === "active" ? "Premium Member - Gold Tier" : "Standard Member",
+        tier: record.vip_group ? `VIP Group - ${record.vip_group}` : record.status === "active" ? "Premium Member - Gold Tier" : "Standard Member",
         lifetimeValue: lifetimeValue || mockCustomer.lifetimeValue,
         lifetimeProgress: lifetimeValue ? Math.min(Math.round(lifetimeValue / 650), 100) : 72,
-        logisticsRegion: "Seattle region",
+        logisticsRegion: formatCustomerLocation(record) || "Seattle region",
         orders: orders.length > 0 ? orders : mockCustomer.orders,
     };
 };
@@ -352,6 +384,16 @@ export const CustomerShow = () => {
                                 style={{ marginTop: 24 }}
                                 items={[
                                     {
+                                        key: "vip_group",
+                                        label: (
+                                            <Space size={4}>
+                                                <StarFilled />
+                                                VIP Group
+                                            </Space>
+                                        ),
+                                        children: customer.vip_group ?? "-",
+                                    },
+                                    {
                                         key: "email",
                                         label: (
                                             <Space size={4}>
@@ -376,10 +418,20 @@ export const CustomerShow = () => {
                                         label: (
                                             <Space size={4}>
                                                 <HomeOutlined />
-                                                Primary Address
+                                                Full Address
                                             </Space>
                                         ),
-                                        children: customer.address,
+                                        children: formatFullAddress(customer) || "-",
+                                    },
+                                    {
+                                        key: "location",
+                                        label: (
+                                            <Space size={4}>
+                                                <EnvironmentOutlined />
+                                                Province / District / Ward
+                                            </Space>
+                                        ),
+                                        children: formatCustomerLocation(customer) || "-",
                                     },
                                     {
                                         key: "created_at",

@@ -37,10 +37,13 @@ const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
 type CustomerCreateFormValues = {
-    code: string;
     name: string;
+    vip_group?: string | null;
     email?: string | null;
     phone: string;
+    province?: string | null;
+    district?: string | null;
+    ward?: string | null;
     address?: string | null;
     note?: string | null;
 };
@@ -55,6 +58,14 @@ const getCreateCustomerErrorMessage = (error: unknown) => {
             ? Object.values(validation).flat()[0]
             : undefined;
 
+        if (firstValidationMessage?.includes("Phone number already exists")) {
+            return "Số điện thoại đã tồn tại trong hệ thống";
+        }
+
+        if (firstValidationMessage?.includes("Email already exists")) {
+            return "Email đã tồn tại trong hệ thống";
+        }
+
         return firstValidationMessage ?? error.response.errors?.[0]?.message ?? "Failed to create customer";
     }
 
@@ -66,10 +77,13 @@ const getCreateCustomerErrorMessage = (error: unknown) => {
 };
 
 const buildCreateCustomerPayload = (values: CustomerCreateFormValues) => ({
-    code: values.code.trim(),
     name: values.name.trim(),
+    vip_group: normalizeOptionalText(values.vip_group),
     phone: normalizeCustomerPhone(values.phone),
     email: normalizeCustomerEmail(values.email),
+    province: normalizeOptionalText(values.province),
+    district: normalizeOptionalText(values.district),
+    ward: normalizeOptionalText(values.ward),
     address: normalizeOptionalText(values.address),
     note: normalizeOptionalText(values.note),
 });
@@ -386,19 +400,6 @@ export const CustomerCreate = () => {
 
                             <Col xs={24} md={12}>
                                 <Form.Item
-                                    label="Code Name"
-                                    name="code"
-                                    rules={[
-                                        { required: true, message: "Please enter the code name" },
-                                        { whitespace: true, message: "Code name cannot be empty" },
-                                    ]}
-                                >
-                                    <Input placeholder="Apex Logistics Corp" />
-                                </Form.Item>
-                            </Col>
-
-                            <Col xs={24} md={12}>
-                                <Form.Item
                                     label="Email Address"
                                     name="email"
                                     rules={[
@@ -441,11 +442,35 @@ export const CustomerCreate = () => {
                                 </Form.Item>
                             </Col>
 
+                            <Col xs={24} md={12}>
+                                <Form.Item label="VIP Group" name="vip_group">
+                                    <Input placeholder="VIP Gold" />
+                                </Form.Item>
+                            </Col>
+
+                            <Col xs={24} md={12}>
+                                <Form.Item label="Province / Tỉnh thành" name="province">
+                                    <Input placeholder="Hà Nội" />
+                                </Form.Item>
+                            </Col>
+
+                            <Col xs={24} md={12}>
+                                <Form.Item label="District / Quận huyện" name="district">
+                                    <Input placeholder="Nam Từ Liêm" />
+                                </Form.Item>
+                            </Col>
+
+                            <Col xs={24} md={12}>
+                                <Form.Item label="Ward / Phường xã" name="ward">
+                                    <Input placeholder="Mỹ Đình 2" />
+                                </Form.Item>
+                            </Col>
+
                             <Col span={24}>
-                                <Form.Item label="Address" name="address">
+                                <Form.Item label="Address / Địa chỉ chi tiết" name="address">
                                     <TextArea
                                         autoSize={{ minRows: 3, maxRows: 4 }}
-                                        placeholder="Street, Building, City, Country"
+                                        placeholder="Số nhà, tên đường, tòa nhà..."
                                     />
                                 </Form.Item>
                             </Col>

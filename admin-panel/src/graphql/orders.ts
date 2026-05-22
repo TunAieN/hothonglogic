@@ -2,6 +2,7 @@ export const ORDER_FIELDS = {
   list: `
     id
     order_code
+    customer_id
     status
     total_amount
     note
@@ -19,6 +20,7 @@ export const ORDER_FIELDS = {
   detail: `
     id
     order_code
+    customer_id
     status
     total_amount
     note
@@ -48,6 +50,7 @@ export const ORDER_FIELDS = {
   mutation: `
     id
     order_code
+    customer_id
     status
     total_amount
     note
