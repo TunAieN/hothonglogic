@@ -12,6 +12,8 @@ import { CustomerList } from "./pages/customers/list";
 import { CustomerShow } from "./pages/customers/show";
 import { ExternalOrderLayout } from "./layouts/ExternalOrderLayout";
 import { ExternalOrderCreate } from "./pages/external-orders/ExternalOrderCreate";
+import { ChinaWarehousePage } from "./pages/china-warehouse";
+import { CnBatchesPage } from "./pages/cn-batches";
 import { OrderEdit } from "./pages/orders/edit";
 import { OrderList } from "./pages/orders/list";
 import { OrderShow } from "./pages/orders/show";
@@ -61,6 +63,17 @@ function App() {
               canDelete: true,
             },
           },
+          {
+            name: "cnBatches",
+            list: "/cn-batches",
+          },
+          {
+            name: "cnPackages",
+            list: "/china-warehouse",
+          },
+          {
+            name: "users",
+          },
         ]}
       >
         <Routes>
@@ -106,6 +119,9 @@ function App() {
               <Route path="show/:id" element={<OrderShow />} />
               <Route path="edit/:id" element={<OrderEdit />} />
             </Route>
+
+            <Route path="/cn-batches" element={<CnBatchesPage />} />
+            <Route path="/china-warehouse" element={<ChinaWarehousePage />} />
             
             {/* Added for menu items so they don't 404 immediately */}
             <Route path="/fleet" element={<DashboardPage />} />

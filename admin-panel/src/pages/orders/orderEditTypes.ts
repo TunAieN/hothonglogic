@@ -6,10 +6,18 @@ export type SelectOption = {
 };
 
 export type ShippingEntryFormValue = {
+  packageId?: string;
   trackingCode: string;
   parcelValue?: number | null;
   shippingCompany?: string;
   packagingType?: string;
+  packageNote?: string;
+  selectedItems: ShippingEntryItemSelectionFormValue[];
+};
+
+export type ShippingEntryItemSelectionFormValue = {
+  orderItemId: string;
+  quantity: number;
 };
 
 export type OrderEditFormValues = {
@@ -45,4 +53,3 @@ export const PACKAGING_TYPE_OPTIONS: SelectOption[] = [
   { label: "Túi chống sốc", value: "shockproof-bag" },
   { label: "Kiện chống ẩm", value: "moisture-protection" },
 ];
-

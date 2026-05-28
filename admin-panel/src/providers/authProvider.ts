@@ -6,8 +6,11 @@ import {
   setGraphqlAuthToken,
 } from "./graphqlClient";
 import type { User } from "../types";
+import { getTtlCache, removeTtlCache, setTtlCache } from "../utils/ttlCache";
 
 export const AUTH_USER_STORAGE_KEY = "user";
+const AUTH_IDENTITY_CACHE_KEY = "auth:identity";
+const AUTH_IDENTITY_TTL_MS = 5 * 60 * 1000;
 
 type LoginUser = User;
 
@@ -21,6 +24,10 @@ type LoginResponse = {
 
 const loginClient = new GraphQLClient(GRAPHQL_API_URL);
 
+type MeResponse = {
+  me: LoginUser | null;
+};
+
 const LOGIN_MUTATION = `
   mutation Login($email: String!, $password: String!) {
     login(email: $email, password: $password) {
@@ -30,14 +37,54 @@ const LOGIN_MUTATION = `
         id
         name
         email
+        role_id
+        role {
+          id
+          name
+          permissions
+        }
       }
     }
   }
 `;
 
-const clearStoredAuth = () => {
-  setGraphqlAuthToken(null);
+const ME_QUERY = `
+  query Me {
+    me {
+      id
+      name
+      email
+      role_id
+      role {
+        id
+        name
+        permissions
+      }
+    }
+  }
+`;
+
+let authUserMemoryCache: LoginUser | null = null;
+let authUserRequest: Promise<LoginUser | null> | null = null;
+
+const setCachedUser = (user: LoginUser | null) => {
+  authUserMemoryCache = user;
+
+  if (user) {
+    localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+    setTtlCache(AUTH_IDENTITY_CACHE_KEY, user, AUTH_IDENTITY_TTL_MS);
+    return;
+  }
+
   localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+  removeTtlCache(AUTH_IDENTITY_CACHE_KEY);
+};
+
+const clearStoredAuth = () => {
+  authUserMemoryCache = null;
+  authUserRequest = null;
+  setGraphqlAuthToken(null);
+  setCachedUser(null);
 };
 
 const isUnauthenticatedError = (error: unknown) =>
@@ -45,6 +92,17 @@ const isUnauthenticatedError = (error: unknown) =>
   error.response.errors?.some((item) => item.message === "Unauthenticated.");
 
 const getStoredUser = () => {
+  if (authUserMemoryCache) {
+    return authUserMemoryCache;
+  }
+
+  const cachedUser = getTtlCache<LoginUser>(AUTH_IDENTITY_CACHE_KEY);
+
+  if (cachedUser) {
+    authUserMemoryCache = cachedUser;
+    return cachedUser;
+  }
+
   const rawUser = localStorage.getItem(AUTH_USER_STORAGE_KEY);
 
   if (!rawUser) {
@@ -52,9 +110,12 @@ const getStoredUser = () => {
   }
 
   try {
-    return JSON.parse(rawUser) as LoginUser;
+    const user = JSON.parse(rawUser) as LoginUser;
+    authUserMemoryCache = user;
+    setTtlCache(AUTH_IDENTITY_CACHE_KEY, user, AUTH_IDENTITY_TTL_MS);
+    return user;
   } catch {
-    localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    setCachedUser(null);
     return null;
   }
 };
@@ -67,6 +128,36 @@ const getAuthRedirect = () =>
     `${window.location.pathname}${window.location.search}`,
   )}`;
 
+const fetchCurrentUser = async () => {
+  const token = getGraphqlAuthToken();
+
+  if (!token) {
+    authUserMemoryCache = null;
+    return null;
+  }
+
+  if (authUserRequest) {
+    return authUserRequest;
+  }
+
+  const authClient = new GraphQLClient(GRAPHQL_API_URL, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  authUserRequest = authClient
+    .request<MeResponse>(ME_QUERY)
+    .then((response) => {
+      setCachedUser(response.me);
+      return response.me;
+    })
+    .finally(() => {
+      authUserRequest = null;
+    });
+
+  return authUserRequest;
+};
+
 export const authProvider: AuthProvider = {
   login: async (params) => {
     const email = typeof params?.email === "string" ? params.email.trim() : "";
@@ -75,7 +166,7 @@ export const authProvider: AuthProvider = {
     if (!email || !password) {
       return {
         success: false,
-        error: new Error("Vui lÃ²ng nháº­p email vÃ  máº­t kháº©u."),
+        error: new Error("Vui lòng nhập email và mật khẩu."),
       };
     }
 
@@ -89,12 +180,12 @@ export const authProvider: AuthProvider = {
       if (!payload?.access_token) {
         return {
           success: false,
-          error: new Error("ÄÄƒng nháº­p tháº¥t báº¡i."),
+          error: new Error("Đăng nhập thất bại."),
         };
       }
 
       setGraphqlAuthToken(payload.access_token);
-      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(payload.user));
+      setCachedUser(payload.user);
 
       return {
         success: true,
@@ -103,10 +194,10 @@ export const authProvider: AuthProvider = {
     } catch (error) {
       const errorMessage =
         error instanceof ClientError
-          ? error.response.errors?.[0]?.message || "ÄÄƒng nháº­p tháº¥t báº¡i."
+          ? error.response.errors?.[0]?.message || "Đăng nhập thất bại."
           : error instanceof Error
             ? error.message
-            : "ÄÄƒng nháº­p tháº¥t báº¡i.";
+            : "Đăng nhập thất bại.";
 
       return {
         success: false,
@@ -122,61 +213,69 @@ export const authProvider: AuthProvider = {
       redirectTo: "/login",
     };
   },
-  // check: async () => {
-  //   const token = getGraphqlAuthToken();
-
-  //   if (!token) {
-  //     return {
-  //       authenticated: false,
-  //       redirectTo: getAuthRedirect(),
-  //       logout: false,
-  //     };
-  //   }
-
-  //   try {
-  //     const authClient = new GraphQLClient(GRAPHQL_API_URL, {
-  //       headers: {
-  //         Authorization: `Bearer ${token}`,
-  //       },
-  //     });
-  //     const response = await authClient.request<MeResponse>(ME_QUERY);
-
-  //     if (response.me) {
-  //       localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.me));
-
-  //       return {
-  //         authenticated: true,
-  //       };
-  //     }
-  //   } catch (error) {
-  //     if (!isUnauthenticatedError(error)) {
-  //       throw error;
-  //     }
-  //   }
-
-  //   clearStoredAuth();
-
-  //   return {
-  //     authenticated: false,
-  //     redirectTo: getAuthRedirect(),
-  //     logout: true,
-  //   };
-  // },
-  
   check: async () => {
-  const token = getGraphqlAuthToken();
+    const token = getGraphqlAuthToken();
 
-  if (token) {
-    return { authenticated: true };
-  }
+    if (!token) {
+      return {
+        authenticated: false,
+        redirectTo: getAuthRedirect(),
+        logout: false,
+      };
+    }
 
-  return {
-    authenticated: false,
-    redirectTo: getAuthRedirect(),
-    logout: false,
-  };
-},
+    try {
+      const cachedUser = getStoredUser();
+
+      if (cachedUser) {
+        return {
+          authenticated: true,
+        };
+      }
+
+      const user = await fetchCurrentUser();
+
+      if (user) {
+        return {
+          authenticated: true,
+        };
+      }
+    } catch (error) {
+      if (!isUnauthenticatedError(error)) {
+        throw error;
+      }
+    }
+
+    clearStoredAuth();
+
+    return {
+      authenticated: false,
+      redirectTo: getAuthRedirect(),
+      logout: true,
+    };
+  },
   getIdentity: async () => {
+    const cachedUser = getStoredUser();
+
+    if (cachedUser) {
+      return cachedUser;
+    }
+
+    try {
+      const user = await fetchCurrentUser();
+
+      if (user) {
+        return user;
+      }
+    } catch (error) {
+      if (isUnauthenticatedError(error)) {
+        clearStoredAuth();
+        return null;
+      }
+
+      throw error;
+    }
+
     return getStoredUser();
   },
   onError: async (error) => {

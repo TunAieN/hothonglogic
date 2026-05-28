@@ -12,7 +12,11 @@ function getElementByXPath(xpath) {
     );
     return result.singleNodeValue;
 }
-function extractSkuOption(labelKeywords) {
+function normalizeText(value) {
+    return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function extractSkuOption(labelMatcher) {
     const groups = document.querySelectorAll('#skuOptionsArea > div');
 
     for (const group of groups) {
@@ -20,23 +24,70 @@ function extractSkuOption(labelKeywords) {
         const labelEl = group.querySelector('[class*="ItemLabel"] span');
         if (!labelEl) continue;
 
-        const label = labelEl.textContent.trim();
+        const label = normalizeText(labelEl.textContent);
 
-        if (labelKeywords.some(k => label.includes(k))) {
+        if (labelMatcher(label)) {
+            const selectedSelectors = [
+                '[class*="isSelected"] [class*="valueItemText"]',
+                '[class*="isSelected"] span',
+                '[class*="isSelected"]'
+            ];
 
-            const selected = group.querySelector('[class*="isSelected"]');
-
-            if (selected) {
-                const text = selected.textContent.trim();
+            for (const selector of selectedSelectors) {
+                const selected = group.querySelector(selector);
+                const text = normalizeText(selected?.textContent);
                 if (text) return text;
             }
 
-            const first = group.querySelector('[class*="valueItem"] span');
-            if (first) return first.textContent.trim();
+            const fallbackSelectors = [
+                '[class*="valueItem"] [class*="valueItemText"]',
+                '[class*="valueItem"] span',
+                '[class*="valueItem"]'
+            ];
+            for (const selector of fallbackSelectors) {
+                const first = group.querySelector(selector);
+                const text = normalizeText(first?.textContent);
+                if (text) return text;
+            }
         }
     }
 
     return null;
+}
+
+function matchesSizeLabel(label) {
+    return /(\bsize\b|\bcm\b|\beu\b|\bus\b|\buk\b|\bjp\b|\u5c3a\u7801|\u5c3a\u5bf8|\u5927\u5c0f|\u978b\u7801)/i.test(label);
+}
+
+function matchesColorLabel(label) {
+    return /(\bcolor\b|\bcolour\b|\u989c\u8272|\u989c\u8272\u5206\u7c7b|\u5546\u54c1\u89c4\u683c)/i.test(label);
+}
+
+function extractSellerInfo() {
+    const sellerSelectors = [
+        '#left-content-area a[href*="shop"] [class*="shopName"]',
+        '#left-content-area [class*="shopHeader"] [class*="shopName"]',
+        'a[href*="shop"] [class*="shopName"]',
+        '[class*="shopNameWrap"]',
+        '[class*="ShopHeader"] [class*="shopName"]'
+    ];
+
+    for (const selector of sellerSelectors) {
+        const element = document.querySelector(selector);
+        const text = normalizeText(element?.textContent);
+        if (!text) continue;
+
+        const link = element.closest('a[href]');
+        return {
+            seller: text,
+            sellerUrl: link?.href || ''
+        };
+    }
+
+    return {
+        seller: '',
+        sellerUrl: ''
+    };
 }
 // Function to extract product information
 function extractProductInfo() {
@@ -158,7 +209,7 @@ function extractProductInfo() {
     console.log("Original Price:", productData.originalPrice);
 
     // Extract size information if available
-    productData.size = extractSkuOption(['尺码', '尺寸', '大小', '鞋码', 'Size']);
+    productData.size = extractSkuOption(matchesSizeLabel);
     console.log("Size:", productData.size);
     // const sizeSelectors = [
     //    '#skuOptionsArea > div > div.skuValueWrap--aEfxuhNr > div > div > div:nth-child(1) > span.valueItemText--T7YrR8tO.f-els-1',
@@ -200,7 +251,7 @@ function extractProductInfo() {
     console.log("Quantity:", productData.quantity);
 
     // Extract color information if available
-    productData.color = extractSkuOption(['颜色', '颜色分类', '商品规格', 'Color']);
+    productData.color = extractSkuOption(matchesColorLabel);
     console.log("Color:", productData.color);
     // const colorSelectors = [
     //     '#skuOptionsArea > div:nth-child(2) > div.skuValueWrap--aEfxuhNr > div > div > div.valueItem--smR4pNt4.isSelected--_a9zOp7C.hasImg--K82HLg1O > span.valueItemText--T7YrR8tO.f-els-1',
@@ -286,17 +337,12 @@ function extractProductInfo() {
     }
 
     // Extract seller information
-    const sellerSelectors = [
-        '#left-content-area > div.shopHeader--J_nfJZjm > a > div > div.shopNameLevelWrapper--pPrqPaSN > div.shopNameWrap--_4tEwrTc > span'
-    ];
-
-    for (const selector of sellerSelectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-            productData.seller = element.textContent.trim();
-            productData.sellerUrl = element.href;
-            break;
-        }
+    const sellerInfo = extractSellerInfo();
+    if (sellerInfo.seller) {
+        productData.seller = sellerInfo.seller;
+    }
+    if (sellerInfo.sellerUrl) {
+        productData.sellerUrl = sellerInfo.sellerUrl;
     }
 
     // Extract SKU information

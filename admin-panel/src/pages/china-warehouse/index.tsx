@@ -1,0 +1,801 @@
+import { useMemo, useState } from "react";
+import type { Key } from "react";
+import { useCreate, useDelete, useList, useUpdate } from "@refinedev/core";
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Drawer,
+  Empty,
+  Form,
+  Grid,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Statistic,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+  message,
+} from "antd";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  InboxOutlined,
+  PlusCircleOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import type { UploadProps } from "antd";
+import dayjs from "dayjs";
+import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
+import { CHINA_WAREHOUSE_OPTIONS } from "./mockData";
+import {
+  calculateSelectedTotalWeight,
+  canDeletePackage,
+  canSelectPackage,
+  formatWeight,
+  getNextBatchCode,
+  getPackageSelectionReason,
+  getStatusTag,
+  getWarehouseCode,
+  mapApiRecordToPackage,
+  mapFormValuesToCreateInput,
+  mapFormValuesToUpdateInput,
+  mapRecordToFormValues,
+  renderBatchTag,
+} from "./helpers";
+import type {
+  ChinaWarehouseApiRecord,
+  ChinaWarehouseFilters,
+  ChinaWarehousePackage,
+  PackageFormValues,
+} from "./types";
+
+const { Text, Title, Paragraph } = Typography;
+const { Dragger } = Upload;
+
+const filterCardBodyStyle = { padding: 20 };
+const toolbarCardBodyStyle = { padding: "14px 18px" };
+const defaultFilterValues: ChinaWarehouseFilters = {};
+
+const ADD_PACKAGES_TO_BATCH_MUTATION = `
+  mutation AddPackagesToCnBatch($input: AddPackagesToCnBatchInput!) {
+    addPackagesToCnBatch(input: $input) {
+      id
+      batch_code
+      status
+      total_weight
+    }
+  }
+`;
+
+const packageMatchesFilters = (
+  record: ChinaWarehousePackage,
+  filters: ChinaWarehouseFilters,
+) => {
+  const warehouseName = filters.warehouseName?.trim().toLowerCase();
+  const trackingCode = filters.trackingCode?.trim().toLowerCase();
+  const receiverName = filters.receiverName?.trim().toLowerCase();
+  const receivedDate = dayjs(record.receivedDate);
+
+  if (warehouseName && record.warehouseName.toLowerCase() !== warehouseName) {
+    return false;
+  }
+
+  if (trackingCode && !record.trackingCode.toLowerCase().includes(trackingCode)) {
+    return false;
+  }
+
+  if (receiverName && !record.receiverName.toLowerCase().includes(receiverName)) {
+    return false;
+  }
+
+  if (filters.status && record.status !== filters.status) {
+    return false;
+  }
+
+  if (filters.receivedFrom && receivedDate.isBefore(filters.receivedFrom.startOf("day"))) {
+    return false;
+  }
+
+  if (filters.receivedTo && receivedDate.isAfter(filters.receivedTo.endOf("day"))) {
+    return false;
+  }
+
+  return true;
+};
+
+export const ChinaWarehousePage = () => {
+  const [filters, setFilters] = useState<ChinaWarehouseFilters>(defaultFilterValues);
+  const [form] = Form.useForm<PackageFormValues>();
+  const [filterForm] = Form.useForm<ChinaWarehouseFilters>();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<ChinaWarehousePackage | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [selectedRows, setSelectedRows] = useState<ChinaWarehousePackage[]>([]);
+  const [excelModalOpen, setExcelModalOpen] = useState(false);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const {
+    result: packageListResponse,
+    query: packageListQuery,
+  } = useList<ChinaWarehouseApiRecord>({
+    resource: "cnPackages",
+    pagination: {
+      currentPage: 1,
+      pageSize: 1000,
+    },
+  });
+  const { mutateAsync: createPackage } = useCreate<ChinaWarehouseApiRecord>();
+  const { mutateAsync: updatePackage } = useUpdate<ChinaWarehouseApiRecord>();
+  const { mutateAsync: deletePackage } = useDelete<ChinaWarehouseApiRecord>();
+
+  const packages = useMemo(
+    () => (packageListResponse?.data ?? []).map(mapApiRecordToPackage),
+    [packageListResponse?.data],
+  );
+
+  const filteredPackages = useMemo(
+    () => packages.filter((item) => packageMatchesFilters(item, filters)),
+    [filters, packages],
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: packages.length,
+      matched: packages.filter((item) => item.status === "matched").length,
+      unmatched: packages.filter((item) => item.status === "unmatched").length,
+      batched: packages.filter((item) => Boolean(item.batchCode)).length,
+    }),
+    [packages],
+  );
+
+  const selectedTotalWeight = useMemo(
+    () => calculateSelectedTotalWeight(selectedRows),
+    [selectedRows],
+  );
+
+  const predictedBatchCode = useMemo(() => {
+    if (!selectedRows.length) {
+      return undefined;
+    }
+
+    const warehouseCode = getWarehouseCode(selectedRows[0].warehouseName);
+    const existingBatches = packages
+      .map((item) => item.batchCode)
+      .filter((value): value is string => Boolean(value));
+
+    return getNextBatchCode(warehouseCode, new Date(), existingBatches);
+  }, [packages, selectedRows]);
+
+  const openCreateDrawer = () => {
+    setEditingRecord(null);
+    form.setFieldsValue({
+      trackingCode: "",
+      receiverName: "",
+      warehouseName: "Kho Quảng Châu",
+      weight: 0.1,
+      receivedDate: dayjs(),
+      status: "unmatched",
+      note: "",
+    });
+    setDrawerOpen(true);
+  };
+
+  const openEditDrawer = (record: ChinaWarehousePackage) => {
+    setEditingRecord(record);
+    form.setFieldsValue(mapRecordToFormValues(record));
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setEditingRecord(null);
+    form.resetFields();
+  };
+
+  const handleSubmitPackage = async () => {
+    try {
+      setIsSubmitting(true);
+      const values = await form.validateFields();
+
+      if (editingRecord) {
+        await updatePackage({
+          resource: "cnPackages",
+          id: editingRecord.id,
+          values: mapFormValuesToUpdateInput(values),
+        });
+        await packageListQuery.refetch();
+        message.success("Đã cập nhật thông tin kiện hàng.");
+      } else {
+        await createPackage({
+          resource: "cnPackages",
+          values: mapFormValuesToCreateInput(values),
+        });
+        await packageListQuery.refetch();
+        message.success("Đã thêm kiện hàng vào kho Trung Quốc.");
+      }
+
+      closeDrawer();
+    } catch (error) {
+      console.error(error);
+      message.error(
+        editingRecord
+          ? "Không thể cập nhật kiện hàng."
+          : "Không thể thêm kiện hàng. Vui lòng thử lại.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeletePackage = async (record: ChinaWarehousePackage) => {
+    const deleteState = canDeletePackage(record);
+
+    if (!deleteState.canDelete) {
+      message.error(deleteState.reason);
+      return;
+    }
+
+    try {
+      await deletePackage({
+        resource: "cnPackages",
+        id: record.id,
+      });
+      await packageListQuery.refetch();
+      setSelectedRowKeys((current) => current.filter((key) => key !== record.id));
+      setSelectedRows((current) => current.filter((item) => item.id !== record.id));
+      message.success("Đã xóa kiện hàng.");
+    } catch (error) {
+      console.error(error);
+      message.error("Không thể xóa kiện hàng.");
+    }
+  };
+
+  const openExcelImportModal = () => {
+    setExcelModalOpen(true);
+  };
+
+  const openBatchModal = () => {
+    if (!selectedRows.length) {
+      return;
+    }
+
+    if (new Set(selectedRows.map((item) => item.warehouseId)).size > 1) {
+      message.warning("Vui lòng chỉ chọn các kiện cùng một kho hàng để thêm vào lô.");
+      return;
+    }
+
+    setBatchModalOpen(true);
+  };
+
+  const handleAddToBatch = async () => {
+    if (!selectedRows.length) {
+      return;
+    }
+
+    try {
+      setIsBatchSubmitting(true);
+      syncGraphqlAuthToken();
+      await client.request(
+        ADD_PACKAGES_TO_BATCH_MUTATION,
+        {
+          input: {
+            cn_package_ids: selectedRows.map((item) => item.id),
+          },
+        },
+        getGraphqlAuthHeaders(),
+      );
+      await packageListQuery.refetch();
+      setSelectedRowKeys([]);
+      setSelectedRows([]);
+      setBatchModalOpen(false);
+      message.success("Đã thêm kiện vào lô hàng.");
+    } catch (error) {
+      console.error(error);
+      message.error("Không thể thêm kiện vào lô hàng.");
+    } finally {
+      setIsBatchSubmitting(false);
+    }
+  };
+
+  const handleSearch = (values: ChinaWarehouseFilters) => {
+    setFilters({
+      warehouseName: values.warehouseName || undefined,
+      trackingCode: values.trackingCode?.trim() || undefined,
+      receiverName: values.receiverName?.trim() || undefined,
+      status: values.status || undefined,
+      receivedFrom: values.receivedFrom,
+      receivedTo: values.receivedTo,
+    });
+  };
+
+  const handleReset = () => {
+    filterForm.resetFields();
+    setFilters(defaultFilterValues);
+  };
+
+  const uploadProps: UploadProps = {
+    accept: ".xlsx,.xls",
+    beforeUpload: (file) => {
+      const validFile = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+
+      if (!validFile) {
+        message.error("Chỉ hỗ trợ file Excel .xlsx hoặc .xls.");
+        return Upload.LIST_IGNORE;
+      }
+
+      message.info("Chức năng import Excel sẽ được kết nối API sau.");
+      return Upload.LIST_IGNORE;
+    },
+    multiple: false,
+    showUploadList: true,
+  };
+
+  const columns: ColumnsType<ChinaWarehousePackage> = [
+    {
+      title: "Tên kho hàng",
+      dataIndex: "warehouseName",
+      key: "warehouseName",
+      width: 170,
+    },
+    {
+      title: "Người nhận",
+      dataIndex: "receiverName",
+      key: "receiverName",
+      width: 180,
+    },
+    {
+      title: "Mã vận đơn",
+      dataIndex: "trackingCode",
+      key: "trackingCode",
+      width: 180,
+      render: (value: string) => (
+        <Text strong copyable={{ text: value }}>
+          {value}
+        </Text>
+      ),
+    },
+    {
+      title: "Ngày nhận hàng",
+      dataIndex: "receivedDate",
+      key: "receivedDate",
+      width: 140,
+      render: (value: string) => dayjs(value).format("DD/MM/YYYY"),
+    },
+    {
+      title: "Khối lượng",
+      dataIndex: "weight",
+      key: "weight",
+      width: 120,
+      render: (value: number) => formatWeight(value),
+    },
+    {
+      title: "Tên KH / Mã hóa đơn",
+      key: "customerInfo",
+      width: 220,
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{record.customerName ?? "Chưa có khách hàng"}</Text>
+          <Text type="secondary">{record.invoiceCode ?? "Chưa có mã hóa đơn"}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Mã lô hàng",
+      dataIndex: "batchCode",
+      key: "batchCode",
+      width: 160,
+      render: (value?: string) => renderBatchTag(value),
+    },
+    {
+      title: "Trạng thái",
+      dataIndex: "status",
+      key: "status",
+      width: 120,
+      render: (_, record) => getStatusTag(record.status),
+    },
+    {
+      title: "Thao tác",
+      key: "actions",
+      fixed: "right",
+      width: 120,
+      render: (_, record) => {
+        const deleteState = canDeletePackage(record);
+
+        return (
+          <Space size="small">
+            <Tooltip title="Sửa kiện hàng">
+              <Button type="text" icon={<EditOutlined />} onClick={() => openEditDrawer(record)} />
+            </Tooltip>
+            {deleteState.canDelete ? (
+              <Popconfirm
+                title="Xóa kiện hàng?"
+                description="Bạn có chắc muốn xóa kiện hàng này không? Hành động này không thể hoàn tác."
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => handleDeletePackage(record)}
+              >
+                <Tooltip title="Xóa kiện hàng">
+                  <Button danger type="text" icon={<DeleteOutlined />} />
+                </Tooltip>
+              </Popconfirm>
+            ) : (
+              <Tooltip title={deleteState.reason}>
+                <span>
+                  <Button danger type="text" icon={<DeleteOutlined />} disabled />
+                </span>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
+    },
+  ];
+
+  const isPageLoading = packageListQuery.isLoading;
+  const pageError = packageListQuery.isError
+    ? packageListQuery.error instanceof Error
+      ? packageListQuery.error.message
+      : "Không thể tải dữ liệu kiện hàng."
+    : null;
+
+  if (isPageLoading) {
+    return (
+      <div style={{ minHeight: 360, display: "grid", placeItems: "center" }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      {pageError ? <Alert type="error" message={pageError} showIcon /> : null}
+
+      <Card>
+        <Row gutter={[16, 16]} align="middle" justify="space-between">
+          <Col xs={24} xl={10}>
+            <Space direction="vertical" size={4}>
+              <Title level={2} style={{ margin: 0 }}>
+                Kho hàng Trung Quốc
+              </Title>
+              <Text type="secondary">
+                Quản lý kiện hàng đã về kho Trung Quốc, đối chiếu mã vận đơn và gom
+                kiện vào lô vận chuyển về Việt Nam.
+              </Text>
+            </Space>
+          </Col>
+          <Col xs={24} xl={14}>
+            <Row gutter={[12, 12]}>
+              <Col xs={12} md={6}>
+                <Card size="small">
+                  <Statistic title="Tổng kiện" value={stats.total} />
+                </Card>
+              </Col>
+              <Col xs={12} md={6}>
+                <Card size="small">
+                  <Statistic title="Đã khớp" value={stats.matched} valueStyle={{ color: "#389e0d" }} />
+                </Card>
+              </Col>
+              <Col xs={12} md={6}>
+                <Card size="small">
+                  <Statistic title="Chưa khớp" value={stats.unmatched} valueStyle={{ color: "#d46b08" }} />
+                </Card>
+              </Col>
+              <Col xs={12} md={6}>
+                <Card size="small">
+                  <Statistic title="Đã vào lô" value={stats.batched} valueStyle={{ color: "#1677ff" }} />
+                </Card>
+              </Col>
+            </Row>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card title="Bộ lọc tìm kiếm" styles={{ body: filterCardBodyStyle }}>
+        <Form<ChinaWarehouseFilters> form={filterForm} layout="vertical" onFinish={handleSearch}>
+          <Row gutter={[16, 0]}>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Kho hàng" name="warehouseName">
+                <Select
+                  allowClear
+                  options={CHINA_WAREHOUSE_OPTIONS.map((item) => ({ label: item, value: item }))}
+                  placeholder="Chọn kho hàng"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Mã vận đơn" name="trackingCode">
+                <Input placeholder="Nhập mã vận đơn..." />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Người nhận" name="receiverName">
+                <Input placeholder="Nhập người nhận..." />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Trạng thái" name="status">
+                <Select
+                  allowClear
+                  options={[
+                    { label: "Khớp", value: "matched" },
+                    { label: "Chưa khớp", value: "unmatched" },
+                  ]}
+                  placeholder="Chọn trạng thái"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Nhận từ ngày" name="receivedFrom">
+                <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Đến ngày" name="receivedTo">
+                <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Space wrap>
+            <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+              Tìm kiếm
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={handleReset}>
+              Reset
+            </Button>
+          </Space>
+        </Form>
+      </Card>
+
+      <Card styles={{ body: toolbarCardBodyStyle }}>
+        <Row gutter={[12, 12]} justify="space-between" align="middle">
+          <Col xs={24} lg="auto">
+            <Text>
+              Đã chọn <Text strong>{selectedRowKeys.length}</Text> kiện
+            </Text>
+          </Col>
+          <Col xs={24} lg="auto">
+            <Space wrap>
+              <Button icon={<UploadOutlined />} onClick={openExcelImportModal}>
+                Nhập kho bằng Excel
+              </Button>
+              <Button
+                type="primary"
+                ghost
+                icon={<PlusCircleOutlined />}
+                disabled={!selectedRowKeys.length}
+                onClick={openBatchModal}
+              >
+                Thêm vào lô hàng
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+                Nhập hàng
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card>
+        {filteredPackages.length ? (
+          <Table<ChinaWarehousePackage>
+            rowKey="id"
+            columns={columns}
+            dataSource={filteredPackages}
+            scroll={{ x: 1280 }}
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys, rows) => {
+                setSelectedRowKeys(keys);
+                setSelectedRows(rows);
+              },
+              getCheckboxProps: (record) => ({
+                disabled: !canSelectPackage(record),
+                title: getPackageSelectionReason(record),
+              }),
+            }}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có kiện hàng nào trong kho Trung Quốc.">
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+              Nhập hàng
+            </Button>
+          </Empty>
+        )}
+      </Card>
+
+      <Drawer
+        title={editingRecord ? "Sửa thông tin kiện hàng" : "Nhập hàng / Thêm kiện hàng"}
+        placement="right"
+        width={screens.md ? 560 : "100%"}
+        destroyOnClose
+        open={drawerOpen}
+        onClose={closeDrawer}
+        footer={
+          <Space style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button onClick={closeDrawer}>Hủy</Button>
+            <Button type="primary" loading={isSubmitting} onClick={handleSubmitPackage}>
+              {editingRecord ? "Lưu thay đổi" : "Thêm mới"}
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Alert
+            showIcon
+            type="info"
+            message="Nếu thay đổi mã vận đơn, hệ thống sẽ cập nhật lại trạng thái khớp của kiện hàng theo dữ liệu đơn hàng."
+          />
+
+          <Form<PackageFormValues> form={form} layout="vertical">
+            <Form.Item
+              label="Mã vận đơn"
+              name="trackingCode"
+              rules={[{ required: true, message: "Vui lòng nhập mã vận đơn." }]}
+            >
+              <Input placeholder="Nhập mã vận đơn..." />
+            </Form.Item>
+
+            <Form.Item
+              label="Người nhận hàng"
+              name="receiverName"
+              rules={[{ required: true, message: "Vui lòng nhập người nhận hàng." }]}
+            >
+              <Input placeholder="Nhập người nhận hàng..." />
+            </Form.Item>
+
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Kho hàng"
+                  name="warehouseName"
+                  rules={[{ required: true, message: "Vui lòng chọn kho hàng." }]}
+                >
+                  <Select options={CHINA_WAREHOUSE_OPTIONS.map((item) => ({ label: item, value: item }))} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Khối lượng"
+                  name="weight"
+                  rules={[{ required: true, message: "Vui lòng nhập khối lượng." }]}
+                >
+                  <InputNumber
+                    min={0.1}
+                    precision={2}
+                    addonAfter="kg"
+                    placeholder="Nhập khối lượng"
+                    style={{ width: "100%" }}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Ngày nhận hàng"
+                  name="receivedDate"
+                  rules={[{ required: true, message: "Vui lòng chọn ngày nhận hàng." }]}
+                >
+                  <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Trạng thái"
+                  name="status"
+                  rules={[{ required: true, message: "Vui lòng chọn trạng thái." }]}
+                >
+                  <Select
+                    options={[
+                      { value: "matched", label: "Khớp" },
+                      { value: "unmatched", label: "Chưa khớp" },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item label="Ghi chú" name="note">
+              <Input.TextArea rows={4} placeholder="Nhập ghi chú nếu có..." />
+            </Form.Item>
+          </Form>
+        </Space>
+      </Drawer>
+
+      <Modal
+        title="Nhập kho bằng Excel"
+        open={excelModalOpen}
+        onCancel={() => setExcelModalOpen(false)}
+        onOk={() => setExcelModalOpen(false)}
+        okText="Đóng"
+        cancelButtonProps={{ style: { display: "none" } }}
+      >
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            File Excel cần có các cột: Mã vận đơn, Người nhận, Kho hàng, Khối lượng,
+            Ngày nhận hàng, Ghi chú.
+          </Paragraph>
+          <Dragger {...uploadProps}>
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">Kéo thả file Excel vào đây hoặc bấm để chọn file</p>
+            <p className="ant-upload-hint">Chấp nhận định dạng .xlsx và .xls</p>
+          </Dragger>
+        </Space>
+      </Modal>
+
+      <Modal
+        title="Thêm kiện vào lô hàng"
+        open={batchModalOpen}
+        onCancel={() => setBatchModalOpen(false)}
+        onOk={handleAddToBatch}
+        okText="Xác nhận thêm vào lô"
+        cancelText="Hủy"
+        confirmLoading={isBatchSubmitting}
+      >
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Card size="small">
+            <Row gutter={[12, 12]}>
+              <Col span={12}>
+                <Statistic title="Số kiện đã chọn" value={selectedRows.length} />
+              </Col>
+              <Col span={12}>
+                <Statistic title="Tổng khối lượng" value={selectedTotalWeight} suffix="kg" precision={2} />
+              </Col>
+            </Row>
+          </Card>
+
+          <div>
+            <Text strong>Kho hàng</Text>
+            <div style={{ marginTop: 8 }}>
+              <Space wrap>
+                {Array.from(new Set(selectedRows.map((item) => item.warehouseName))).map((name) => (
+                  <Tag key={name}>{name}</Tag>
+                ))}
+              </Space>
+            </div>
+          </div>
+
+          <div>
+            <Text strong>Mã lô hàng dự kiến</Text>
+            <div style={{ marginTop: 8 }}>
+              <Tag color="blue">{predictedBatchCode}</Tag>
+            </div>
+          </div>
+
+          <div>
+            <Text strong>Danh sách mã vận đơn</Text>
+            <div style={{ marginTop: 8 }}>
+              <Space wrap>
+                {selectedRows.map((item) => (
+                  <Tag key={item.id}>{item.trackingCode}</Tag>
+                ))}
+              </Space>
+            </div>
+          </div>
+        </Space>
+      </Modal>
+    </Space>
+  );
+};

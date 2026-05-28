@@ -15,21 +15,148 @@ type Query {
     @field(resolver: "App\\GraphQL\\Resolvers\\AuthResolver@me")
 
   # Customers
-  customers: [Customer!]! @paginate(defaultCount: 10,, scopes: ["withOrdersCount"])
+  customers(filter: CustomerFilterInput): [Customer!]!
+    @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\CustomerResolver@list")
   customer(id: ID!): Customer
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@show")
   # Orders
-  orders: [Order!]! @paginate(defaultCount: 10)
+  orders(filter: OrderFilterInput): [Order!]!
+    @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\OrderResolver@list")
   order(id: ID! @eq): Order @find
+  cnPackages: [CnPackage!]!
+    @guard(with: ["api"])
+    @paginate(defaultCount: 50, builder: "App\\GraphQL\\Resolvers\\CnPackageResolver@list")
+  cnPackage(id: ID!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@show")
+  cnBatches: [CnBatch!]!
+    @guard(with: ["api"])
+    @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\CnBatchResolver@list")
+  cnBatch(id: ID!): CnBatch
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@show")
+}
+
+type CnWarehouse {
+  id: ID!
+  code: String!
+  name: String!
+  address: String
+  status: String!
+}
+
+type CnPackage {
+  id: ID!
+  warehouse_id: ID!
+  order_id: ID
+  order_tracking_id: ID
+  receiver_name: String
+  tracking_number: String
+  declared_value: Float
+  carrier: String
+  weight: Float
+  volume: Float
+  note: String
+  status: String!
+  created_by: ID
+  received_at: DateTime
+  created_at: DateTime
+  warehouse: CnWarehouse! @belongsTo
+  order: Order @belongsTo
+  order_tracking: OrderTracking @belongsTo(relation: "orderTracking")
+  current_batch_package: CnBatchPackage @hasOne(relation: "currentBatchPackage")
+  batch_packages: [CnBatchPackage!]! @hasMany(relation: "batchPackages")
+  batches: [CnBatch!]! @belongsToMany
+  package_items: [CnPackageItem!]! @hasMany(relation: "packageItems")
+}
+
+type CnPackageItem {
+  id: ID!
+  cn_package_id: ID!
+  order_item_id: ID!
+  quantity: Int!
+  order_item: OrderItem! @belongsTo(relation: "orderItem")
+}
+
+type OrderTracking {
+  id: ID!
+  order_id: ID!
+  tracking_number: String!
+  carrier: String
+  declared_value: Float
+  note: String
+  status: String!
+  created_at: DateTime!
+  updated_at: DateTime!
+  order: Order! @belongsTo
+  tracking_items: [OrderTrackingItem!]! @hasMany(relation: "trackingItems")
+  packages: [CnPackage!]! @hasMany
+}
+
+type OrderTrackingItem {
+  id: ID!
+  order_tracking_id: ID!
+  order_item_id: ID!
+  quantity: Int!
+  order_tracking: OrderTracking! @belongsTo(relation: "orderTracking")
+  order_item: OrderItem! @belongsTo(relation: "orderItem")
+}
+
+type CnBatch {
+  id: ID!
+  batch_code: String!
+  warehouse_id: ID!
+  destination_warehouse_name: String
+  total_packages: Int
+  status: String!
+  shipping_type: String!
+  departed_at: DateTime
+  expected_arrival_at: DateTime
+  arrived_at: DateTime
+  total_weight: Float
+  note: String
+  created_at: DateTime!
+  updated_at: DateTime!
+  warehouse: CnWarehouse! @belongsTo
+  batch_packages: [CnBatchPackage!]! @hasMany(relation: "batchPackages")
+  packages: [CnPackage!]! @belongsToMany
+}
+
+type CnBatchPackage {
+  id: ID!
+  cn_batch_id: ID!
+  cn_package_id: ID!
+  created_at: DateTime!
+  updated_at: DateTime!
+  batch: CnBatch! @belongsTo(relation: "batch")
+  package: CnPackage! @belongsTo(relation: "package")
+}
+
+type VietnamInboundTaskPayload {
+  batch_ids: [ID!]!
+  total_batches: Int!
+  total_packages: Int!
+  total_weight: Float!
+  batches: [CnBatch!]!
 }
 
 type User {
   id: ID!
   name: String!
   email: String!
+  role_id: ID
+  role: Role @belongsTo
   email_verified_at: DateTime
   created_at: DateTime!
   updated_at: DateTime!
+}
+
+type Role {
+  id: ID!
+  name: String!
+  permissions: [String!]
+  created_at: DateTime
+  updated_at: DateTime
 }
 
 # Customers
@@ -78,10 +205,25 @@ input UpdateCustomerInput {
   status: String
 }
 
+input CustomerFilterInput {
+  search: String
+  status: String
+  vip_group: String
+  province: String
+  phone: String
+  created_from: DateTime
+  created_to: DateTime
+}
+
 type AuthPayload {
   access_token: String!
   token_type: String!
   user: User!
+}
+
+type MockReceivePackagePayload {
+  order: Order!
+  package: CnPackage!
 }
 
 type Mutation {
@@ -112,6 +254,33 @@ type Mutation {
   deleteOrder(id: ID!): Order
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@delete")
+  mockReceiveAtGuangzhouWarehouse(package_id: ID!): MockReceivePackagePayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@mockReceiveAtGuangzhouWarehouse")
+  createPackagesByShop(order_id: ID!): Order!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@createPackagesByShop")
+  createCnPackage(input: CreateCnPackageInput!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@create")
+  updateCnPackage(id: ID!, input: UpdateCnPackageInput!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@update")
+  deleteCnPackage(id: ID!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@delete")
+  addPackagesToCnBatch(input: AddPackagesToCnBatchInput!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@addPackages")
+  updateCnBatch(id: ID!, input: UpdateCnBatchInput!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@update")
+  deleteCnBatch(id: ID!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@delete")
+  createVietnamInboundTask(input: CreateVietnamInboundTaskInput!): VietnamInboundTaskPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@createVietnamInboundTask")
 }
 # Orders
 input OrderItemInput {
@@ -121,6 +290,11 @@ input OrderItemInput {
     quantity: Int!
     note: String
     product_image: String
+    seller: String
+    shop_id: String
+    shop_name: String
+    size: String
+    color: String
 }
 
 input CreateOrderInput {
@@ -136,6 +310,83 @@ input UpdateOrderInput {
     note: String
     total_amount: Float
     items: [OrderItemInput!]
+    packages: [OrderPackageInput!]
+}
+
+input OrderFilterInput {
+    search: String
+    customer_id: ID
+    created_by: ID
+    order_code: String
+    status: String
+    created_from: DateTime
+    created_to: DateTime
+}
+
+input OrderPackageItemInput {
+    order_item_id: ID!
+    quantity: Int!
+}
+
+input OrderPackageInput {
+    id: ID
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    note: String
+    package_items: [OrderPackageItemInput!]!
+}
+
+input CreateCnPackageInput {
+    warehouse_id: ID
+    warehouse_code: String
+    warehouse_name: String!
+    receiver_name: String
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    weight: Float
+    volume: Float
+    note: String
+    status: String!
+    received_at: DateTime
+}
+
+input UpdateCnPackageInput {
+    warehouse_id: ID
+    warehouse_code: String
+    warehouse_name: String
+    receiver_name: String
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    weight: Float
+    volume: Float
+    note: String
+    status: String
+    received_at: DateTime
+}
+
+input AddPackagesToCnBatchInput {
+    cn_batch_id: ID
+    cn_package_ids: [ID!]!
+    destination_warehouse_name: String
+    shipping_type: String
+    note: String
+}
+
+input UpdateCnBatchInput {
+    destination_warehouse_name: String
+    shipping_type: String
+    departed_at: DateTime
+    expected_arrival_at: DateTime
+    arrived_at: DateTime
+    note: String
+    status: String
+}
+
+input CreateVietnamInboundTaskInput {
+    cn_batch_ids: [ID!]!
 }
 
 type OrderItem {
@@ -146,6 +397,11 @@ type OrderItem {
     quantity: Int!
     note: String
     product_image: String
+    seller: String
+    shop_id: String
+    shop_name: String
+    size: String
+    color: String
 }
 
 type Order {
@@ -159,4 +415,6 @@ type Order {
     created_at: DateTime!
     customer: Customer!
     items: [OrderItem!]!
+    order_trackings: [OrderTracking!]! @hasMany(relation: "orderTrackings")
+    cn_packages: [CnPackage!]! @hasMany(relation: "cnPackages")
 }

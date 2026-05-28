@@ -2,7 +2,6 @@ export const ORDER_FIELDS = {
   list: `
     id
     order_code
-    customer_id
     status
     total_amount
     note
@@ -37,6 +36,84 @@ export const ORDER_FIELDS = {
       email
       address
     }
+    order_trackings {
+      id
+      tracking_number
+      carrier
+      declared_value
+      status
+      tracking_items {
+        id
+        order_item_id
+        quantity
+        order_item {
+          id
+          product_name
+          price_cny
+          quantity
+          seller
+          shop_id
+          shop_name
+        }
+      }
+    }
+    cn_packages {
+      id
+      warehouse_id
+      order_id
+      order_tracking_id
+      tracking_number
+      declared_value
+      carrier
+      weight
+      volume
+      status
+      note
+      received_at
+      created_at
+      warehouse {
+        id
+        code
+        name
+        address
+      }
+      order_tracking {
+        id
+        tracking_number
+        carrier
+        declared_value
+        status
+        tracking_items {
+          id
+          order_item_id
+          quantity
+          order_item {
+            id
+            product_name
+            price_cny
+            quantity
+            seller
+            shop_id
+            shop_name
+          }
+        }
+      }
+      package_items {
+        id
+        cn_package_id
+        order_item_id
+        quantity
+        order_item {
+          id
+          product_name
+          price_cny
+          quantity
+          seller
+          shop_id
+          shop_name
+        }
+      }
+    }
     items {
       id
       product_name
@@ -45,6 +122,11 @@ export const ORDER_FIELDS = {
       quantity
       note
       product_image
+      seller
+      shop_id
+      shop_name
+      size
+      color
     }
   `,
   mutation: `
@@ -67,6 +149,63 @@ export const ORDER_FIELDS = {
       email
       address
     }
+    cn_packages {
+      id
+      warehouse_id
+      order_id
+      order_tracking_id
+      tracking_number
+      declared_value
+      carrier
+      weight
+      volume
+      status
+      note
+      received_at
+      created_at
+      warehouse {
+        id
+        code
+        name
+        address
+      }
+      order_tracking {
+        id
+        tracking_number
+        carrier
+        declared_value
+        status
+        tracking_items {
+          id
+          order_item_id
+          quantity
+          order_item {
+            id
+            product_name
+            price_cny
+            quantity
+            seller
+            shop_id
+            shop_name
+          }
+        }
+      }
+      package_items {
+        id
+        cn_package_id
+        order_item_id
+        quantity
+        order_item {
+          id
+          product_name
+          price_cny
+          quantity
+          seller
+          shop_id
+          shop_name
+        }
+      }
+    }
     items {
       id
       product_name
@@ -75,6 +214,11 @@ export const ORDER_FIELDS = {
       quantity
       note
       product_image
+      seller
+      shop_id
+      shop_name
+      size
+      color
     }
   `,
 } as const;
