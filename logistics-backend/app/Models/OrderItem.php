@@ -14,11 +14,26 @@ class OrderItem extends Model
         'price_cny',
         'quantity',
         'note',
-        'product_image'
+        'product_image',
+        'seller',
+        'shop_id',
+        'shop_name',
+        'size',
+        'color',
     ];
 
     public function order()
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function packageItems()
+    {
+        return $this->hasMany(CnPackageItem::class);
+    }
+
+    public function trackingItems()
+    {
+        return $this->hasMany(OrderTrackingItem::class);
     }
 }

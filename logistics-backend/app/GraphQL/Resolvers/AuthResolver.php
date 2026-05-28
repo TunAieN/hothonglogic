@@ -8,6 +8,6 @@ class AuthResolver
 {
     public function me()
     {
-        return Auth::guard('api')->user();
+        return Auth::guard('api')->user()?->load('role');
     }
 }

@@ -82,8 +82,12 @@ CREATE TABLE order_items (
     price_cny DECIMAL(10, 2) NOT NULL COMMENT 'Price in Chinese Yuan',
     quantity INT NOT NULL DEFAULT 1,
     note TEXT,
-    tracking_number VARCHAR(100) COMMENT 'Tracking number after purchase',
     product_image TEXT COMMENT 'Product image URL',
+    seller VARCHAR(255) COMMENT 'Seller/shop display name',
+    shop_id VARCHAR(100) COMMENT 'Source shop identifier',
+    shop_name VARCHAR(255) COMMENT 'Normalized source shop name',
+    size VARCHAR(255) COMMENT 'Selected size',
+    color VARCHAR(255) COMMENT 'Selected color',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
@@ -105,19 +109,37 @@ CREATE TABLE cn_warehouses (
 CREATE TABLE cn_packages (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     warehouse_id BIGINT UNSIGNED NOT NULL,
-    order_id BIGINT UNSIGNED NULL COMMENT 'If matched to an order',
+    order_id BIGINT UNSIGNED NULL COMMENT 'Tracking number belongs to one order',
+    seller VARCHAR(255) NULL COMMENT 'Seller/shop label for this package',
+    shop_id VARCHAR(100) NULL COMMENT 'Shop identifier for this package',
+    shop_name VARCHAR(255) NULL COMMENT 'Shop name for this package',
     tracking_number VARCHAR(100) NOT NULL UNIQUE,
+    declared_value DECIMAL(12, 2) DEFAULT 0 COMMENT 'Package value in RMB for this specific tracking number',
+    carrier VARCHAR(100) DEFAULT 'VN Express',
     weight DECIMAL(8, 2) COMMENT 'Weight in kg',
     volume DECIMAL(10, 2) COMMENT 'Volume in cm³',
     note TEXT,
     status ENUM('matched', 'unmatched') DEFAULT 'unmatched',
     batch_id BIGINT UNSIGNED NULL COMMENT 'Batch this package belongs to',
+    received_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (warehouse_id) REFERENCES cn_warehouses(id) ON DELETE RESTRICT,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
     INDEX idx_tracking_number (tracking_number),
     INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE cn_package_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    cn_package_id BIGINT UNSIGNED NOT NULL,
+    order_item_id BIGINT UNSIGNED NOT NULL,
+    quantity INT NOT NULL DEFAULT 1 COMMENT 'Quantity of this order item in the package',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cn_package_id) REFERENCES cn_packages(id) ON DELETE CASCADE,
+    FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT,
+    UNIQUE KEY uniq_cn_package_item (cn_package_id, order_item_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================

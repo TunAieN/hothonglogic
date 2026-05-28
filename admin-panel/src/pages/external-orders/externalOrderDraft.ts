@@ -70,8 +70,67 @@ export type ExternalOrderDraft = {
   items: ExternalOrderDraftItem[];
 };
 
+const DRAFT_DUPLICATE_WINDOW_MS = 10_000;
+
 export const generateDraftId = () => {
   return `DRAFT-${Date.now()}`;
+};
+
+const normalizeOptionalString = (value?: string | null) => value?.trim() || "";
+
+const getDraftSignature = (draft: Pick<ExternalOrderDraft, "source" | "customer_id" | "order_note" | "items">) =>
+  JSON.stringify({
+    source: normalizeOptionalString(draft.source),
+    customer_id: draft.customer_id ?? null,
+    order_note: normalizeOptionalString(draft.order_note),
+    items: (draft.items || []).map((item) => ({
+      source_item_id: item.source_item_id ?? null,
+      product_name: normalizeOptionalString(item.product_name),
+      product_link: normalizeOptionalString(item.product_link),
+      product_image: normalizeOptionalString(item.product_image),
+      variant: normalizeOptionalString(item.variant),
+      quantity: Number(item.quantity) || 0,
+      price_cny: Number(item.price_cny) || 0,
+      note: normalizeOptionalString(item.note),
+      seller: normalizeOptionalString(item.seller),
+      size: normalizeOptionalString(item.size),
+      color: normalizeOptionalString(item.color),
+    })),
+  });
+
+const isRecentlyCreatedDraft = (draft: ExternalOrderDraft) => {
+  const createdAt = new Date(draft.created_at ?? "").getTime();
+
+  if (Number.isNaN(createdAt)) {
+    return false;
+  }
+
+  return Math.abs(Date.now() - createdAt) <= DRAFT_DUPLICATE_WINDOW_MS;
+};
+
+const dedupeDrafts = (drafts: ExternalOrderDraft[]) => {
+  const seen = new Set<string>();
+  const nextDrafts: ExternalOrderDraft[] = [];
+
+  for (const draft of drafts) {
+    if (!draft || !Array.isArray(draft.items)) {
+      continue;
+    }
+
+    const signature = getDraftSignature(draft);
+    const dedupeKey = isRecentlyCreatedDraft(draft)
+      ? `recent::${signature}`
+      : `draft-id::${draft.draft_id}`;
+
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+
+    seen.add(dedupeKey);
+    nextDrafts.push(draft);
+  }
+
+  return nextDrafts;
 };
 
 export const parseExternalOrderDraft = (value: string | null) => {
@@ -112,7 +171,14 @@ export const loadExternalOrderDrafts = (): ExternalOrderDraft[] => {
       return [];
     }
 
-    return parsed.filter((draft) => draft && Array.isArray(draft.items));
+    const drafts = parsed.filter((draft) => draft && Array.isArray(draft.items));
+    const dedupedDrafts = dedupeDrafts(drafts);
+
+    if (dedupedDrafts.length !== drafts.length) {
+      saveExternalOrderDrafts(dedupedDrafts);
+    }
+
+    return dedupedDrafts;
   } catch (error) {
     console.error("Failed to load external order drafts.", error);
     return [];
@@ -132,6 +198,17 @@ export const addExternalOrderDraft = (draft: ExternalOrderDraft) => {
     created_at: draft.created_at || new Date().toISOString(),
     items: draft.items || [],
   };
+
+  const incomingSignature = getDraftSignature(draftWithId);
+  const duplicatedDraft = drafts.find(
+    (currentDraft) =>
+      isRecentlyCreatedDraft(currentDraft) &&
+      getDraftSignature(currentDraft) === incomingSignature,
+  );
+
+  if (duplicatedDraft) {
+    return duplicatedDraft;
+  }
 
   saveExternalOrderDrafts([draftWithId, ...drafts]);
 

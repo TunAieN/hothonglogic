@@ -56,6 +56,13 @@ export const CUSTOMER_FIELDS = {
   `,
 } as const;
 
+export const CUSTOMER_OPTION_FIELDS = `
+  id
+  code
+  name
+  phone
+` as const;
+
 export const customersGraphql = {
   resource: "customers",
   listQueryName: "customers",

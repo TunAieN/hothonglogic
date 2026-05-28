@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { DeleteButton, NumberField, Show } from "@refinedev/antd";
 import { useShow, useUpdate } from "@refinedev/core";
 import {
+    Alert,
     Avatar,
     Breadcrumb,
     Button,
@@ -32,6 +33,7 @@ import {
     SyncOutlined,
     TruckOutlined,
     UserOutlined,
+    InboxOutlined,
 } from "@ant-design/icons";
 import { Link } from "react-router";
 import type { IOrder, IOrderItem } from "../../interfaces";
@@ -51,16 +53,17 @@ const orderJourneyStatuses = ["pending", "approved", "shipped", "delivered"] as 
 const currencyOptions = { style: "currency", currency: "USD" } as const;
 
 const statusMetaMap: Record<string, StatusMeta> = {
-    pending: { color: "blue", label: "Pending" },
-    approved: { color: "gold", label: "Approved" },
-    confirmed: { color: "gold", label: "Confirmed" },
-    deposit: { color: "gold", label: "Confirmed" },
-    shipped: { color: "cyan", label: "Shipped" },
-    receiving: { color: "cyan", label: "Shipped" },
-    delivered: { color: "green", label: "Delivered" },
-    completed: { color: "green", label: "Delivered" },
-    complaint: { color: "red", label: "Complaint" },
-    cancelled: { color: "red", label: "Cancelled" },
+    pending: { color: "blue", label: "Chờ duyệt" },
+    approved: { color: "gold", label: "Đã duyệt" },
+    confirmed: { color: "gold", label: "Đã duyệt" },
+    deposit: { color: "gold", label: "Đã duyệt" },
+    shipped: { color: "cyan", label: "Đang vận chuyển" },
+    receiving: { color: "cyan", label: "Đang vận chuyển" },
+    delivered: { color: "green", label: "Đã giao" },
+    completed: { color: "green", label: "Hoàn thành" },
+    complaint: { color: "red", label: "Khiếu nại" },
+    cancelled: { color: "red", label: "Đã hủy" },
+    rejected: { color: "volcano", label: "Đã từ chối" },
 };
 
 const trackerSteps: Array<{
@@ -209,6 +212,14 @@ const getTrackerStepIndex = (status?: string) => {
 };
 
 const getProductSku = (item: IOrderItem, index: number) => {
+    const variantParts = [item.size, item.color]
+        .map((value) => value?.trim())
+        .filter(Boolean);
+
+    if (variantParts.length > 0) {
+        return variantParts.join(" | ");
+    }
+
     const productCode = item.product_name
         .split(/\s+/)
         .map((part) => part.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
@@ -314,14 +325,113 @@ export const OrderShow = () => {
     const trackerRef = useRef<HTMLDivElement | null>(null);
 
     const record = data?.data;
-
+    const cnPackages = useMemo(() => record?.cn_packages ?? [], [record?.cn_packages]);
+    const orderTrackings = useMemo(() => record?.order_trackings ?? [], [record?.order_trackings]);
     const items = useMemo(() => record?.items ?? [], [record?.items]);
     const currentStepIndex = getTrackerStepIndex(record?.status);
     const statusMeta = getStatusMeta(record?.status);
+    const allTrackingCodes = useMemo(() => {
+        const trackingMap = new Map<
+            string,
+            {
+                trackingNumber: string;
+                carrier?: string | null;
+                declaredValue?: number | null;
+                status?: string | null;
+                warehouseName?: string | null;
+                createdAt?: string | null;
+                shops: string[];
+                items: string[];
+            }
+        >();
+
+        orderTrackings.forEach((tracking) => {
+            const trackingNumber = tracking.tracking_number?.trim();
+
+            if (!trackingNumber) {
+                return;
+            }
+
+            const shops = Array.from(
+                new Set(
+                    (tracking.tracking_items ?? [])
+                        .map(
+                            (trackingItem) =>
+                                trackingItem.order_item?.shop_name ??
+                                trackingItem.order_item?.seller ??
+                                trackingItem.order_item?.shop_id ??
+                                null,
+                        )
+                        .filter((value): value is string => Boolean(value)),
+                ),
+            );
+
+            const itemLabels = (tracking.tracking_items ?? []).map((trackingItem) => {
+                const itemName = trackingItem.order_item?.product_name ?? "Sản phẩm";
+                return `${itemName} x${trackingItem.quantity ?? 0}`;
+            });
+
+            trackingMap.set(trackingNumber.toUpperCase(), {
+                trackingNumber,
+                carrier: tracking.carrier,
+                declaredValue: tracking.declared_value,
+                status: tracking.status,
+                warehouseName: null,
+                createdAt: null,
+                shops,
+                items: itemLabels,
+            });
+        });
+
+        cnPackages.forEach((pkg) => {
+            const trackingNumber = pkg.tracking_number?.trim();
+
+            if (!trackingNumber) {
+                return;
+            }
+
+            const key = trackingNumber.toUpperCase();
+            const existing = trackingMap.get(key);
+            const packageItems = (pkg.package_items ?? []).map((packageItem) => {
+                const itemName = packageItem.order_item?.product_name ?? "Sản phẩm";
+                return `${itemName} x${packageItem.quantity ?? 0}`;
+            });
+            const packageShops = Array.from(
+                new Set(
+                    (pkg.order_tracking?.tracking_items ?? [])
+                        .map(
+                            (trackingItem) =>
+                                trackingItem.order_item?.shop_name ??
+                                trackingItem.order_item?.seller ??
+                                trackingItem.order_item?.shop_id ??
+                                null,
+                        )
+                        .filter((value): value is string => Boolean(value)),
+                ),
+            );
+
+            trackingMap.set(key, {
+                trackingNumber,
+                carrier: pkg.carrier ?? existing?.carrier,
+                declaredValue: pkg.declared_value ?? existing?.declaredValue,
+                status: pkg.status ?? existing?.status,
+                warehouseName: pkg.warehouse?.name ?? existing?.warehouseName,
+                createdAt: pkg.received_at ?? pkg.created_at ?? existing?.createdAt,
+                shops: Array.from(new Set([...(existing?.shops ?? []), ...packageShops])),
+                items: Array.from(new Set([...(existing?.items ?? []), ...packageItems])),
+            });
+        });
+
+        return Array.from(trackingMap.values());
+    }, [cnPackages, orderTrackings]);
 
     const itemsSubtotal = useMemo(
         () => items.reduce((sum, item) => sum + item.price_cny * item.quantity, 0),
         [items],
+    );
+    const packageRiskSubtotal = useMemo(
+        () => cnPackages.reduce((sum, pkg) => sum + (pkg.declared_value ?? 0), 0),
+        [cnPackages],
     );
 
     const handleTrackOrder = () => {
@@ -612,6 +722,11 @@ export const OrderShow = () => {
                                                                 <Text style={{ ...mutedTextStyle, fontSize: 12 }}>
                                                                     {getProductSku(item, index)}
                                                                 </Text>
+                                                                {item.seller ? (
+                                                                    <Text style={{ ...mutedTextStyle, fontSize: 12 }}>
+                                                                        Shop: {item.seller}
+                                                                    </Text>
+                                                                ) : null}
                                                                 <Text style={{ ...mutedTextStyle, fontSize: 13 }}>
                                                                     Quantity: {item.quantity}
                                                                 </Text>
@@ -685,7 +800,10 @@ export const OrderShow = () => {
                                                 Total Amount
                                             </Text>
                                             <Title level={2} style={{ margin: 0, color: "#0b4aa2" }}>
-                                                <NumberField value={record?.total_amount} options={currencyOptions} />
+                                                <NumberField
+                                                    value={items.length > 0 ? itemsSubtotal : record?.total_amount}
+                                                    options={currencyOptions}
+                                                />
                                             </Title>
                                         </div>
                                     </Space>
@@ -778,6 +896,67 @@ export const OrderShow = () => {
                                             label="Delivery Status"
                                             value={statusMeta.label}
                                         />
+
+                                        <Divider style={{ margin: 0, borderColor: "#e7edf6" }} />
+
+                                        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                                            <Space size={10}>
+                                                <InboxOutlined style={{ color: "#0b4aa2" }} />
+                                                <Title level={5} style={{ margin: 0, color: "#0f172a" }}>
+                                                    Guangzhou Warehouse Packages
+                                                </Title>
+                                            </Space>
+                                            <Text style={mutedTextStyle}>
+                                                Tất cả mã vận đơn hiện có của đơn hàng này. Tổng giá trị khai báo hiện tại:
+                                                {" "}{packageRiskSubtotal} RMB.
+                                            </Text>
+
+                                            {allTrackingCodes.length === 0 ? (
+                                                <Alert
+                                                    type="info"
+                                                    showIcon
+                                                    message="Chưa có mã vận đơn"
+                                                    description="Đơn hàng này hiện chưa có tracking number nào được liên kết."
+                                                />
+                                            ) : (
+                                                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                                                    {allTrackingCodes.map((tracking) => (
+                                                        <Card
+                                                            key={tracking.trackingNumber}
+                                                            size="small"
+                                                            styles={{ body: { padding: 14 } }}
+                                                        >
+                                                            <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                                                                <Text strong>{tracking.trackingNumber}</Text>
+                                                                <Text type="secondary">
+                                                                    {(tracking.warehouseName ?? "Kho Quảng Châu")} • {(tracking.status ?? "pending").toUpperCase()}
+                                                                </Text>
+                                                                <Text type="secondary">
+                                                                    Carrier: {tracking.carrier ?? "VN Express"} • Giá trị khai báo: {tracking.declaredValue ?? 0} RMB
+                                                                </Text>
+                                                                {tracking.shops.length > 0 ? (
+                                                                    <Text type="secondary">
+                                                                        Shop: {tracking.shops.join(", ")}
+                                                                    </Text>
+                                                                ) : null}
+                                                                {tracking.items.length > 0 ? (
+                                                                    <Text type="secondary">
+                                                                        Sản phẩm: {tracking.items.join(", ")}
+                                                                    </Text>
+                                                                ) : (
+                                                                    <Text type="secondary">
+                                                                        Chưa liên kết sản phẩm cho mã vận đơn này.
+                                                                    </Text>
+                                                                )}
+                                                                <Text type="secondary">
+                                                                    Created at {formatDateTime(tracking.createdAt ?? undefined)}
+                                                                </Text>
+                                                            </Space>
+                                                        </Card>
+                                                    ))}
+                                                </Space>
+                                            )}
+                                        </Space>
                                     </Space>
                                 </Card>
                             </Space>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGetIdentity, useList } from "@refinedev/core";
 import { Dayjs } from "dayjs";
 import {
@@ -116,13 +116,7 @@ const normalizeDraft = (draft: ExternalOrderDraft | undefined) => {
 
 const composeItemNote = (item: EditableDraftItem) => {
   const detailNote = item.note?.trim();
-  const variant = item.variant?.trim();
-
-  if (variant && detailNote) {
-    return `${variant}\n${detailNote}`;
-  }
-
-  return variant || detailNote || "";
+  return detailNote || "";
 };
 
 const formatCny = (value: number) =>
@@ -162,6 +156,7 @@ export const ExternalOrderCreate = () => {
   const [drafts, setDrafts] = useState<ExternalOrderDraft[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [filters, setFilters] = useState({
     orderCode: "",
     status: "all",
@@ -372,6 +367,13 @@ export const ExternalOrderCreate = () => {
   };
 
   const handleSubmitDraft = async (draftId?: string) => {
+    if (isSubmitting || submitLockRef.current) {
+      console.warn("[ExternalOrderCreate] Ignored duplicate create order request.", {
+        draftId: draftId ?? selectedDraftId,
+      });
+      return;
+    }
+
     const targetDraftId = draftId ?? selectedDraftId;
     const targetDraft = drafts.find(
       (draft) => draft.draft_id === targetDraftId,
@@ -405,14 +407,26 @@ export const ExternalOrderCreate = () => {
         price_cny: item.price_cny,
         quantity: item.quantity,
         note: composeItemNote(item) || undefined,
+        seller: item.seller?.trim() || undefined,
+        size: item.size?.trim() || undefined,
+        color: item.color?.trim() || undefined,
       })),
     };
 
     try {
+      submitLockRef.current = true;
       setIsSubmitting(true);
+      console.log("[ExternalOrderCreate] Sending create order request.", {
+        draftId: targetDraft.draft_id,
+        itemCount: payload.items.length,
+      });
       const result = await dataProvider.create<IOrder>({
         resource: "orders",
         variables: payload,
+      });
+      console.log("[ExternalOrderCreate] Create order request completed.", {
+        draftId: targetDraft.draft_id,
+        orderId: result.data.id,
       });
 
       const nextDrafts = removeExternalOrderDraft(targetDraft.draft_id);
@@ -428,6 +442,7 @@ export const ExternalOrderCreate = () => {
           : "Không thể tạo đơn hàng ngoài frontend.",
       );
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -992,7 +1007,7 @@ export const ExternalOrderCreate = () => {
                   type="dashed"
                   icon={<PlusOutlined />}
                   onClick={addEmptyItem}
-                  disabled={!selectedDraft}
+                  disabled={!selectedDraft || isSubmitting}
                 >
                   Thêm sản phẩm
                 </Button>
@@ -1057,10 +1072,11 @@ export const ExternalOrderCreate = () => {
                   type="primary"
                   size="large"
                   loading={isSubmitting}
+                  htmlType="button"
                   onClick={() => handleSubmitDraft()}
-                  disabled={!selectedDraft}
+                  disabled={!selectedDraft || isSubmitting}
                 >
-                  Xác nhận tạo đơn hàng
+                  {isSubmitting ? "Đang tạo..." : "Xác nhận tạo đơn hàng"}
                 </Button>
                 <Button size="large" onClick={() => navigate("/orders")}>
                   Quay lại giỏ hàng

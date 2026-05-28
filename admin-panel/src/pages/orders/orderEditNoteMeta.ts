@@ -4,10 +4,13 @@ const META_START = "[order-edit-meta]";
 const META_END = "[/order-edit-meta]";
 
 const defaultShippingEntry = (): ShippingEntryFormValue => ({
+  packageId: undefined,
   trackingCode: "",
   parcelValue: 0,
   shippingCompany: "vn-express",
   packagingType: "wooden-crating",
+  packageNote: "",
+  selectedItems: [],
 });
 
 export const getDefaultShippingEntry = defaultShippingEntry;
@@ -32,10 +35,21 @@ const toShippingEntries = (value: unknown): ShippingEntryFormValue[] => {
     }
 
     return {
+      packageId: toStringValue(entry.packageId) || undefined,
       trackingCode: toStringValue(entry.trackingCode),
       parcelValue: toNumberValue(entry.parcelValue, 0),
       shippingCompany: toStringValue(entry.shippingCompany, "vn-express"),
       packagingType: toStringValue(entry.packagingType, "wooden-crating"),
+      packageNote: toStringValue(entry.packageNote),
+      selectedItems: Array.isArray(entry.selectedItems)
+        ? entry.selectedItems
+            .filter(isObject)
+            .map((selectedItem) => ({
+              orderItemId: toStringValue(selectedItem.orderItemId),
+              quantity: Math.max(0, toNumberValue(selectedItem.quantity, 0)),
+            }))
+            .filter((selectedItem) => selectedItem.orderItemId && selectedItem.quantity > 0)
+        : [],
     };
   });
 };

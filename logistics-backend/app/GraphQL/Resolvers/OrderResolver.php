@@ -2,20 +2,75 @@
 
 namespace App\GraphQL\Resolvers;
 
+use App\Models\CnPackage;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderTracking;
+use App\Models\OrderTrackingItem;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OrderResolver
 {
-    public function orders()
+    public function list($_, array $args): Builder
     {
-        return Order::with(['customer', 'items'])->get();
+        $filter = $args['filter'] ?? [];
+
+        return Order::query()
+            ->with($this->orderRelations())
+            ->when($this->filled($filter, 'search'), function (Builder $query) use ($filter) {
+                $search = trim((string) $filter['search']);
+
+                $query->where(function (Builder $nestedQuery) use ($search) {
+                    $nestedQuery
+                        ->where('order_code', 'like', '%' . $search . '%')
+                        ->orWhere('status', 'like', '%' . $search . '%')
+                        ->orWhereHas('customer', function (Builder $customerQuery) use ($search) {
+                            $customerQuery
+                                ->where('name', 'like', '%' . $search . '%')
+                                ->orWhere('email', 'like', '%' . $search . '%')
+                                ->orWhere('phone', 'like', '%' . $search . '%')
+                                ->orWhere('address', 'like', '%' . $search . '%');
+                        })
+                        ->orWhereHas('creator', function (Builder $creatorQuery) use ($search) {
+                            $creatorQuery->where('name', 'like', '%' . $search . '%');
+                        });
+                });
+            })
+            ->when($this->filled($filter, 'customer_id'), fn (Builder $query) => $query->where(
+                'customer_id',
+                $filter['customer_id'],
+            ))
+            ->when($this->filled($filter, 'created_by'), fn (Builder $query) => $query->where(
+                'created_by',
+                $filter['created_by'],
+            ))
+            ->when($this->filled($filter, 'order_code'), function (Builder $query) use ($filter) {
+                $query->where('order_code', 'like', '%' . trim((string) $filter['order_code']) . '%');
+            })
+            ->when($this->filled($filter, 'status'), fn (Builder $query) => $query->where(
+                'status',
+                $filter['status'],
+            ))
+            ->when($this->filled($filter, 'created_from'), fn (Builder $query) => $query->where(
+                'created_at',
+                '>=',
+                $filter['created_from'],
+            ))
+            ->when($this->filled($filter, 'created_to'), fn (Builder $query) => $query->where(
+                'created_at',
+                '<=',
+                $filter['created_to'],
+            ))
+            ->latest('created_at')
+            ->latest('id');
     }
 
     public function create($_, array $args)
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             throw new \Exception('Unauthenticated. Please login to create an order.');
         }
 
@@ -36,43 +91,49 @@ class OrderResolver
             ]);
 
             foreach ($input['items'] as $item) {
-                $order->items()->create($item);
+                $order->items()->create($this->normalizeOrderItemPayload($item));
             }
 
-            return $order->load('items', 'customer', 'creator');
+            if (array_key_exists('packages', $input) && is_array($input['packages'])) {
+                $this->syncOrderTrackings($order->fresh('items'), $input['packages']);
+            }
+
+            return $order->fresh()->load($this->orderRelations());
         });
     }
-    
+
     public function update($_, array $args)
     {
-        // if (!auth('api')->check()) {
-        //     throw new \Exception(
-        //         'Unauthenticated. Please login to update an order.'
-        //     );
-        // }
-
         return DB::transaction(function () use ($args) {
-            $id = $args['id'];
+            $order = Order::findOrFail($args['id']);
             $input = $args['input'];
 
-            $order = Order::findOrFail($id);
+            if (! $this->isOrderEditable($order)) {
+                throw new HttpException(403, 'Order has been approved and can no longer be updated.');
+            }
+
             $nextItems = null;
 
             if (array_key_exists('items', $input) && is_array($input['items'])) {
                 $nextItems = $input['items'];
             }
 
+            if ($nextItems !== null && array_key_exists('packages', $input)) {
+                throw new HttpException(422, 'Cannot sync trackings while replacing order items in the same request.');
+            }
+
             $total = $nextItems !== null
-                ? collect($nextItems)->sum(function ($item) {
-                    return $item['price_cny'] * $item['quantity'];
-                })
-                : $order->total_amount;
+                ? collect($nextItems)->sum(fn ($item) => $item['price_cny'] * $item['quantity'])
+                : (float) $order->items()->get()->sum(
+                    fn (OrderItem $item) => (float) $item->price_cny * (int) $item->quantity,
+                );
 
             $order->update([
                 'customer_id' => $input['customer_id'] ?? $order->customer_id,
                 'status' => $input['status'] ?? $order->status,
                 'note' => $input['note'] ?? $order->note,
-                'created_by' => $input['account_manager_id'] ?? $order->created_by,
+                'created_by' => $input['created_by'] ?? $order->created_by,
+                'account_manager_id' => $input['account_manager_id'] ?? $order->account_manager_id,
                 'total_amount' => $total,
             ]);
 
@@ -80,11 +141,15 @@ class OrderResolver
                 $order->items()->delete();
 
                 foreach ($nextItems as $item) {
-                    $order->items()->create($item);
+                    $order->items()->create($this->normalizeOrderItemPayload($item));
                 }
             }
 
-            return $order->load('items', 'customer', 'creator');
+            if (array_key_exists('packages', $input) && is_array($input['packages'])) {
+                $this->syncOrderTrackings($order->fresh('items'), $input['packages']);
+            }
+
+            return $order->fresh()->load($this->orderRelations());
         });
     }
 
@@ -92,7 +157,7 @@ class OrderResolver
     {
         return DB::transaction(function () use ($args) {
             $order = Order::query()
-                ->with(['items', 'customer', 'creator'])
+                ->with($this->orderRelations())
                 ->findOrFail($args['id']);
 
             $deletedOrder = $order->replicate();
@@ -100,11 +165,367 @@ class OrderResolver
             $deletedOrder->setRelation('items', $order->items);
             $deletedOrder->setRelation('customer', $order->customer);
             $deletedOrder->setRelation('creator', $order->creator);
+            $deletedOrder->setRelation('cnPackages', $order->cnPackages);
+            $deletedOrder->setRelation('orderTrackings', $order->orderTrackings);
 
             $order->items()->delete();
             $order->delete();
 
             return $deletedOrder;
         });
+    }
+
+    public function mockReceiveAtGuangzhouWarehouse($_, array $args): array
+    {
+        return DB::transaction(function () use ($args) {
+            $package = CnPackage::query()
+                ->with(['warehouse', 'order.items', 'order.customer', 'order.creator', 'orderTracking.trackingItems.orderItem'])
+                ->findOrFail($args['package_id']);
+
+            $order = $package->order;
+
+            if (! $order) {
+                throw new HttpException(422, 'Package is not linked to any order.');
+            }
+
+            if (! $this->isOrderEditable($order)) {
+                throw new HttpException(403, 'Order has been approved and can no longer be updated.');
+            }
+
+            $tracking = $package->orderTracking;
+
+            if (! $tracking || $tracking->trackingItems->isEmpty()) {
+                throw new HttpException(422, 'Order tracking must contain at least one order item.');
+            }
+
+            $package->update([
+                'tracking_number' => $package->tracking_number ?: $tracking->tracking_number,
+                'declared_value' => $tracking->declared_value ?? $this->calculateDeclaredValue($tracking->trackingItems),
+                'carrier' => $package->carrier ?: ($tracking->carrier ?: 'VN Express'),
+                'status' => 'matched',
+                'received_at' => $package->received_at ?? now(),
+                'note' => 'Mock warehouse receive for development testing',
+            ]);
+
+            $tracking->update(['status' => 'received']);
+
+            return [
+                'order' => $order->fresh()->load($this->orderRelations()),
+                'package' => $package->fresh()->load(['warehouse', 'order.customer', 'order.creator', 'orderTracking.trackingItems.orderItem']),
+            ];
+        });
+    }
+
+    public function createPackagesByShop($_, array $args): Order
+    {
+        return DB::transaction(function () use ($args) {
+            $order = Order::query()
+                ->with(['items', 'customer', 'creator', 'orderTrackings.trackingItems'])
+                ->findOrFail($args['order_id']);
+
+            if (! $this->isOrderEditable($order)) {
+                throw new HttpException(403, 'Order has been approved and can no longer be updated.');
+            }
+
+            $order->orderTrackings()->delete();
+
+            $groupedItems = $order->items->groupBy(function (OrderItem $item) {
+                return $this->resolvePackageGroupingKey($item);
+            })->values();
+
+            foreach ($groupedItems as $index => $items) {
+                $trackingNumber = sprintf('PENDING-%s-%02d', $order->id, $index + 1);
+                $declaredValue = (float) $items->sum(
+                    fn (OrderItem $item) => (float) $item->price_cny * (int) $item->quantity,
+                );
+
+                $tracking = OrderTracking::query()->create([
+                    'order_id' => $order->id,
+                    'tracking_number' => $trackingNumber,
+                    'carrier' => 'VN Express',
+                    'declared_value' => $declaredValue,
+                    'note' => 'Auto generated pending tracking by shop for development testing',
+                    'status' => 'pending',
+                ]);
+
+                foreach ($items as $item) {
+                    OrderTrackingItem::query()->create([
+                        'order_tracking_id' => $tracking->id,
+                        'order_item_id' => $item->id,
+                        'quantity' => max(1, (int) $item->quantity),
+                    ]);
+                }
+            }
+
+            return $order->fresh()->load($this->orderRelations());
+        });
+    }
+
+    private function isOrderEditable(Order $order): bool
+    {
+        return strtolower((string) $order->status) === 'pending';
+    }
+
+    private function normalizeOrderItemPayload(array $item): array
+    {
+        $seller = $this->normalizeOptionalString($item['seller'] ?? null);
+        $shopId = $this->normalizeOptionalString($item['shop_id'] ?? null);
+        $shopName = $this->normalizeOptionalString($item['shop_name'] ?? null);
+
+        return [
+            ...$item,
+            'seller' => $seller,
+            'shop_id' => $shopId,
+            'shop_name' => $shopName ?? $seller,
+        ];
+    }
+
+    private function calculateDeclaredValue($trackingItems): float
+    {
+        return (float) collect($trackingItems)->sum(function (OrderTrackingItem $trackingItem) {
+            $price = (float) ($trackingItem->orderItem?->price_cny ?? 0);
+            $quantity = (int) ($trackingItem->quantity ?? 0);
+
+            return $price * $quantity;
+        });
+    }
+
+    private function resolvePackageGroupingKey(OrderItem $item): string
+    {
+        $shopId = $this->normalizeOptionalString($item->shop_id);
+        $shopName = $this->normalizeOptionalString($item->shop_name);
+        $seller = $this->normalizeOptionalString($item->seller);
+
+        if ($shopId !== null) {
+            return 'shop-id:' . $shopId;
+        }
+
+        if ($shopName !== null) {
+            return 'shop-name:' . mb_strtolower($shopName);
+        }
+
+        if ($seller !== null) {
+            return 'seller:' . mb_strtolower($seller);
+        }
+
+        return 'unknown-seller';
+    }
+
+    private function syncOrderTrackings(Order $order, array $trackingsInput): void
+    {
+        $orderItems = $order->items()->get()->keyBy(fn (OrderItem $item) => (string) $item->id);
+        $existingTrackingsCollection = $order->orderTrackings()
+            ->with(['trackingItems', 'packages'])
+            ->get();
+        $existingTrackings = $existingTrackingsCollection
+            ->keyBy(fn (OrderTracking $tracking) => (string) $tracking->id);
+        $existingTrackingsByNumber = $existingTrackingsCollection
+            ->keyBy(fn (OrderTracking $tracking) => strtoupper((string) $tracking->tracking_number));
+        $trackingPayloads = collect($trackingsInput)
+            ->values()
+            ->map(fn (array $trackingInput) => $this->normalizeTrackingPayload($trackingInput, $orderItems));
+
+        $this->assertTrackingQuantitiesWithinOrderLimits($trackingPayloads, $orderItems);
+
+        $keepTrackingIds = [];
+
+        foreach ($trackingPayloads as $payload) {
+            $selectedItems = $payload['package_items'];
+            $declaredValue = $this->calculateDeclaredValueFromSelections($selectedItems);
+            $tracking = null;
+
+            if ($payload['id'] !== null) {
+                $tracking = $existingTrackings->get($payload['id']);
+            }
+
+            if (! $tracking) {
+                $tracking = $existingTrackingsByNumber->get($payload['tracking_number']);
+            }
+
+            if ($payload['id'] !== null && ! $tracking) {
+                throw new HttpException(422, 'Tracking does not belong to this order.');
+            }
+
+            $trackingAttributes = [
+                'order_id' => $order->id,
+                'tracking_number' => $payload['tracking_number'],
+                'declared_value' => $declaredValue,
+                'carrier' => $payload['carrier'] ?? 'VN Express',
+                'note' => $payload['note'],
+                'status' => $tracking ? $tracking->status : 'pending',
+            ];
+
+            if ($tracking) {
+                $tracking->update($trackingAttributes);
+            } else {
+                $tracking = OrderTracking::query()->create($trackingAttributes);
+            }
+
+            $keepTrackingIds[] = (string) $tracking->id;
+
+            $tracking->trackingItems()->delete();
+
+            foreach ($selectedItems as $selection) {
+                OrderTrackingItem::query()->create([
+                    'order_tracking_id' => $tracking->id,
+                    'order_item_id' => $selection['order_item']->id,
+                    'quantity' => $selection['quantity'],
+                ]);
+            }
+
+            $this->reconcilePackagesWithTracking($tracking);
+        }
+
+        $trackingsToDelete = $order->orderTrackings()
+            ->whereNotIn('id', $keepTrackingIds === [] ? [-1] : $keepTrackingIds)
+            ->get();
+
+        foreach ($trackingsToDelete as $tracking) {
+            CnPackage::query()
+                ->where('order_tracking_id', $tracking->id)
+                ->update([
+                    'order_tracking_id' => null,
+                    'order_id' => null,
+                    'status' => 'unmatched',
+                ]);
+
+            $tracking->delete();
+        }
+    }
+
+    private function normalizeTrackingPayload(array $trackingInput, $orderItems): array
+    {
+        $selectedItems = collect($trackingInput['package_items'] ?? [])
+            ->map(function (array $selection) use ($orderItems) {
+                $orderItemId = (string) ($selection['order_item_id'] ?? '');
+                $orderItem = $orderItems->get($orderItemId);
+
+                if (! $orderItem) {
+                    throw new HttpException(422, 'Selected tracking item does not belong to this order.');
+                }
+
+                $quantity = max(0, (int) ($selection['quantity'] ?? 0));
+
+                if ($quantity <= 0) {
+                    throw new HttpException(422, 'Tracking item quantity must be greater than 0.');
+                }
+
+                return [
+                    'order_item' => $orderItem,
+                    'quantity' => $quantity,
+                ];
+            })
+            ->values();
+
+        if ($selectedItems->isEmpty()) {
+            throw new HttpException(422, 'Each tracking must contain at least one order item.');
+        }
+
+        $trackingNumber = $this->normalizeOptionalString($trackingInput['tracking_number'] ?? null);
+
+        if ($trackingNumber === null) {
+            throw new HttpException(422, 'Tracking number is required.');
+        }
+
+        return [
+            'id' => isset($trackingInput['id']) ? (string) $trackingInput['id'] : null,
+            'tracking_number' => strtoupper($trackingNumber),
+            'carrier' => $this->normalizeOptionalString($trackingInput['carrier'] ?? null),
+            'note' => $this->normalizeOptionalString($trackingInput['note'] ?? null),
+            'package_items' => $selectedItems,
+        ];
+    }
+
+    private function assertTrackingQuantitiesWithinOrderLimits($trackingPayloads, $orderItems): void
+    {
+        $totalsByOrderItemId = [];
+
+        foreach ($trackingPayloads as $payload) {
+            foreach ($payload['package_items'] as $selection) {
+                $orderItemId = (string) $selection['order_item']->id;
+                $totalsByOrderItemId[$orderItemId] = ($totalsByOrderItemId[$orderItemId] ?? 0) + $selection['quantity'];
+            }
+        }
+
+        foreach ($totalsByOrderItemId as $orderItemId => $assignedQuantity) {
+            /** @var OrderItem|null $orderItem */
+            $orderItem = $orderItems->get($orderItemId);
+
+            if (! $orderItem) {
+                throw new HttpException(422, 'Selected tracking item does not belong to this order.');
+            }
+
+            if ($assignedQuantity > (int) $orderItem->quantity) {
+                throw new HttpException(
+                    422,
+                    sprintf('Assigned tracking quantity exceeds available order quantity for item "%s".', $orderItem->product_name),
+                );
+            }
+        }
+    }
+
+    private function calculateDeclaredValueFromSelections($selectedItems): float
+    {
+        return (float) $selectedItems->sum(function (array $selection) {
+            /** @var OrderItem $orderItem */
+            $orderItem = $selection['order_item'];
+
+            return (float) $orderItem->price_cny * (int) $selection['quantity'];
+        });
+    }
+
+    private function reconcilePackagesWithTracking(OrderTracking $tracking): void
+    {
+        $packages = CnPackage::query()
+            ->where('tracking_number', $tracking->tracking_number)
+            ->get();
+
+        foreach ($packages as $package) {
+            $package->update([
+                'order_id' => $tracking->order_id,
+                'order_tracking_id' => $tracking->id,
+                'declared_value' => $tracking->declared_value,
+                'carrier' => $package->carrier ?: ($tracking->carrier ?: 'VN Express'),
+                'status' => 'matched',
+            ]);
+        }
+
+        $hasPackages = $packages->isNotEmpty();
+        $hasReceivedPackages = $packages->contains(fn (CnPackage $package) => $package->received_at !== null);
+
+        $tracking->update([
+            'status' => $hasReceivedPackages ? 'received' : ($hasPackages ? 'matched' : 'pending'),
+        ]);
+    }
+
+    private function orderRelations(): array
+    {
+        return [
+            'items',
+            'customer',
+            'creator',
+            'cnPackages.warehouse',
+            'cnPackages.orderTracking',
+            'orderTrackings.trackingItems.orderItem',
+            'orderTrackings.packages',
+        ];
+    }
+
+    private function normalizeOptionalString(mixed $value): ?string
+    {
+        $normalized = trim((string) ($value ?? ''));
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function filled(array $values, string $key): bool
+    {
+        if (! array_key_exists($key, $values)) {
+            return false;
+        }
+
+        $value = $values[$key];
+
+        return $value !== null && trim((string) $value) !== '';
     }
 }

@@ -4,31 +4,49 @@ import type {
   DeleteOneParams,
   GetListParams,
   GetOneParams,
+  CrudFilter,
+  LogicalFilter,
 } from "@refinedev/core";
 import { client, getGraphqlAuthHeaders, GRAPHQL_API_URL, syncGraphqlAuthToken } from "./graphqlClient";
 import { fieldMap, resourceGraphqlMap, type MutationConfig, type ResourceGraphqlConfig, type ResourceName } from "../graphql";
 import type {
+  CnBatch,
+  CnBatchCreateInput,
+  CnBatchUpdateInput,
+  CnPackage,
+  CnPackageCreateInput,
+  CnPackageUpdateInput,
   Customer,
   CustomerCreateInput,
   CustomerUpdateInput,
   Order,
   OrderCreateInput,
   OrderUpdateInput,
+  User,
 } from "../types";
 
 type ResourceRecordMap = {
+  cnBatches: CnBatch;
+  cnPackages: CnPackage;
   customers: Customer;
   orders: Order;
+  users: User;
 };
 
 type ResourceCreateInputMap = {
+  cnBatches: CnBatchCreateInput;
+  cnPackages: CnPackageCreateInput;
   customers: CustomerCreateInput;
   orders: OrderCreateInput;
+  users: never;
 };
 
 type ResourceUpdateInputMap = {
+  cnBatches: CnBatchUpdateInput;
+  cnPackages: CnPackageUpdateInput;
   customers: CustomerUpdateInput;
   orders: OrderUpdateInput;
+  users: never;
 };
 
 type PaginatedResponse<TRecord> = {
@@ -36,6 +54,11 @@ type PaginatedResponse<TRecord> = {
   paginatorInfo: {
     total: number;
   };
+};
+
+type ListMetaOverrides = {
+  fields?: string;
+  listQueryName?: string;
 };
 
 type ListGraphQLResponse<TResource extends ResourceName> = Record<
@@ -72,9 +95,14 @@ const getPagination = (pagination?: GetListParams["pagination"]) => {
   };
 };
 
-const buildListQuery = (queryName: string, fields: string) => `
-  query ($page: Int!, $first: Int!) {
-    ${queryName}(first: $first, page: $page) {
+const buildListQuery = (
+  queryName: string,
+  fields: string,
+  listArguments = "first: $first, page: $page",
+  variableDefinitions = "$page: Int!, $first: Int!",
+) => `
+  query (${variableDefinitions}) {
+    ${queryName}(${listArguments}) {
       data {
         ${fields}
       }
@@ -125,19 +153,167 @@ const requestWithAuth = async <TResponse>(
   return client.request<TResponse>(query, variables, getGraphqlAuthHeaders());
 };
 
+type OrdersListFilter = {
+  search?: string;
+  customer_id?: string;
+  created_by?: string;
+  order_code?: string;
+  status?: string;
+  created_from?: string;
+  created_to?: string;
+};
+
+type CustomersListFilter = {
+  search?: string;
+  status?: string;
+  vip_group?: string;
+  province?: string;
+  phone?: string;
+  created_from?: string;
+  created_to?: string;
+};
+
+const isLogicalFilter = (filter: CrudFilter): filter is LogicalFilter =>
+  "field" in filter && "operator" in filter;
+
+const normalizeFilterValue = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized === "" ? undefined : normalized;
+  }
+
+  return value === null ? undefined : value;
+};
+
+const getOrdersListFilter = (filters?: GetListParams["filters"]): OrdersListFilter | undefined => {
+  if (!filters) {
+    return undefined;
+  }
+
+  const mappedFilter: OrdersListFilter = {};
+
+  filters
+    .filter(isLogicalFilter)
+    .forEach((filter) => {
+      const value = normalizeFilterValue(filter.value);
+
+      if (value === undefined) {
+        return;
+      }
+
+      switch (filter.field) {
+        case "search":
+          mappedFilter.search = String(value);
+          break;
+        case "customer_id":
+          mappedFilter.customer_id = String(value);
+          break;
+        case "created_by":
+          mappedFilter.created_by = String(value);
+          break;
+        case "order_code":
+          mappedFilter.order_code = String(value);
+          break;
+        case "status":
+          mappedFilter.status = String(value);
+          break;
+        case "created_from":
+          mappedFilter.created_from = String(value);
+          break;
+        case "created_to":
+          mappedFilter.created_to = String(value);
+          break;
+        default:
+          break;
+      }
+    });
+
+  return Object.keys(mappedFilter).length > 0 ? mappedFilter : undefined;
+};
+
+const getCustomersListFilter = (
+  filters?: GetListParams["filters"],
+): CustomersListFilter | undefined => {
+  if (!filters) {
+    return undefined;
+  }
+
+  const mappedFilter: CustomersListFilter = {};
+
+  filters
+    .filter(isLogicalFilter)
+    .forEach((filter) => {
+      const value = normalizeFilterValue(filter.value);
+
+      if (value === undefined) {
+        return;
+      }
+
+      switch (filter.field) {
+        case "search":
+          mappedFilter.search = String(value);
+          break;
+        case "status":
+          mappedFilter.status = String(value);
+          break;
+        case "vip_group":
+          mappedFilter.vip_group = String(value);
+          break;
+        case "province":
+          mappedFilter.province = String(value);
+          break;
+        case "phone":
+          mappedFilter.phone = String(value);
+          break;
+        case "created_from":
+          mappedFilter.created_from = String(value);
+          break;
+        case "created_to":
+          mappedFilter.created_to = String(value);
+          break;
+        default:
+          break;
+      }
+    });
+
+  return Object.keys(mappedFilter).length > 0 ? mappedFilter : undefined;
+};
+
 const getListByResource = async <TResource extends ResourceName>(
   resource: TResource,
   pagination?: GetListParams["pagination"],
+  filters?: GetListParams["filters"],
+  meta?: ListMetaOverrides,
 ) => {
   const config = getResourceConfig(resource);
-  const fields = fieldMap[resource].list;
+  const listQueryName = meta?.listQueryName ?? config.listQueryName;
+  const fields = meta?.fields ?? fieldMap[resource].list;
   const { page, perPage } = getPagination(pagination);
-  const query = buildListQuery(config.listQueryName, fields);
+  const ordersFilter = resource === "orders" ? getOrdersListFilter(filters) : undefined;
+  const customersFilter = resource === "customers" ? getCustomersListFilter(filters) : undefined;
+  const query =
+    resource === "orders"
+      ? buildListQuery(
+          listQueryName,
+          fields,
+          "first: $first, page: $page, filter: $filter",
+          "$page: Int!, $first: Int!, $filter: OrderFilterInput",
+        )
+      : resource === "customers"
+        ? buildListQuery(
+            listQueryName,
+            fields,
+            "first: $first, page: $page, filter: $filter",
+            "$page: Int!, $first: Int!, $filter: CustomerFilterInput",
+          )
+      : buildListQuery(listQueryName, fields);
   const response = await requestWithAuth<ListGraphQLResponse<TResource>>(query, {
     page,
     first: perPage,
+    ...(ordersFilter ? { filter: ordersFilter } : {}),
+    ...(customersFilter ? { filter: customersFilter } : {}),
   });
-  const result = response[config.listQueryName as TResource];
+  const result = response[listQueryName as TResource];
 
   return {
     data: result.data,
@@ -222,6 +398,8 @@ const getList: DataProvider["getList"] = async <TData extends BaseRecord = BaseR
   const result = await getListByResource(
     params.resource as ResourceName,
     params.pagination,
+    params.filters,
+    (params as GetListParams & { meta?: ListMetaOverrides }).meta,
   );
 
   return {

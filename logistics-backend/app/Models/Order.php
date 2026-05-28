@@ -14,7 +14,7 @@ class Order extends Model
         'status',
         'total_amount',
         'created_by',
-        'accountManagerId'
+        'account_manager_id',
     ];
 
     public function items()
@@ -30,5 +30,20 @@ class Order extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function accountManager()
+    {
+        return $this->belongsTo(User::class, 'account_manager_id');
+    }
+
+    public function cnPackages()
+    {
+        return $this->hasMany(CnPackage::class);
+    }
+
+    public function orderTrackings()
+    {
+        return $this->hasMany(OrderTracking::class);
     }
 }

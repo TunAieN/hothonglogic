@@ -1,12 +1,14 @@
 import React from "react";
 import { Layout as AntdLayout, Menu, Typography, Avatar } from "antd";
 import { useLocation, useNavigate } from "react-router";
+import { useGetIdentity } from "@refinedev/core";
 import {
   AppstoreOutlined,
-  CarOutlined,    
-  TeamOutlined,
-  EnvironmentOutlined,
   BarChartOutlined,
+  CarOutlined,
+  EnvironmentOutlined,
+  InboxOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 
 export const CustomSider: React.FC = () => {
@@ -17,12 +19,23 @@ export const CustomSider: React.FC = () => {
     { key: "/", icon: <AppstoreOutlined />, label: "Dashboard" },
     { key: "/customers", icon: <TeamOutlined />, label: "Customers" },
     { key: "/orders", icon: <CarOutlined />, label: "Orders" },
+    { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển" },
+    { key: "/china-warehouse", icon: <InboxOutlined />, label: "Kho hàng Trung Quốc" },
     { key: "/fleet", icon: <CarOutlined />, label: "Fleet Status" },
     { key: "/drivers", icon: <TeamOutlined />, label: "Driver Management" },
     { key: "/routes", icon: <EnvironmentOutlined />, label: "Routes" },
     { key: "/analytics", icon: <BarChartOutlined />, label: "Analytics" },
   ];
 
+  const { data: identity } = useGetIdentity();
+  const ROLE_LABELS: Record<number, string> = {
+    1: "Super Admin",
+    2: "CSKH",
+    3: "Nhân viên kho",
+    4: "Kế toán",
+    5: "Khách hàng",
+};
+  
   return (
     <AntdLayout.Sider
       width={260}
@@ -41,7 +54,17 @@ export const CustomSider: React.FC = () => {
       }}
     >
       <div style={{ padding: "24px 20px", display: "flex", alignItems: "center", gap: "12px" }}>
-        <div style={{ width: 32, height: 32, backgroundColor: "#3182CE", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            backgroundColor: "#3182CE",
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <CarOutlined style={{ fontSize: 18, color: "#fff" }} />
         </div>
         <div>
@@ -65,11 +88,21 @@ export const CustomSider: React.FC = () => {
         />
       </div>
 
-      <div style={{ padding: "20px", borderTop: "1px solid #1A2B45", display: "flex", alignItems: "center", gap: "12px" }}>
+      <div
+        style={{
+          padding: "20px",
+          borderTop: "1px solid #1A2B45",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}
+      >
         <Avatar size={40} src="https://i.pravatar.cc/150?img=11" />
         <div>
-          <div style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>Admin User</div>
-          <div style={{ color: "#3182CE", fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>SUPER ADMIN</div>
+          <div style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>{identity?.name}</div>
+          <div style={{ color: "#3182CE", fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>
+            {identity?.role?.name || ROLE_LABELS[Number(identity?.role_id)] || "Unknown Role"}
+          </div>
         </div>
       </div>
     </AntdLayout.Sider>

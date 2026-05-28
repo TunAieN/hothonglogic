@@ -167,7 +167,7 @@ const formatDate = (value?: string) => {
     }).format(new Date(value));
 };
 
-const formatCustomerLocation = (customer: Partial<ICustomer>) =>
+const formatCustomerLocation = (customer: Pick<ICustomer, "province" | "district" | "ward">) =>
     [customer.ward, customer.district, customer.province].filter(Boolean).join(", ");
 
 const normalizeAddressPart = (value?: string | null) =>
@@ -183,7 +183,7 @@ const normalizeAddressPart = (value?: string | null) =>
         .replace(/^,|,$/g, "")
         .trim() ?? "";
 
-const formatFullAddress = (customer: Partial<ICustomer>) => {
+const formatFullAddress = (customer: Pick<ICustomer, "address" | "ward" | "district" | "province">) => {
     const address = customer.address?.trim();
     const addressNormalized = normalizeAddressPart(address);
 
@@ -225,7 +225,7 @@ const getProfileFromRecord = (record?: ICustomer): CustomerProfile => {
         lifetimeValue: lifetimeValue || mockCustomer.lifetimeValue,
         lifetimeProgress: lifetimeValue ? Math.min(Math.round(lifetimeValue / 650), 100) : 72,
         logisticsRegion: formatCustomerLocation(record) || "Seattle region",
-        orders: orders.length > 0 ? orders : mockCustomer.orders,
+        orders,
     };
 };
 
@@ -467,7 +467,7 @@ export const CustomerShow = () => {
                                         color="#1890ff"
                                         bg="#e6f7ff"
                                         label="Total Orders"
-                                        value={String(customer.orders.length)}
+                                        value={String(customer.orders_count ?? customer.orders.length)}
                                     />
                                 </Col>
                                 <Col xs={24} md={8}>
@@ -504,6 +504,9 @@ export const CustomerShow = () => {
                                     dataSource={customer.orders}
                                     pagination={false}
                                     rowKey="id"
+                                    locale={{
+                                        emptyText: "Customer has no orders yet.",
+                                    }}
                                     scroll={{ x: 960 }}
                                     size="middle"
                                 />

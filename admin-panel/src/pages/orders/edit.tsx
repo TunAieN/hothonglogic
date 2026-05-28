@@ -32,7 +32,12 @@ import {
   type OrderEditFormValues,
   type SelectOption,
 } from "./orderEditTypes";
-import { getDefaultShippingEntry } from "./orderEditNoteMeta";
+import {
+  getDefaultShippingEntry,
+  parseOrderEditNote,
+  serializeOrderEditNote,
+} from "./orderEditNoteMeta";
+import type { ShippingEntryFormValue } from "./orderEditTypes";
 
 const { Content } = Layout;
 const { Title, Text } = Typography;
@@ -522,20 +527,110 @@ const getStatusLabel = (status?: string) => {
 
   switch (normalized) {
     case "approved":
-      return "APPROVED";
+      return "ĐÃ DUYỆT";
     case "pending":
-      return "PENDING";
+      return "CHỜ DUYỆT";
+    case "cancelled":
+      return "ĐÃ HỦY";
+    case "rejected":
+      return "ĐÃ TỪ CHỐI";
     case "shipped":
-      return "SHIPPED";
+      return "ĐANG VẬN CHUYỂN";
     case "completed":
     case "delivered":
-      return "COMPLETED";
+      return "HOÀN THÀNH";
     default:
-      return "ACTIVE";
+      return "ĐANG XỬ LÝ";
   }
 };
 
 const isOrderEditable = (status?: string) => status?.toLowerCase() === "pending";
+
+const validateShippingEntries = (
+  shippingEntries: ShippingEntryFormValue[],
+  orderItems: NonNullable<IOrder["items"]> | undefined,
+) => {
+  const availableQuantityByItemId = new Map(
+    (orderItems ?? []).map((item) => [item.id, item.quantity]),
+  );
+  const assignedQuantityByItemId = new Map<string, number>();
+
+  shippingEntries.forEach((entry, entryIndex) => {
+    if (entry.selectedItems.length === 0) {
+      throw new Error(`Ma van don thu ${entryIndex + 1} chua co san pham nao duoc chon.`);
+    }
+
+    entry.selectedItems.forEach((selectedItem) => {
+      const availableQuantity = availableQuantityByItemId.get(selectedItem.orderItemId);
+
+      if (!availableQuantity) {
+        throw new Error("Co san pham khong con hop le trong danh sach don hang.");
+      }
+
+      if (selectedItem.quantity <= 0) {
+        throw new Error(`So luong cua mot san pham trong ma van don thu ${entryIndex + 1} phai lon hon 0.`);
+      }
+
+      const nextAssignedQuantity =
+        (assignedQuantityByItemId.get(selectedItem.orderItemId) ?? 0) + selectedItem.quantity;
+
+      if (nextAssignedQuantity > availableQuantity) {
+        throw new Error("Tong so luong mot san pham da phan bo vao cac kien hang vuot qua so luong cua don.");
+      }
+
+      assignedQuantityByItemId.set(selectedItem.orderItemId, nextAssignedQuantity);
+    });
+  });
+};
+
+const mapCarrierToShippingCompany = (carrier?: string | null) => {
+  const normalizedCarrier = carrier?.trim().toLowerCase();
+
+  switch (normalizedCarrier) {
+    case "vn express":
+      return "vn-express";
+    case "j&t express":
+      return "jt-express";
+    case "giao hang nhanh":
+      return "ghn";
+    case "dhl ecommerce":
+      return "dhl";
+    default:
+      return "vn-express";
+  }
+};
+
+const mapShippingCompanyToCarrier = (shippingCompany?: string) => {
+  switch (shippingCompany) {
+    case "jt-express":
+      return "J&T Express";
+    case "ghn":
+      return "Giao Hang Nhanh";
+    case "dhl":
+      return "DHL eCommerce";
+    case "vn-express":
+    default:
+      return "VN Express";
+  }
+};
+
+const mapPackageToShippingEntry = (
+  pkg: NonNullable<IOrder["cn_packages"]>[number],
+  fallbackEntry?: ShippingEntryFormValue,
+): ShippingEntryFormValue => ({
+  // Backend expects OrderPackageInput.id to be the order_tracking id, not the cn_package id.
+  packageId: pkg.order_tracking?.id ?? fallbackEntry?.packageId,
+  trackingCode: pkg.tracking_number ?? "",
+  parcelValue: pkg.declared_value ?? 0,
+  shippingCompany: fallbackEntry?.shippingCompany ?? mapCarrierToShippingCompany(pkg.carrier),
+  packagingType: fallbackEntry?.packagingType ?? "wooden-crating",
+  packageNote: pkg.note ?? fallbackEntry?.packageNote ?? "",
+  selectedItems:
+    pkg.package_items?.map((packageItem) => ({
+      orderItemId: packageItem.order_item_id,
+      quantity: packageItem.quantity,
+    })) ?? fallbackEntry?.selectedItems ?? [],
+});
 
 export const OrderEdit = () => {
   const { id } = useParams();
@@ -599,23 +694,26 @@ export const OrderEdit = () => {
       return;
     }
 
+    const { meta, plainNote } = parseOrderEditNote(order.note);
+    const shippingEntries =
+      order.cn_packages && order.cn_packages.length > 0
+        ? order.cn_packages.map((pkg, index) => mapPackageToShippingEntry(pkg, meta.shippingEntries?.[index]))
+        : meta.shippingEntries?.length
+          ? meta.shippingEntries
+          : [getDefaultShippingEntry()];
+
     form.setFieldsValue({
       accountManagerId:
+        meta.accountManagerId ??
         order.creator?.id ??
         identity?.id,
-      customerId: order.customer_id ?? order.customer?.id,
-      receiverName: order.customer?.name || "",
-      receiverPhone: order.customer?.phone || "",
-      receiverAddress: order.customer?.address || "",
-      shippingMethod: "normal",
-      shippingEntries: [
-        {
-          ...getDefaultShippingEntry(),
-          trackingCode: "",
-          parcelValue: order.total_amount || 0,
-        },
-      ],
-      note: order.note || "",
+      customerId: meta.customerId ?? order.customer_id ?? order.customer?.id,
+      receiverName: meta.receiverName || order.customer?.name || "",
+      receiverPhone: meta.receiverPhone || order.customer?.phone || "",
+      receiverAddress: meta.receiverAddress || order.customer?.address || "",
+      shippingMethod: meta.shippingMethod || "normal",
+      shippingEntries,
+      note: plainNote,
     });
   }, [form, identity?.id, order]);
 
@@ -657,12 +755,24 @@ export const OrderEdit = () => {
       return;
     }
 
+    validateShippingEntries(values.shippingEntries, order?.items);
+
     const payload: OrderUpdateInput = {
       account_manager_id: values.accountManagerId,
-      total_amount: values.shippingEntries.reduce((sum, entry) => sum + (entry.parcelValue ?? 0), 0),
       customer_id: values.customerId,
+      packages: values.shippingEntries.map((entry) => ({
+        id: entry.packageId,
+        tracking_number: entry.trackingCode.trim() || null,
+        declared_value: entry.parcelValue ?? 0,
+        carrier: mapShippingCompanyToCarrier(entry.shippingCompany),
+        note: entry.packageNote?.trim() || null,
+        package_items: entry.selectedItems.map((selectedItem) => ({
+          order_item_id: selectedItem.orderItemId,
+          quantity: selectedItem.quantity,
+        })),
+      })),
       status: nextStatus ?? order.status,
-      note: values.note?.trim() || null,
+      note: serializeOrderEditNote(values),
     };
 
     await updateOrder({
@@ -778,6 +888,7 @@ export const OrderEdit = () => {
                           shippingMethodOptions={SHIPPING_METHOD_OPTIONS}
                         />
                         <ShippingInfoSection
+                          orderItems={order?.items ?? []}
                           packagingTypeOptions={PACKAGING_TYPE_OPTIONS}
                           shippingCompanyOptions={SHIPPING_COMPANY_OPTIONS}
                         />
