@@ -39,7 +39,6 @@ import {
     UserOutlined,
 } from "@ant-design/icons";
 import type { ICustomer, IOrder, User } from "../../interfaces";
-import { CUSTOMER_OPTION_FIELDS } from "../../graphql/customers";
 import { dataProvider } from "../../providers/dataProvider";
 import { getTtlCache, setTtlCache } from "../../utils/ttlCache";
 import type { OrderUpdateInput } from "../../types";
@@ -95,6 +94,7 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
     delivered: { color: "blue", label: "Đã giao" },
     completed: { color: "green", label: "Hoàn thành" },
     complaint: { color: "magenta", label: "Khiếu nại" },
+    awaiting_tracking: { color: "geekblue", label: "Chờ mã vận đơn" },
 };
 
 const getStatusMeta = (status?: string) =>
@@ -111,7 +111,23 @@ const STATUS_OPTIONS: SelectOption[] = [
     { value: "completed", label: "Hoàn thành" },
     { value: "complaint", label: "Khiếu nại" },
     { value: "cancelled", label: "Đã hủy" },
+    { value: "awaiting_tracking", label: "Chờ mã vận đơn" },
 ];
+
+STATUS_META.awaiting_deposit = { color: "gold", label: "Chờ đặt cọc" };
+STATUS_META.deposited = { color: "green", label: "Đã đặt cọc" };
+STATUS_META.purchasing = { color: "blue", label: "Đang đặt hàng" };
+STATUS_META.awaiting_tracking = { color: "geekblue", label: "Chờ mã vận đơn" };
+
+STATUS_OPTIONS.splice(2, 0,
+    { value: "awaiting_deposit", label: "Chờ đặt cọc" },
+    { value: "deposited", label: "Đã đặt cọc" },
+    { value: "purchasing", label: "Đang đặt hàng" },
+    { value: "awaiting_tracking", label: "Chờ mã vận đơn" },
+);
+
+STATUS_META["waiting_cn_warehouse"] = { color: "purple", label: "Chờ kho TQ nhận hàng" };
+STATUS_OPTIONS.push({ value: "waiting_cn_warehouse", label: "Chờ kho TQ nhận hàng" });
 
 const normalizeText = (value?: string | number | null) =>
     String(value ?? "")
@@ -125,6 +141,9 @@ const formatDate = (value?: string) =>
     value ? new Date(value).toLocaleDateString() : "-";
 
 const isOrderEditable = (status?: string) => normalizeText(status) === "pending";
+
+const canManageTrackingFromList = (status?: string) =>
+    ["awaiting_tracking", "waiting_cn_warehouse"].includes(normalizeText(status));
 
 const buildSelectOptions = (
     records: ReadonlyArray<{ id?: string; name?: string | null; phone?: string | null }>,
@@ -156,7 +175,7 @@ export const OrderList = () => {
     const [rejectingOrder, setRejectingOrder] = useState<IOrder | null>(null);
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
     const [isRejecting, setIsRejecting] = useState(false);
-    const { tableProps, tableQueryResult, setFilters, setCurrentPage } = useTable<IOrder>({
+    const { tableProps, tableQuery, setFilters, setCurrentPage } = useTable<IOrder>({
         resource: "orders",
         syncWithLocation: true,
     });
@@ -169,7 +188,7 @@ export const OrderList = () => {
             ? tableProps.pagination.total ?? orders.length
             : orders.length;
     const pendingOrders = orders.filter((order) => order.status === "pending").length;
-    const approvedOrders = orders.filter((order) => order.status === "approved").length;
+    const approvedOrders = orders.filter((order) => order.status === "purchasing").length;
     const customerOptions = useMemo(
         () => buildSelectOptions(customerRecords),
         [customerRecords],
@@ -178,7 +197,21 @@ export const OrderList = () => {
         () => buildSelectOptions(staffRecords),
         [staffRecords],
     );
-    const tableComponentProps = tableProps as TableProps<IOrder>;
+    const { pagination: rawPagination, ...restTableComponentProps } =
+        tableProps as TableProps<IOrder> & {
+            pagination?: TableProps<IOrder>["pagination"] & {
+                position?: unknown;
+                placement?: unknown;
+            };
+        };
+    const normalizedTablePagination =
+        rawPagination && typeof rawPagination === "object"
+            ? (() => {
+                  const { position, ...pagination } = rawPagination;
+
+                  return pagination;
+              })()
+            : rawPagination;
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
@@ -219,7 +252,7 @@ export const OrderList = () => {
                       ]
                     : [],
                 meta: {
-                    fields: CUSTOMER_OPTION_FIELDS,
+                    fields: ["id", "code", "name", "phone"],
                 },
             })
             .then((response) => {
@@ -415,7 +448,7 @@ export const OrderList = () => {
                 },
             });
 
-            await tableQueryResult?.refetch?.();
+            await tableQuery?.refetch?.();
             closeRejectModal();
             message.success("Đã từ chối đơn hàng");
         } catch (error) {
@@ -445,7 +478,7 @@ export const OrderList = () => {
                         icon={<UserOutlined />}
                         alt={record.customer?.name}
                     />
-                    <Space direction="vertical" size={0}>
+                    <Space orientation="vertical" size={0}>
                         <Text strong>{record.customer?.name ?? "-"}</Text>
                         <Text type="secondary">{record.customer?.email ?? "-"}</Text>
                     </Space>
@@ -506,6 +539,10 @@ export const OrderList = () => {
                         <Tooltip title="Chỉnh sửa đơn hàng">
                             <EditButton hideText size="small" recordItemId={record.id} />
                         </Tooltip>
+                    ) : canManageTrackingFromList(record.status) ? (
+                        <Tooltip title="Tracking">
+                            <EditButton hideText size="small" recordItemId={record.id} />
+                        </Tooltip>
                     ) : null}
                     {isOrderEditable(record.status) ? (
                         <Tooltip title="Từ chối đơn hàng">
@@ -542,7 +579,7 @@ export const OrderList = () => {
                 </Button>
             )}
         >
-            <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <Space orientation="vertical" size="large" style={{ width: "100%" }}>
                 <Row gutter={[16, 16]}>
                     <Col xs={24} md={8}>
                         <Card>
@@ -565,7 +602,7 @@ export const OrderList = () => {
                     <Col xs={24} md={8}>
                         <Card>
                             <Statistic
-                                title="Approved Orders"
+                                title="Purchasing Orders"
                                 value={approvedOrders}
                                 prefix={<CheckCircleOutlined />}
                             />
@@ -694,7 +731,12 @@ export const OrderList = () => {
                 </Card>
 
                 <Card>
-                    <Table<IOrder> {...tableComponentProps} columns={columns} rowKey="id" />
+                    <Table<IOrder>
+                        {...restTableComponentProps}
+                        columns={columns}
+                        pagination={normalizedTablePagination}
+                        rowKey="id"
+                    />
                 </Card>
             </Space>
 
@@ -706,9 +748,10 @@ export const OrderList = () => {
                 okText="Xác nhận từ chối"
                 cancelText="Hủy"
                 okButtonProps={{ danger: true, loading: isRejecting }}
-                destroyOnClose
+                destroyOnHidden
+                forceRender
             >
-                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
                     <Text>Bạn có chắc chắn muốn từ chối đơn hàng này không?</Text>
                     <Form<RejectOrderFormValues> form={rejectForm} layout="vertical">
                         <Form.Item

@@ -1,16 +1,18 @@
 import { Col, Form, Input, Row, Select } from "antd";
-import { CarOutlined } from "@ant-design/icons";
+import { UserOutlined } from "@ant-design/icons";
 import { OrderEditSectionCard } from "./OrderEditSectionCard";
 import type { OrderEditFormValues, SelectOption } from "../orderEditTypes";
 
 type ReceiverInformationSectionProps = {
   shippingMethodOptions: SelectOption[];
+  disabled?: boolean;
 };
 
 export const ReceiverInformationSection = ({
   shippingMethodOptions,
+  disabled = false,
 }: ReceiverInformationSectionProps) => (
-  <OrderEditSectionCard icon={<CarOutlined />} title="Receiver Information">
+  <OrderEditSectionCard icon={<UserOutlined />} title="Thông tin người nhận">
     <Row gutter={[20, 0]}>
       <Col xs={24} md={12}>
         <Form.Item<OrderEditFormValues>
@@ -18,7 +20,7 @@ export const ReceiverInformationSection = ({
           name="receiverName"
           rules={[{ required: true, message: "Vui lòng nhập tên người nhận" }]}
         >
-          <Input placeholder="Nhập tên người nhận" />
+          <Input disabled={disabled} placeholder="Nhập tên người nhận" />
         </Form.Item>
       </Col>
       <Col xs={24} md={12}>
@@ -27,7 +29,7 @@ export const ReceiverInformationSection = ({
           name="receiverPhone"
           rules={[{ required: true, message: "Vui lòng nhập số điện thoại" }]}
         >
-          <Input placeholder="Nhập số điện thoại" />
+          <Input disabled={disabled} placeholder="Nhập số điện thoại" />
         </Form.Item>
       </Col>
       <Col xs={24}>
@@ -36,7 +38,7 @@ export const ReceiverInformationSection = ({
           name="receiverAddress"
           rules={[{ required: true, message: "Vui lòng nhập địa chỉ nhận" }]}
         >
-          <Input placeholder="Nhập địa chỉ người nhận" />
+          <Input disabled={disabled} placeholder="Nhập địa chỉ nhận" />
         </Form.Item>
       </Col>
       <Col xs={24}>
@@ -46,6 +48,7 @@ export const ReceiverInformationSection = ({
           rules={[{ required: true, message: "Vui lòng chọn phương thức vận chuyển" }]}
         >
           <Select
+            disabled={disabled}
             options={shippingMethodOptions}
             placeholder="Chọn phương thức vận chuyển"
           />

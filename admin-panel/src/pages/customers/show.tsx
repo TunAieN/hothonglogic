@@ -1,7 +1,6 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Show } from "@refinedev/antd";
 import { useShow } from "@refinedev/core";
-import { useNavigate } from "react-router";
 import {
     Avatar,
     Breadcrumb,
@@ -24,7 +23,6 @@ import {
     CalendarOutlined,
     DownloadOutlined,
     EnvironmentOutlined,
-    ExportOutlined,
     HomeOutlined,
     MailOutlined,
     MoreOutlined,
@@ -36,7 +34,8 @@ import {
     UserOutlined,
 } from "@ant-design/icons";
 import type { ICustomer, IOrder } from "../../interfaces";
-import mapImage from "../../assets/map.png";
+import mapImage from "../../assets/map.jpg";
+import { CustomerFormModal } from "./components/CustomerFormModal";
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -260,7 +259,7 @@ const KpiCard = ({ label, value, helper, icon, color, bg }: any) => (
 );
 
 export const CustomerShow = () => {
-    const navigate = useNavigate();
+    const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
     const { query } = useShow<ICustomer>({
         resource: "customers",
     });
@@ -345,8 +344,8 @@ export const CustomerShow = () => {
                     <Col>
                         <Space wrap>
                             <Button
-                                icon={<ExportOutlined />}
-                                onClick={() => navigate(`/customers/edit/${customer.id}`)}
+                                icon={<SafetyCertificateOutlined />}
+                                onClick={() => setEditingCustomerId(customer.id)}
                             >
                                 Edit Profile
                             </Button>
@@ -556,6 +555,16 @@ export const CustomerShow = () => {
                     </Col>
                 </Row>
             </Space>
+
+            <CustomerFormModal
+                customerId={editingCustomerId ?? undefined}
+                mode="edit"
+                onClose={() => setEditingCustomerId(null)}
+                onCompleted={async () => {
+                    await query.refetch();
+                }}
+                open={Boolean(editingCustomerId)}
+            />
         </Show>
     );
 };

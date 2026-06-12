@@ -5,6 +5,7 @@ namespace App\GraphQL\Resolvers;
 use App\Models\CnPackage;
 use App\Models\OrderTracking;
 use App\Models\CnWarehouse;
+use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,7 @@ class CnPackageResolver
             ]);
 
             $this->refreshOrderTrackingStatus($matchedTracking);
+            $this->syncOrderReceivingStatus($package);
 
             return $package->fresh(['warehouse', 'order.customer', 'orderTracking.trackingItems.orderItem', 'currentBatchPackage.batch.warehouse']);
         });
@@ -107,6 +109,7 @@ class CnPackageResolver
             ]);
 
             $this->refreshOrderTrackingStatus($matchedTracking);
+            $this->syncOrderReceivingStatus($package);
 
             return $package->fresh(['warehouse', 'order.customer', 'orderTracking.trackingItems.orderItem', 'currentBatchPackage.batch.warehouse']);
         });
@@ -192,6 +195,30 @@ class CnPackageResolver
 
         $tracking->update([
             'status' => $hasReceivedPackages ? 'received' : ($hasPackages ? 'matched' : 'pending'),
+        ]);
+    }
+
+    private function syncOrderReceivingStatus(CnPackage $package): void
+    {
+        if (! $package->order_id || ! $package->received_at) {
+            return;
+        }
+
+        /** @var Order|null $order */
+        $order = $package->relationLoaded('order')
+            ? $package->order
+            : Order::query()->find($package->order_id);
+
+        if (! $order) {
+            return;
+        }
+
+        if (strtolower((string) $order->status) !== 'waiting_cn_warehouse') {
+            return;
+        }
+
+        $order->update([
+            'status' => 'receiving',
         ]);
     }
 

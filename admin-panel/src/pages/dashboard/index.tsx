@@ -1,7 +1,7 @@
 
 import { Row, Col, Typography, Button, Table, Space, Avatar } from "antd";
 import { PlusOutlined, ClockCircleOutlined, EnvironmentOutlined } from "@ant-design/icons";
-import mapImage from "../../assets/map.png";
+import mapImage from "../../assets/map.jpg";
 
 const { Title, Text } = Typography;
 

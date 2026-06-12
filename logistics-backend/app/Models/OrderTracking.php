@@ -11,12 +11,14 @@ class OrderTracking extends Model
         'tracking_number',
         'carrier',
         'declared_value',
+        'dispatched_at',
         'note',
         'status',
     ];
 
     protected $casts = [
         'declared_value' => 'float',
+        'dispatched_at' => 'datetime',
     ];
 
     public function order()

@@ -25,6 +25,7 @@ export const CN_PACKAGE_FIELDS = {
     order {
       id
       order_code
+      status
       customer {
         id
         name
@@ -95,6 +96,7 @@ export const CN_PACKAGE_FIELDS = {
     order {
       id
       order_code
+      status
       customer {
         id
         name
@@ -165,6 +167,7 @@ export const CN_PACKAGE_FIELDS = {
     order {
       id
       order_code
+      status
       customer {
         id
         name

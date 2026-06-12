@@ -5,12 +5,17 @@ import type { OrderEditFormValues } from "../orderEditTypes";
 
 const { TextArea } = Input;
 
-export const NotesSection = () => (
+type NotesSectionProps = {
+  disabled?: boolean;
+};
+
+export const NotesSection = ({ disabled = false }: NotesSectionProps) => (
   <OrderEditSectionCard icon={<AlignLeftOutlined />} title="Ghi chú">
     <Form.Item<OrderEditFormValues> name="note" style={{ marginBottom: 0 }}>
       <TextArea
+        disabled={disabled}
         autoSize={{ minRows: 8, maxRows: 10 }}
-        placeholder="Add any special instructions or order notes here..."
+        placeholder="Nhập ghi chú liên quan đến đơn hàng..."
       />
     </Form.Item>
   </OrderEditSectionCard>

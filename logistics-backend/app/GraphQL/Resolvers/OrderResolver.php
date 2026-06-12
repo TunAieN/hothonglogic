@@ -108,8 +108,8 @@ class OrderResolver
             $order = Order::findOrFail($args['id']);
             $input = $args['input'];
 
-            if (! $this->isOrderEditable($order)) {
-                throw new HttpException(403, 'Order has been approved and can no longer be updated.');
+            if (! $this->canUpdateOrder($order, $input)) {
+                throw new HttpException(403, 'Order cannot be updated with the requested status transition.');
             }
 
             $nextItems = null;
@@ -189,7 +189,7 @@ class OrderResolver
             }
 
             if (! $this->isOrderEditable($order)) {
-                throw new HttpException(403, 'Order has been approved and can no longer be updated.');
+                throw new HttpException(403, 'Order is not editable in its current status.');
             }
 
             $tracking = $package->orderTracking;
@@ -224,7 +224,7 @@ class OrderResolver
                 ->findOrFail($args['order_id']);
 
             if (! $this->isOrderEditable($order)) {
-                throw new HttpException(403, 'Order has been approved and can no longer be updated.');
+                throw new HttpException(403, 'Order is not editable in its current status.');
             }
 
             $order->orderTrackings()->delete();
@@ -264,6 +264,70 @@ class OrderResolver
     private function isOrderEditable(Order $order): bool
     {
         return strtolower((string) $order->status) === 'pending';
+    }
+
+    private function canUpdateOrder(Order $order, array $input): bool
+    {
+        if ($this->isOrderEditable($order)) {
+            return true;
+        }
+
+        if ($this->isStatusOnlyTransitionAllowed($order, $input)) {
+            return true;
+        }
+
+        return $this->canManageOrderTrackings($order, $input);
+    }
+
+    private function isStatusOnlyTransitionAllowed(Order $order, array $input): bool
+    {
+        if (! array_key_exists('status', $input)) {
+            return false;
+        }
+
+        $nonStatusFields = array_diff(array_keys($input), ['status']);
+
+        if ($nonStatusFields !== []) {
+            return false;
+        }
+
+        $currentStatus = strtolower((string) $order->status);
+        $nextStatus = strtolower(trim((string) $input['status']));
+        $allowedTransitions = [
+            'pending' => ['awaiting_deposit', 'purchasing'],
+            'awaiting_deposit' => ['deposited'],
+            'deposited' => ['purchasing'],
+            'purchasing' => ['awaiting_tracking'],
+            'awaiting_tracking' => ['waiting_cn_warehouse'],
+            'waiting_cn_warehouse' => ['receiving'],
+        ];
+
+        return in_array($nextStatus, $allowedTransitions[$currentStatus] ?? [], true);
+    }
+
+    private function canManageOrderTrackings(Order $order, array $input): bool
+    {
+        $currentStatus = strtolower((string) $order->status);
+
+        if (! in_array($currentStatus, ['awaiting_tracking', 'waiting_cn_warehouse'], true)) {
+            return false;
+        }
+
+        if (! array_key_exists('packages', $input) || ! is_array($input['packages'])) {
+            return false;
+        }
+
+        $nonTrackingFields = array_diff(array_keys($input), ['packages', 'status']);
+
+        if ($nonTrackingFields !== []) {
+            return false;
+        }
+
+        if (! array_key_exists('status', $input)) {
+            return true;
+        }
+
+        return $this->isStatusOnlyTransitionAllowed($order, ['status' => $input['status']]);
     }
 
     private function normalizeOrderItemPayload(array $item): array
@@ -319,12 +383,11 @@ class OrderResolver
             ->get();
         $existingTrackings = $existingTrackingsCollection
             ->keyBy(fn (OrderTracking $tracking) => (string) $tracking->id);
-        $existingTrackingsByNumber = $existingTrackingsCollection
-            ->keyBy(fn (OrderTracking $tracking) => strtoupper((string) $tracking->tracking_number));
         $trackingPayloads = collect($trackingsInput)
             ->values()
             ->map(fn (array $trackingInput) => $this->normalizeTrackingPayload($trackingInput, $orderItems));
 
+        $this->assertTrackingNumbersUniqueWithinOrder($trackingPayloads);
         $this->assertTrackingQuantitiesWithinOrderLimits($trackingPayloads, $orderItems);
 
         $keepTrackingIds = [];
@@ -338,12 +401,24 @@ class OrderResolver
                 $tracking = $existingTrackings->get($payload['id']);
             }
 
-            if (! $tracking) {
-                $tracking = $existingTrackingsByNumber->get($payload['tracking_number']);
-            }
-
             if ($payload['id'] !== null && ! $tracking) {
                 throw new HttpException(422, 'Tracking does not belong to this order.');
+            }
+
+            $duplicateTracking = OrderTracking::query()
+                ->where('tracking_number', $payload['tracking_number'])
+                ->when(
+                    $tracking,
+                    fn (Builder $query) => $query->where('id', '!=', $tracking->id),
+                )
+                ->first();
+
+            if ($duplicateTracking) {
+                $message = (string) $duplicateTracking->order_id === (string) $order->id
+                    ? sprintf('Tracking number "%s" already exists in this order.', $payload['tracking_number'])
+                    : sprintf('Tracking number "%s" already exists in another order.', $payload['tracking_number']);
+
+                throw new HttpException(422, $message);
             }
 
             $trackingAttributes = [
@@ -351,6 +426,7 @@ class OrderResolver
                 'tracking_number' => $payload['tracking_number'],
                 'declared_value' => $declaredValue,
                 'carrier' => $payload['carrier'] ?? 'VN Express',
+                'dispatched_at' => $payload['dispatched_at'],
                 'note' => $payload['note'],
                 'status' => $tracking ? $tracking->status : 'pending',
             ];
@@ -395,7 +471,7 @@ class OrderResolver
 
     private function normalizeTrackingPayload(array $trackingInput, $orderItems): array
     {
-        $selectedItems = collect($trackingInput['package_items'] ?? [])
+        $selectedItems = collect($trackingInput['tracking_items'] ?? $trackingInput['package_items'] ?? [])
             ->map(function (array $selection) use ($orderItems) {
                 $orderItemId = (string) ($selection['order_item_id'] ?? '');
                 $orderItem = $orderItems->get($orderItemId);
@@ -431,9 +507,25 @@ class OrderResolver
             'id' => isset($trackingInput['id']) ? (string) $trackingInput['id'] : null,
             'tracking_number' => strtoupper($trackingNumber),
             'carrier' => $this->normalizeOptionalString($trackingInput['carrier'] ?? null),
+            'dispatched_at' => $this->normalizeOptionalString($trackingInput['dispatched_at'] ?? null),
             'note' => $this->normalizeOptionalString($trackingInput['note'] ?? null),
             'package_items' => $selectedItems,
         ];
+    }
+
+    private function assertTrackingNumbersUniqueWithinOrder($trackingPayloads): void
+    {
+        $trackingNumbers = [];
+
+        foreach ($trackingPayloads as $payload) {
+            $trackingNumber = strtoupper((string) $payload['tracking_number']);
+
+            if (isset($trackingNumbers[$trackingNumber])) {
+                throw new HttpException(422, sprintf('Tracking number "%s" is duplicated in this order.', $payload['tracking_number']));
+            }
+
+            $trackingNumbers[$trackingNumber] = true;
+        }
     }
 
     private function assertTrackingQuantitiesWithinOrderLimits($trackingPayloads, $orderItems): void

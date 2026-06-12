@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Key } from "react";
 import { useCreate, useDelete, useList, useUpdate } from "@refinedev/core";
 import {
@@ -15,6 +15,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Row,
   Select,
   Space,
@@ -47,10 +48,14 @@ import {
   canDeletePackage,
   canSelectPackage,
   formatWeight,
+  getAvailableBatchOptions,
+  getBatchDisplayName,
   getNextBatchCode,
   getPackageSelectionReason,
   getStatusTag,
   getWarehouseCode,
+  isPackageEligibleForBatch,
+  mapBatchFormValuesToInput,
   mapApiRecordToPackage,
   mapFormValuesToCreateInput,
   mapFormValuesToUpdateInput,
@@ -59,8 +64,10 @@ import {
 } from "./helpers";
 import type {
   ChinaWarehouseApiRecord,
+  ChinaWarehouseBatchRecord,
   ChinaWarehouseFilters,
   ChinaWarehousePackage,
+  BatchModalFormValues,
   PackageFormValues,
 } from "./types";
 
@@ -122,6 +129,7 @@ export const ChinaWarehousePage = () => {
   const [filters, setFilters] = useState<ChinaWarehouseFilters>(defaultFilterValues);
   const [form] = Form.useForm<PackageFormValues>();
   const [filterForm] = Form.useForm<ChinaWarehouseFilters>();
+  const [batchForm] = Form.useForm<BatchModalFormValues>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<ChinaWarehousePackage | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -130,12 +138,23 @@ export const ChinaWarehousePage = () => {
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [isSyncingStatuses, setIsSyncingStatuses] = useState(false);
   const screens = Grid.useBreakpoint();
   const {
     result: packageListResponse,
     query: packageListQuery,
   } = useList<ChinaWarehouseApiRecord>({
     resource: "cnPackages",
+    pagination: {
+      currentPage: 1,
+      pageSize: 1000,
+    },
+  });
+  const {
+    result: batchListResponse,
+    query: batchListQuery,
+  } = useList<ChinaWarehouseBatchRecord>({
+    resource: "cnBatches",
     pagination: {
       currentPage: 1,
       pageSize: 1000,
@@ -149,6 +168,7 @@ export const ChinaWarehousePage = () => {
     () => (packageListResponse?.data ?? []).map(mapApiRecordToPackage),
     [packageListResponse?.data],
   );
+  const batches = useMemo(() => batchListResponse?.data ?? [], [batchListResponse?.data]);
 
   const filteredPackages = useMemo(
     () => packages.filter((item) => packageMatchesFilters(item, filters)),
@@ -176,12 +196,34 @@ export const ChinaWarehousePage = () => {
     }
 
     const warehouseCode = getWarehouseCode(selectedRows[0].warehouseName);
-    const existingBatches = packages
-      .map((item) => item.batchCode)
+    const existingBatches = batches
+      .map((item) => item.batch_code)
       .filter((value): value is string => Boolean(value));
 
     return getNextBatchCode(warehouseCode, new Date(), existingBatches);
-  }, [packages, selectedRows]);
+  }, [batches, selectedRows]);
+
+  const selectedWarehouseId = selectedRows[0]?.warehouseId;
+  const availableBatches = useMemo(
+    () => getAvailableBatchOptions(batches, selectedWarehouseId),
+    [batches, selectedWarehouseId],
+  );
+  const batchMode = Form.useWatch("batchMode", batchForm) ?? "create";
+
+  useEffect(() => {
+    if (!batchModalOpen) {
+      return;
+    }
+
+    batchForm.setFieldsValue({
+      batchMode: "create",
+      cnBatchId: undefined,
+      shippingType: "normal",
+      destinationWarehouseName: undefined,
+      expectedArrivalAt: undefined,
+      note: undefined,
+    });
+  }, [batchForm, batchModalOpen]);
 
   const openCreateDrawer = () => {
     setEditingRecord(null);
@@ -207,6 +249,12 @@ export const ChinaWarehousePage = () => {
     setDrawerOpen(false);
     setEditingRecord(null);
     form.resetFields();
+  };
+
+  const handleManualReceivingStatusSync = async () => {
+    setIsSyncingStatuses(true);
+    message.info("Trạng thái receiving hiện được đồng bộ tự động ở backend khi nhập kho.");
+    setIsSyncingStatuses(false);
   };
 
   const handleSubmitPackage = async () => {
@@ -257,7 +305,7 @@ export const ChinaWarehousePage = () => {
         resource: "cnPackages",
         id: record.id,
       });
-      await packageListQuery.refetch();
+      await Promise.all([packageListQuery.refetch(), batchListQuery.refetch()]);
       setSelectedRowKeys((current) => current.filter((key) => key !== record.id));
       setSelectedRows((current) => current.filter((item) => item.id !== record.id));
       message.success("Đã xóa kiện hàng.");
@@ -273,6 +321,7 @@ export const ChinaWarehousePage = () => {
 
   const openBatchModal = () => {
     if (!selectedRows.length) {
+      message.warning("Vui lòng chọn ít nhất một kiện hàng.");
       return;
     }
 
@@ -281,30 +330,53 @@ export const ChinaWarehousePage = () => {
       return;
     }
 
+    const invalidPackage = selectedRows.find((item) => !isPackageEligibleForBatch(item));
+
+    if (invalidPackage) {
+      message.error("Có kiện hàng đã thuộc lô hoặc không còn hợp lệ để thêm vào lô.");
+      return;
+    }
+
     setBatchModalOpen(true);
   };
 
   const handleAddToBatch = async () => {
     if (!selectedRows.length) {
+      message.warning("Vui lòng chọn ít nhất một kiện hàng.");
       return;
     }
 
     try {
       setIsBatchSubmitting(true);
+      const values = await batchForm.validateFields();
+
+      if (values.batchMode === "existing") {
+        const selectedBatch = availableBatches.find((batch) => batch.id === values.cnBatchId);
+
+        if (!selectedBatch) {
+          message.error("Vui lòng chọn một lô hàng hợp lệ.");
+          return;
+        }
+
+        if (["exporting", "arrived_vn", "completed", "cancelled"].includes(selectedBatch.status)) {
+          message.error("Không thể thêm kiện vào lô đang vận chuyển, đã về kho Việt Nam, hoàn tất hoặc đã hủy.");
+          return;
+        }
+      }
+
       syncGraphqlAuthToken();
       await client.request(
         ADD_PACKAGES_TO_BATCH_MUTATION,
         {
-          input: {
-            cn_package_ids: selectedRows.map((item) => item.id),
-          },
+          input: mapBatchFormValuesToInput(values, selectedRows.map((item) => item.id)),
         },
         getGraphqlAuthHeaders(),
       );
-      await packageListQuery.refetch();
+      await Promise.all([packageListQuery.refetch(), batchListQuery.refetch()]);
       setSelectedRowKeys([]);
       setSelectedRows([]);
       setBatchModalOpen(false);
+      batchForm.resetFields();
       message.success("Đã thêm kiện vào lô hàng.");
     } catch (error) {
       console.error(error);
@@ -585,6 +657,9 @@ export const ChinaWarehousePage = () => {
               >
                 Thêm vào lô hàng
               </Button>
+              <Button loading={isSyncingStatuses} onClick={handleManualReceivingStatusSync}>
+                Dong bo trang thai
+              </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
                 Nhập hàng
               </Button>
@@ -748,7 +823,10 @@ export const ChinaWarehousePage = () => {
       <Modal
         title="Thêm kiện vào lô hàng"
         open={batchModalOpen}
-        onCancel={() => setBatchModalOpen(false)}
+        onCancel={() => {
+          setBatchModalOpen(false);
+          batchForm.resetFields();
+        }}
         onOk={handleAddToBatch}
         okText="Xác nhận thêm vào lô"
         cancelText="Hủy"
@@ -777,12 +855,6 @@ export const ChinaWarehousePage = () => {
             </div>
           </div>
 
-          <div>
-            <Text strong>Mã lô hàng dự kiến</Text>
-            <div style={{ marginTop: 8 }}>
-              <Tag color="blue">{predictedBatchCode}</Tag>
-            </div>
-          </div>
 
           <div>
             <Text strong>Danh sách mã vận đơn</Text>
@@ -794,6 +866,73 @@ export const ChinaWarehousePage = () => {
               </Space>
             </div>
           </div>
+
+          <Form<BatchModalFormValues>
+            form={batchForm}
+            layout="vertical"
+            initialValues={{ batchMode: "create", shippingType: "normal" }}
+          >
+            <Form.Item label={"L\u1EF1a ch\u1ECDn"} name="batchMode">
+              <Radio.Group
+                options={[
+                  { label: "T\u1EA1o l\u00F4 h\u00E0ng m\u1EDBi", value: "create" },
+                  { label: "Th\u00EAm v\u00E0o l\u00F4 h\u00E0ng c\u00F3 s\u1EB5n", value: "existing" },
+                ]}
+              />
+            </Form.Item>
+
+            {batchMode === "create" ? (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong>{"M\u00E3 l\u00F4 h\u00E0ng d\u1EF1 ki\u1EBFn"}</Text>
+                  <div style={{ marginTop: 8 }}>
+                    <Tag color="blue">{predictedBatchCode}</Tag>
+                  </div>
+                </div>
+
+                <Row gutter={16}>
+                  <Col xs={24} md={12}>
+                    <Form.Item label={"H\u00ECnh th\u1EE9c v\u1EADn chuy\u1EC3n"} name="shippingType">
+                      <Select
+                        options={[
+                          { label: "Th\u01B0\u1EDDng", value: "normal" },
+                          { label: "Nhanh", value: "fast" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item label={"Ng\u00E0y d\u1EF1 ki\u1EBFn v\u1EC1 kho"} name="expectedArrivalAt">
+                      <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item label={"Kho \u0111\u00EDch"} name="destinationWarehouseName">
+                  <Input placeholder={"Nh\u1EADp t\u00EAn kho \u0111\u00EDch..."} />
+                </Form.Item>
+
+                <Form.Item label={"Ghi ch\u00FA"} name="note">
+                  <Input.TextArea rows={3} placeholder={"Nh\u1EADp ghi ch\u00FA n\u1EBFu c\u00F3..."} />
+                </Form.Item>
+              </>
+            ) : (
+              <Form.Item
+                label={"L\u00F4 h\u00E0ng hi\u1EC7n c\u00F3"}
+                name="cnBatchId"
+                rules={[{ required: true, message: "Vui l\u00F2ng ch\u1ECDn l\u00F4 h\u00E0ng." }]}
+              >
+                <Select
+                  placeholder={"Ch\u1ECDn l\u00F4 h\u00E0ng"}
+                  options={availableBatches.map((batch) => ({
+                    label: getBatchDisplayName(batch),
+                    value: batch.id,
+                  }))}
+                  notFoundContent={"Kh\u00F4ng c\u00F3 l\u00F4 h\u00E0ng ph\u00F9 h\u1EE3p"}
+                />
+              </Form.Item>
+            )}
+          </Form>
         </Space>
       </Modal>
     </Space>

@@ -69,4 +69,9 @@ class CnPackage extends Model
     {
         return $this->hasMany(CnPackageItem::class, 'cn_package_id');
     }
+
+    public function vnPackages()
+    {
+        return $this->hasMany(VnPackage::class, 'cn_package_id');
+    }
 }

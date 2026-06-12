@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { DeleteButton, EditButton, List, ShowButton, useTable } from "@refinedev/antd";
-import { useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { DeleteButton, List, ShowButton, useTable } from "@refinedev/antd";
 import { Button, Card, Col, DatePicker, Form, Input, Row, Select, Space, Statistic, Table, Tag, Typography } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
 import {
     CheckCircleOutlined,
     DeleteOutlined,
+    EditOutlined,
     PlusOutlined,
     ReloadOutlined,
     StopOutlined,
@@ -14,6 +14,7 @@ import {
 } from "@ant-design/icons";
 import type { CrudFilter } from "@refinedev/core";
 import type { ICustomer } from "../../interfaces";
+import { CustomerFormModal } from "./components/CustomerFormModal";
 
 const { Search } = Input;
 const { Text, Title } = Typography;
@@ -91,9 +92,10 @@ const CustomerSummaryCard = ({
 );
 
 export const CustomerList = () => {
-    const navigate = useNavigate();
     const [filterForm] = Form.useForm<CustomerFilterValues>();
-    const { tableProps, setFilters, setCurrentPage } = useTable<ICustomer>({
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+    const { tableProps, tableQuery, setFilters, setCurrentPage } = useTable<ICustomer>({
         resource: "customers",
         syncWithLocation: true,
     });
@@ -265,7 +267,11 @@ export const CustomerList = () => {
             align: "right",
             render: (_, record: ICustomer) => (
                 <Space>
-                    <EditButton hideText size="small" recordItemId={record.id} />
+                    <Button
+                        icon={<EditOutlined />}
+                        onClick={() => setEditingCustomerId(record.id)}
+                        size="small"
+                    />
                     <ShowButton hideText size="small" recordItemId={record.id} />
                     <DeleteButton
                         hideText
@@ -300,7 +306,7 @@ export const CustomerList = () => {
                                 icon={<PlusOutlined />}
                                 className="customer-list-add-button"
                                 type="primary"
-                                onClick={() => navigate("/customers/create")}
+                                onClick={() => setIsCreateModalOpen(true)}
                             >
                                 Add Customer
                             </Button>
@@ -436,6 +442,25 @@ export const CustomerList = () => {
                     <Table<ICustomer> {...tableComponentProps} columns={columns} rowKey="id" />
                 </Card>
             </Space>
+
+            <CustomerFormModal
+                mode="create"
+                onClose={() => setIsCreateModalOpen(false)}
+                onCompleted={async () => {
+                    await tableQuery?.refetch?.();
+                }}
+                open={isCreateModalOpen}
+            />
+
+            <CustomerFormModal
+                customerId={editingCustomerId ?? undefined}
+                mode="edit"
+                onClose={() => setEditingCustomerId(null)}
+                onCompleted={async () => {
+                    await tableQuery?.refetch?.();
+                }}
+                open={Boolean(editingCustomerId)}
+            />
         </List>
     );
 };

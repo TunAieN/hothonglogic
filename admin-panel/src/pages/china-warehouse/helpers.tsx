@@ -1,7 +1,9 @@
 import { Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import type {
+  BatchModalFormValues,
   ChinaWarehouseApiRecord,
+  ChinaWarehouseBatchRecord,
   ChinaWarehouseCreateInput,
   ChinaWarehousePackage,
   ChinaWarehouseUpdateInput,
@@ -19,8 +21,11 @@ export const getStatusTag = (status: PackageMatchStatus) => {
   return <Tag color="orange">Chưa khớp</Tag>;
 };
 
+export const isPackageEligibleForBatch = (record: ChinaWarehousePackage) =>
+  !record.batchId && !record.batchCode && record.isImportedToVietnam !== true;
+
 export const canSelectPackage = (record: ChinaWarehousePackage) =>
-  !record.batchCode && record.isImportedToVietnam !== true;
+  isPackageEligibleForBatch(record);
 
 export const canDeletePackage = (record: ChinaWarehousePackage) => {
   if (record.batchCode) {
@@ -53,7 +58,20 @@ export const getNextBatchCode = (
 ) => {
   const dateCode = dayjs(date).format("DDMMYYYY");
   const prefix = `${warehouseCode}${dateCode}`;
-  const todaysSequence = existingBatches.filter((batch) => batch.startsWith(prefix)).length + 1;
+  const todaysSequence =
+    existingBatches.reduce((maxSequence, batch) => {
+      if (!batch.startsWith(prefix)) {
+        return maxSequence;
+      }
+
+      const sequence = Number(batch.slice(prefix.length));
+
+      if (!Number.isFinite(sequence)) {
+        return maxSequence;
+      }
+
+      return Math.max(maxSequence, sequence);
+    }, 0) + 1;
 
   return `${prefix}${todaysSequence}`;
 };
@@ -118,6 +136,44 @@ export const getPackageSelectionReason = (record: ChinaWarehousePackage) => {
 
   return "";
 };
+
+export const getAvailableBatchOptions = (
+  batches: ChinaWarehouseBatchRecord[],
+  warehouseId?: string,
+) =>
+  batches.filter(
+    (batch) =>
+      batch.warehouse_id === warehouseId &&
+      !["exporting", "arrived_vn", "completed", "cancelled"].includes(batch.status),
+  );
+
+export const getBatchDisplayName = (batch: ChinaWarehouseBatchRecord) => {
+  const statusMap: Record<ChinaWarehouseBatchRecord["status"], string> = {
+    pending: "Chờ xuất kho",
+    exporting: "Đang vận chuyển",
+    arrived_vn: "Đã về kho Việt Nam",
+    completed: "Hoàn tất",
+    cancelled: "Đã hủy",
+  };
+
+  return `${batch.batch_code} - ${statusMap[batch.status]}`;
+};
+
+export const mapBatchFormValuesToInput = (
+  values: BatchModalFormValues,
+  packageIds: string[],
+) => ({
+  cn_batch_id: values.batchMode === "existing" ? values.cnBatchId : null,
+  cn_package_ids: packageIds,
+  destination_warehouse_name:
+    values.batchMode === "create" ? values.destinationWarehouseName?.trim() || null : null,
+  shipping_type: values.batchMode === "create" ? values.shippingType ?? "normal" : null,
+  expected_arrival_at:
+    values.batchMode === "create" && values.expectedArrivalAt
+      ? values.expectedArrivalAt.format("YYYY-MM-DD HH:mm:ss")
+      : null,
+  note: values.batchMode === "create" ? values.note?.trim() || null : null,
+});
 
 export const renderBatchTag = (batchCode?: string) =>
   batchCode ? <Tag color="blue">{batchCode}</Tag> : <Text type="secondary">Chưa vào lô</Text>;
