@@ -2,16 +2,15 @@ import React from "react";
 import { Layout as AntdLayout } from "antd";
 import { CustomSider } from "./sider";
 import { CustomHeader } from "./header";
+import "./layout.css";
 
 export const CustomLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <AntdLayout style={{ minHeight: "100vh" }}>
+    <AntdLayout className="admin-shell">
       <CustomSider />
-      <AntdLayout style={{ marginLeft: 260 }}>
+      <AntdLayout className="admin-shell__main">
         <CustomHeader />
-        <AntdLayout.Content style={{ padding: "32px", minHeight: "calc(100vh - 72px)" }}>
-          {children}
-        </AntdLayout.Content>
+        <AntdLayout.Content className="admin-shell__content">{children}</AntdLayout.Content>
       </AntdLayout>
     </AntdLayout>
   );

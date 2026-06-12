@@ -41,6 +41,8 @@ export const ORDER_FIELDS = {
       tracking_number
       carrier
       declared_value
+      dispatched_at
+      note
       status
       tracking_items {
         id
@@ -49,11 +51,14 @@ export const ORDER_FIELDS = {
         order_item {
           id
           product_name
+          product_image
           price_cny
           quantity
           seller
           shop_id
           shop_name
+          size
+          color
         }
       }
     }
@@ -82,6 +87,8 @@ export const ORDER_FIELDS = {
         tracking_number
         carrier
         declared_value
+        dispatched_at
+        note
         status
         tracking_items {
           id
@@ -90,11 +97,14 @@ export const ORDER_FIELDS = {
           order_item {
             id
             product_name
+            product_image
             price_cny
             quantity
             seller
             shop_id
             shop_name
+            size
+            color
           }
         }
       }
@@ -174,6 +184,8 @@ export const ORDER_FIELDS = {
         tracking_number
         carrier
         declared_value
+        dispatched_at
+        note
         status
         tracking_items {
           id
@@ -182,11 +194,14 @@ export const ORDER_FIELDS = {
           order_item {
             id
             product_name
+            product_image
             price_cny
             quantity
             seller
             shop_id
             shop_name
+            size
+            color
           }
         }
       }

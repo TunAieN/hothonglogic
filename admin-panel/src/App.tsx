@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Authenticated, Refine } from "@refinedev/core";
 import { ErrorComponent } from "@refinedev/antd";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router";
@@ -5,21 +6,56 @@ import "@refinedev/antd/dist/reset.css";
 import routerProvider from "@refinedev/react-router";
 import { authProvider } from "./providers/authProvider";
 import { dataProvider } from "./providers/dataProvider";
-import { LoginPage } from "./pages/auth/LoginPage";
-import { CustomerCreate } from "./pages/customers/create";
-import { CustomerEdit } from "./pages/customers/edit";
-import { CustomerList } from "./pages/customers/list";
-import { CustomerShow } from "./pages/customers/show";
-import { ExternalOrderLayout } from "./layouts/ExternalOrderLayout";
-import { ExternalOrderCreate } from "./pages/external-orders/ExternalOrderCreate";
-import { ChinaWarehousePage } from "./pages/china-warehouse";
-import { CnBatchesPage } from "./pages/cn-batches";
-import { OrderEdit } from "./pages/orders/edit";
-import { OrderList } from "./pages/orders/list";
-import { OrderShow } from "./pages/orders/show";
-
 import { CustomLayout } from "./layout";
-import { DashboardPage } from "./pages/dashboard";
+
+const LoginPage = lazy(() =>
+  import("./pages/auth/LoginPage").then((module) => ({ default: module.LoginPage })),
+);
+const CustomerCreate = lazy(() =>
+  import("./pages/customers/create").then((module) => ({ default: module.CustomerCreate })),
+);
+const CustomerEdit = lazy(() =>
+  import("./pages/customers/edit").then((module) => ({ default: module.CustomerEdit })),
+);
+const CustomerList = lazy(() =>
+  import("./pages/customers/list").then((module) => ({ default: module.CustomerList })),
+);
+const CustomerShow = lazy(() =>
+  import("./pages/customers/show").then((module) => ({ default: module.CustomerShow })),
+);
+const ExternalOrderLayout = lazy(() =>
+  import("./layouts/ExternalOrderLayout").then((module) => ({ default: module.ExternalOrderLayout })),
+);
+const ExternalOrderCreate = lazy(() =>
+  import("./pages/external-orders/ExternalOrderCreate").then((module) => ({
+    default: module.ExternalOrderCreate,
+  })),
+);
+const ChinaWarehousePage = lazy(() =>
+  import("./pages/china-warehouse").then((module) => ({ default: module.ChinaWarehousePage })),
+);
+const CnBatchesPage = lazy(() =>
+  import("./pages/cn-batches").then((module) => ({ default: module.CnBatchesPage })),
+);
+const OrderEdit = lazy(() =>
+  import("./pages/orders/edit").then((module) => ({ default: module.OrderEdit })),
+);
+const OrderList = lazy(() =>
+  import("./pages/orders/list").then((module) => ({ default: module.OrderList })),
+);
+const OrderShow = lazy(() =>
+  import("./pages/orders/show").then((module) => ({ default: module.OrderShow })),
+);
+const VietnamWarehousePage = lazy(() =>
+  import("./pages/vietnam-warehouse").then((module) => ({ default: module.VietnamWarehousePage })),
+);
+const DashboardPage = lazy(() =>
+  import("./pages/dashboard").then((module) => ({ default: module.DashboardPage })),
+);
+
+const RouteFallback = () => (
+  <div style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Loading...</div>
+);
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
@@ -72,65 +108,64 @@ function App() {
             list: "/china-warehouse",
           },
           {
+            name: "vnWarehouse",
+            list: "/vietnam-warehouse",
+          },
+          {
             name: "users",
           },
         ]}
       >
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/orders/external/create"
-            element={
-              <RequireAuth>
-                <ExternalOrderLayout>
-                  <ExternalOrderCreate />
-                </ExternalOrderLayout>
-              </RequireAuth>
-            }
-          />
-          {/* <Route
-            path="/orders/edit/:id"
-            element={
-              <RequireAuth>
-                <OrderEdit />
-              </RequireAuth>
-            }
-          /> */}
-          <Route
-            element={
-              <RequireAuth>
-                <CustomLayout>
-                  <Outlet />
-                </CustomLayout>
-              </RequireAuth>
-            }
-          >
-            <Route index element={<DashboardPage />} />
-            
-            <Route path="/customers">
-              <Route index element={<CustomerList />} />
-              <Route path="create" element={<CustomerCreate />} />
-              <Route path="edit/:id" element={<CustomerEdit />} />
-              <Route path="show/:id" element={<CustomerShow />} />
-            </Route>
-            
-            <Route path="/orders">
-              <Route index element={<OrderList />} />
-              <Route path="show/:id" element={<OrderShow />} />
-              <Route path="edit/:id" element={<OrderEdit />} />
-            </Route>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/orders/external/create"
+              element={
+                <RequireAuth>
+                  <ExternalOrderLayout>
+                    <ExternalOrderCreate />
+                  </ExternalOrderLayout>
+                </RequireAuth>
+              }
+            />
+            <Route
+              element={
+                <RequireAuth>
+                  <CustomLayout>
+                    <Outlet />
+                  </CustomLayout>
+                </RequireAuth>
+              }
+            >
+              <Route index element={<DashboardPage />} />
 
-            <Route path="/cn-batches" element={<CnBatchesPage />} />
-            <Route path="/china-warehouse" element={<ChinaWarehousePage />} />
-            
-            {/* Added for menu items so they don't 404 immediately */}
-            <Route path="/fleet" element={<DashboardPage />} />
-            <Route path="/routes" element={<DashboardPage />} />
-            <Route path="/analytics" element={<DashboardPage />} />
+              <Route path="/customers">
+                <Route index element={<CustomerList />} />
+                <Route path="create" element={<CustomerCreate />} />
+                <Route path="edit/:id" element={<CustomerEdit />} />
+                <Route path="show/:id" element={<CustomerShow />} />
+              </Route>
 
-            <Route path="*" element={<ErrorComponent />} />
-          </Route>
-        </Routes>
+              <Route path="/orders">
+                <Route index element={<OrderList />} />
+                <Route path="show/:id" element={<OrderShow />} />
+                <Route path="edit/:id" element={<OrderEdit />} />
+              </Route>
+
+              <Route path="/cn-batches" element={<CnBatchesPage />} />
+              <Route path="/china-warehouse" element={<ChinaWarehousePage />} />
+              <Route path="/vietnam-warehouse" element={<VietnamWarehousePage />} />
+
+              {/* Added for menu items so they don't 404 immediately */}
+              <Route path="/fleet" element={<DashboardPage />} />
+              <Route path="/routes" element={<DashboardPage />} />
+              <Route path="/analytics" element={<DashboardPage />} />
+
+              <Route path="*" element={<ErrorComponent />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </Refine>
     </BrowserRouter>
   );

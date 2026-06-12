@@ -1,970 +1,2397 @@
-import { useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+﻿import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
+import { useEffect } from "react";
 import { DeleteButton, NumberField, Show } from "@refinedev/antd";
 import { useShow, useUpdate } from "@refinedev/core";
 import {
-    Alert,
-    Avatar,
-    Breadcrumb,
-    Button,
-    Card,
-    Col,
-    Divider,
-    Grid,
-    Image,
-    message,
-    Row,
-    Space,
-    Tag,
-    Typography,
+  Alert,
+  Checkbox,
+  Breadcrumb,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Descriptions,
+  Divider,
+  Empty,
+  Grid,
+  Image,
+  Input,
+  List,
+  message,
+  Row,
+  Select,
+  Space,
+  Steps,
+  Tag,
+  Table,
+  Timeline,
+  Typography,
 } from "antd";
 import type { ImageProps } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import {
-    CheckCircleOutlined,
-    ClockCircleOutlined,
-    DeleteOutlined,
-    EnvironmentOutlined,
-    MailOutlined,
-    PhoneOutlined,
-    PrinterOutlined,
-    ReloadOutlined,
-    SearchOutlined,
-    ShoppingOutlined,
-    SyncOutlined,
-    TruckOutlined,
-    UserOutlined,
-    InboxOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  DollarCircleOutlined,
+  FileSearchOutlined,
+  FileTextOutlined,
+  HomeOutlined,
+  PaperClipOutlined,
+  ProfileOutlined,
+  ReloadOutlined,
+  ShoppingOutlined,
+  SyncOutlined,
+  TruckOutlined,
+  UserOutlined,
+  InboxOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { Link } from "react-router";
+import { Modal, Radio, InputNumber } from "antd";
 import type { IOrder, IOrderItem } from "../../interfaces";
+import { formatVnd } from "../orders/helper";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
 
-type StepKey = "pending" | "confirmed" | "shipped" | "delivered";
-
 type StatusMeta = {
-    color: string;
-    label: string;
+  color: string;
+  label: string;
 };
 
-const orderJourneyStatuses = ["pending", "approved", "shipped", "delivered"] as const;
-
-const currencyOptions = { style: "currency", currency: "USD" } as const;
-
-const statusMetaMap: Record<string, StatusMeta> = {
-    pending: { color: "blue", label: "Chờ duyệt" },
-    approved: { color: "gold", label: "Đã duyệt" },
-    confirmed: { color: "gold", label: "Đã duyệt" },
-    deposit: { color: "gold", label: "Đã duyệt" },
-    shipped: { color: "cyan", label: "Đang vận chuyển" },
-    receiving: { color: "cyan", label: "Đang vận chuyển" },
-    delivered: { color: "green", label: "Đã giao" },
-    completed: { color: "green", label: "Hoàn thành" },
-    complaint: { color: "red", label: "Khiếu nại" },
-    cancelled: { color: "red", label: "Đã hủy" },
-    rejected: { color: "volcano", label: "Đã từ chối" },
+type TrackingDraftItem = {
+  order_item_id: string;
+  quantity: number;
 };
 
-const trackerSteps: Array<{
-    key: StepKey;
-    title: string;
-    icon: ReactNode;
-}> = [
-    { key: "pending", title: "Pending", icon: <ClockCircleOutlined /> },
-    { key: "confirmed", title: "Confirmed", icon: <SyncOutlined /> },
-    { key: "shipped", title: "Shipped", icon: <TruckOutlined /> },
-    { key: "delivered", title: "Delivered", icon: <CheckCircleOutlined /> },
-];
-
-const surfaceCardStyle: CSSProperties = {
-    borderRadius: 28,
-    border: "1px solid #dbe3f0",
-    boxShadow: "0 22px 60px rgba(15, 23, 42, 0.08)",
-    background:
-        "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(247,250,255,0.98) 100%)",
+type TrackingDraft = {
+  local_id: string;
+  id?: string;
+  tracking_number: string;
+  carrier?: string | null;
+  dispatched_at?: string | null;
+  note?: string | null;
+  tracking_items: TrackingDraftItem[];
 };
 
-const sectionTitleStyle: CSSProperties = {
-    margin: 0,
-    fontSize: 14,
-    fontWeight: 800,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: "#102a56",
+type ItemAssignmentMeta = {
+  assigned: number;
+  remaining: number;
+  status: "unassigned" | "partial" | "complete";
 };
 
-const mutedTextStyle: CSSProperties = {
-    color: "#64748b",
+type TrackingProductRow = {
+  key: string;
+  index: number;
+  item: IOrderItem;
+  assignment: ItemAssignmentMeta;
 };
 
-const actionButtonStyle: CSSProperties = {
-    height: 42,
-    borderRadius: 14,
-    fontWeight: 600,
-    boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
+const orderJourneySteps = [
+  {
+    key: "pending",
+    title: "Chờ duyệt",
+    icon: <ClockCircleOutlined />,
+  },
+  {
+    key: "awaiting_deposit",
+    title: "Chờ đặt cọc",
+    icon: <DollarCircleOutlined />,
+  },
+  {
+    key: "deposited",
+    title: "Đã đặt cọc",
+    icon: <CheckCircleOutlined />,
+  },
+  {
+    key: "purchasing",
+    title: "Đang đặt hàng",
+    icon: <ShoppingOutlined />,
+  },
+  {
+    key: "awaiting_tracking",
+    title: "Chờ mã vận đơn",
+    icon: <InboxOutlined />,
+  },
+  {
+    key: "waiting_cn_warehouse",
+    title: "Chờ kho TQ nhận hàng",
+    icon: <TruckOutlined />,
+  },
+  {
+    key: "receiving",
+    title: "Đã về kho VN",
+    icon: <SyncOutlined />,
+  },
+  {
+    key: "completed",
+    title: "Hoàn thành",
+    icon: <CheckCircleOutlined />,
+  },
+] as const;
+// order modal
+
+const optionCardStyle: CSSProperties = {
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    padding: 16,
+    background: "#fff",
 };
 
-const primaryButtonStyle: CSSProperties = {
-    ...actionButtonStyle,
-    background: "#0b4aa2",
-    borderColor: "#0b4aa2",
+const bankInfoStyle: CSSProperties = {
+    border: "1px solid #f5d7a1",
+    background: "#fff7e8",
+    borderRadius: 12,
+    padding: 16,
 };
 
-const dangerButtonStyle: CSSProperties = {
-    ...actionButtonStyle,
-    background: "#dc2626",
-    borderColor: "#dc2626",
-};
-
-const trackerContainerStyle: CSSProperties = {
+const modalSummaryRowStyle: CSSProperties = {
     display: "flex",
-    alignItems: "flex-start",
-    gap: 0,
-    overflowX: "auto",
-    paddingBottom: 4,
-};
-
-const trackerStepStyle: CSSProperties = {
-    position: "relative",
-    flex: 1,
-    minWidth: 160,
-    paddingRight: 16,
-};
-
-const trackerLineStyle: CSSProperties = {
-    position: "absolute",
-    top: 22,
-    left: 56,
-    right: -8,
-    height: 3,
-    borderRadius: 999,
-    background: "#d7e1f0",
-};
-
-const itemRowStyle: CSSProperties = {
-    padding: "20px 0",
-    borderBottom: "1px solid #e7edf6",
-};
-
-const summaryRowStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     gap: 16,
 };
 
+const summaryBlockStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+};
+
+const clampTwoLinesStyle: CSSProperties = {
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+  lineHeight: 1.45,
+};
+const currencyOptions = { style: "currency", currency: "USD" } as const;
+
+const statusMetaMap: Record<string, StatusMeta> = {
+  pending: { color: "blue", label: "Chờ duyệt" },
+  awaiting_deposit: { color: "gold", label: "Chờ đặt cọc" },
+  deposited: { color: "lime", label: "Đã đặt cọc" },
+  purchasing: { color: "cyan", label: "Đang đặt hàng" },
+  awaiting_tracking: { color: "geekblue", label: "Chờ mã vận đơn" },
+  waiting_cn_warehouse: { color: "purple", label: "Chờ kho TQ nhận hàng" },
+  approved: { color: "gold", label: "Đã duyệt" },
+  confirmed: { color: "gold", label: "Đã duyệt" },
+  deposit: { color: "gold", label: "Đã đặt cọc" },
+  shipped: { color: "cyan", label: "Đang vận chuyển" },
+  receiving: { color: "cyan", label: "Đang vận chuyển" },
+  delivered: { color: "green", label: "Đã giao" },
+  completed: { color: "green", label: "Hoàn thành" },
+  complaint: { color: "red", label: "Khiếu nại" },
+  cancelled: { color: "red", label: "Đã hủy" },
+  rejected: { color: "volcano", label: "Đã từ chối" },
+};
+
+const carrierOptions = [
+  "YTO Express",
+  "ZTO Express",
+  "Yunda",
+  "SF Express",
+  "STO Express",
+  "Other",
+].map((value) => ({ label: value, value }));
+
+const createTrackingLocalId = () =>
+  `tracking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const buildTrackingDrafts = (trackings: NonNullable<IOrder["order_trackings"]>): TrackingDraft[] =>
+  trackings.map((tracking) => ({
+    local_id: createTrackingLocalId(),
+    id: tracking.id,
+    tracking_number: tracking.tracking_number ?? "",
+    carrier: tracking.carrier ?? undefined,
+    dispatched_at: tracking.dispatched_at ?? null,
+    note: tracking.note ?? undefined,
+    tracking_items: (tracking.tracking_items ?? []).map((item) => ({
+      order_item_id: item.order_item_id,
+      quantity: item.quantity,
+    })),
+  }));
+
+const getVariantLabel = (item: Pick<IOrderItem, "size" | "color">) =>
+  [item.color, item.size].filter(Boolean).join(" / ") || "-";
+
+const getTrackingAssignedByItemId = (trackings: TrackingDraft[]) => {
+  const assignedByItemId = new Map<string, number>();
+
+  trackings.forEach((tracking) => {
+    tracking.tracking_items.forEach((trackingItem) => {
+      assignedByItemId.set(
+        trackingItem.order_item_id,
+        (assignedByItemId.get(trackingItem.order_item_id) ?? 0) + trackingItem.quantity,
+      );
+    });
+  });
+
+  return assignedByItemId;
+};
+
+const getItemAssignmentMeta = (items: IOrderItem[], trackings: TrackingDraft[]) => {
+  const assignedByItemId = getTrackingAssignedByItemId(trackings);
+  const assignmentMap = new Map<string, ItemAssignmentMeta>();
+
+  items.forEach((item) => {
+    const assigned = assignedByItemId.get(item.id) ?? 0;
+    const remaining = Math.max(item.quantity - assigned, 0);
+    const status =
+      assigned <= 0 ? "unassigned" : remaining <= 0 ? "complete" : "partial";
+
+    assignmentMap.set(item.id, { assigned, remaining, status });
+  });
+
+  return assignmentMap;
+};
+
+const getTrackingShopSummary = (tracking: TrackingDraft, items: IOrderItem[]) => {
+  const itemMap = new Map(items.map((item) => [item.id, item]));
+  const shops = Array.from(
+    new Set(
+      tracking.tracking_items
+        .map((trackingItem) => {
+          const item = itemMap.get(trackingItem.order_item_id);
+          return item?.shop_name ?? item?.seller ?? null;
+        })
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  if (shops.length === 0) {
+    return "-";
+  }
+
+  if (shops.length === 1) {
+    return shops[0];
+  }
+
+  return "Nhiều shop";
+};
+
+const surfaceCardStyle: CSSProperties = {
+  borderRadius: 28,
+  border: "1px solid #dbe3f0",
+  boxShadow: "0 22px 60px rgba(15, 23, 42, 0.08)",
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(247,250,255,0.98) 100%)",
+};
+
+const mutedTextStyle: CSSProperties = {
+  color: "#64748b",
+};
+
+const sectionIconWrapStyle: CSSProperties = {
+  width: 36,
+  height: 36,
+  borderRadius: 12,
+  background: "#edf4ff",
+  color: "#0b4aa2",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const actionButtonStyle: CSSProperties = {
+  height: 42,
+  borderRadius: 14,
+  fontWeight: 600,
+  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
+};
+
+const primaryButtonStyle: CSSProperties = {
+  ...actionButtonStyle,
+  background: "#0b4aa2",
+  borderColor: "#0b4aa2",
+};
+
 const infoCardBodyStyle: CSSProperties = {
-    padding: 24,
+  padding: 24,
 };
 
 const formatDateTime = (value?: string) => {
-    if (!value) {
-        return "-";
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatDateOnly = (value?: string | null) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("vi-VN");
+};
+
+const validateTrackingDrafts = (items: IOrderItem[], trackings: TrackingDraft[]) => {
+  const trackingNumbers = new Set<string>();
+  const assignedByItemId = new Map<string, number>();
+  const itemMap = new Map(items.map((item) => [item.id, item]));
+
+  for (const [index, tracking] of trackings.entries()) {
+    const trackingNumber = tracking.tracking_number.trim().toUpperCase();
+
+    if (!trackingNumber) {
+      return `Mã vận đơn #${index + 1} chưa có tracking number.`;
     }
 
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-        return value;
+    if (trackingNumbers.has(trackingNumber)) {
+      return `Tracking number "${trackingNumber}" đang bị trùng trong cùng đơn hàng.`;
     }
 
-    return date.toLocaleString("en-US", {
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+    trackingNumbers.add(trackingNumber);
+
+    if (tracking.tracking_items.length === 0) {
+      return `Mã vận đơn #${index + 1} chưa có sản phẩm nào được chọn.`;
+    }
+
+    for (const trackingItem of tracking.tracking_items) {
+      if (trackingItem.quantity <= 0) {
+        return `Số lượng trong mã vận đơn #${index + 1} phải lớn hơn 0.`;
+      }
+
+      const orderItem = itemMap.get(trackingItem.order_item_id);
+
+      if (!orderItem) {
+        return "Có sản phẩm không còn hợp lệ trong đơn hàng.";
+      }
+
+      const nextAssigned =
+        (assignedByItemId.get(trackingItem.order_item_id) ?? 0) + trackingItem.quantity;
+
+      if (nextAssigned > orderItem.quantity) {
+        return `Số lượng đã gán vượt quá số lượng đặt của sản phẩm "${orderItem.product_name}".`;
+      }
+
+      assignedByItemId.set(trackingItem.order_item_id, nextAssigned);
+    }
+  }
+
+  return null;
 };
 
 const getStatusMeta = (status?: string): StatusMeta => {
-    if (!status) {
-        return { color: "default", label: "Unknown" };
-    }
+  if (!status) {
+    return { color: "default", label: "Unknown" };
+  }
 
-    return statusMetaMap[status.toLowerCase()] ?? {
-        color: "default",
-        label: status.replace(/_/g, " "),
-    };
+  return (
+    statusMetaMap[status.toLowerCase()] ?? {
+      color: "default",
+      label: status.replace(/_/g, " "),
+    }
+  );
 };
 
-const getTrackerStepIndex = (status?: string) => {
-    const normalizedStatus = status?.toLowerCase();
+const getJourneyStepIndex = (status?: string) => {
+  const normalizedStatus = status?.toLowerCase();
 
-    if (!normalizedStatus) {
-        return 0;
-    }
-    const normalizedJourneyStatus =
-        normalizedStatus === "completed"
-            ? "delivered"
-            : normalizedStatus === "receiving"
-              ? "shipped"
-              : ["approved", "confirmed", "deposit"].includes(normalizedStatus)
-                ? "approved"
-                : normalizedStatus;
+  if (!normalizedStatus) {
+    return 0;
+  }
 
-    const currentStep = orderJourneyStatuses.indexOf(
-        normalizedJourneyStatus as (typeof orderJourneyStatuses)[number],
-    );
+  if (normalizedStatus === "approved" || normalizedStatus === "confirmed") {
+    return 0;
+  }
 
-    return currentStep >= 0 ? currentStep : 0;
+  if (normalizedStatus === "deposit") {
+    return 2;
+  }
+
+  if (normalizedStatus === "shipped" || normalizedStatus === "delivered") {
+    return 6;
+  }
+
+  if (normalizedStatus === "cancelled" || normalizedStatus === "complaint") {
+    return 0;
+  }
+
+  const currentStep = orderJourneySteps.findIndex(
+    (step) => step.key === normalizedStatus,
+  );
+
+  return currentStep >= 0 ? currentStep : 0;
 };
 
 const getProductSku = (item: IOrderItem, index: number) => {
-    const variantParts = [item.size, item.color]
-        .map((value) => value?.trim())
-        .filter(Boolean);
+  const variantParts = [item.size, item.color]
+    .map((value) => value?.trim())
+    .filter(Boolean);
 
-    if (variantParts.length > 0) {
-        return variantParts.join(" | ");
-    }
+  if (variantParts.length > 0) {
+    return variantParts.join(" | ");
+  }
 
-    const productCode = item.product_name
-        .split(/\s+/)
-        .map((part) => part.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
-        .filter(Boolean)
-        .slice(0, 3)
-        .join("-");
+  const productCode = item.product_name
+    .split(/\s+/)
+    .map((part) => part.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("-");
 
-    return productCode ? `SKU-${productCode}` : `SKU-ITEM-${index + 1}`;
+  return productCode ? `SKU-${productCode}` : `SKU-ITEM-${index + 1}`;
 };
-
-const getInitials = (value?: string) =>
-    value
-        ?.split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part.charAt(0).toUpperCase())
-        .join("") || "CU";
 
 const ProductThumb = ({ item }: { item: IOrderItem }) => {
-    const imageProps: ImageProps = {
-        src: item.product_image ?? undefined,
-        alt: item.product_name,
+  const imageProps: ImageProps = {
+    src: item.product_image ?? undefined,
+    alt: item.product_name,
+    width: 72,
+    height: 72,
+    style: { objectFit: "cover", borderRadius: 18 },
+    preview: false,
+    fallback: "",
+  };
+
+  if (item.product_image) {
+    return <Image {...imageProps} />;
+  }
+
+  return (
+    <div
+      style={{
         width: 72,
         height: 72,
-        style: { objectFit: "cover", borderRadius: 18 },
-        preview: false,
-        fallback: "",
-    };
-
-    if (item.product_image) {
-        return <Image {...imageProps} />;
-    }
-
-    return (
-        <div
-            style={{
-                width: 72,
-                height: 72,
-                borderRadius: 18,
-                background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-                border: "1px solid #c7d8f8",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-            }}
-        >
-            <ShoppingOutlined style={{ fontSize: 24, color: "#0b4aa2" }} />
-        </div>
-    );
+        borderRadius: 18,
+        background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+        border: "1px solid #c7d8f8",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <ShoppingOutlined style={{ fontSize: 24, color: "#0b4aa2" }} />
+    </div>
+  );
 };
 
-const InfoRow = ({
-    icon,
-    label,
-    value,
-}: {
-    icon: ReactNode;
-    label: string;
-    value?: ReactNode;
-}) => (
-    <div
-        style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 20,
-            padding: "14px 0",
-        }}
-    >
-        <div
-            style={{
-                width: 40,
-                height: 40,
-                borderRadius: 14,
-                background: "#edf4ff",
-                color: "#0b4aa2",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-            }}
-        >
-            {icon}
-        </div>
-        <Space direction="vertical" size={2} style={{ width: "100%" }}>
-            <Text style={{ ...mutedTextStyle, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
-                {label}
-            </Text>
-            <Text strong style={{ color: "#0f172a", fontSize: 15 }}>
-                {value || "-"}
-            </Text>
-        </Space>
-    </div>
-);
-
 export const OrderShow = () => {
-    const { query } = useShow<IOrder>();
-    const { data, isLoading } = query;
-    const { mutate: updateOrderStatus } = useUpdate<IOrder>();
-    const [messageApi, contextHolder] = message.useMessage();
-    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-    const navigateScreens = useBreakpoint();
-    const trackerRef = useRef<HTMLDivElement | null>(null);
+  const { query } = useShow<IOrder>();
+  const { data, isLoading } = query;
+  const { mutate: updateOrder } = useUpdate<IOrder>();
+  const [messageApi, contextHolder] = message.useMessage();
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [isTrackingManagerOpen, setIsTrackingManagerOpen] = useState(false);
+  const [depositOpions, setDepositOptions] = useState<"deposit" | "no_deposit">(
+    "deposit",
+  );
+  const [depositPercentage, setDepositPercentage] = useState(70);
+  const [trackingDrafts, setTrackingDrafts] = useState<TrackingDraft[]>([]);
+  const navigateScreens = useBreakpoint();
+  const record = data?.data;
+  const cnPackages = useMemo(
+    () => record?.cn_packages ?? [],
+    [record?.cn_packages],
+  );
+  const orderTrackings = useMemo(
+    () => record?.order_trackings ?? [],
+    [record?.order_trackings],
+  );
+  const items = useMemo(() => record?.items ?? [], [record?.items]);
+  const normalizedOrderStatus = record?.status?.toLowerCase();
+  const isTrackingEditable = ["awaiting_tracking", "waiting_cn_warehouse"].includes(
+    normalizedOrderStatus ?? "",
+  );
+  const isTrackingReadonly = ["receiving", "shipped", "delivered", "completed", "cancelled"].includes(
+    normalizedOrderStatus ?? "",
+  );
+  const currentStepIndex = getJourneyStepIndex(record?.status);
+  const statusMeta = getStatusMeta(record?.status);
+  const trackingAssignmentMap = useMemo(
+    () => getItemAssignmentMeta(items, trackingDrafts),
+    [items, trackingDrafts],
+  );
+  const assignedSkuCount = useMemo(
+    () =>
+      items.filter((item) => (trackingAssignmentMap.get(item.id)?.assigned ?? 0) > 0).length,
+    [items, trackingAssignmentMap],
+  );
+  const remainingSkuCount = useMemo(
+    () =>
+      items.filter((item) => (trackingAssignmentMap.get(item.id)?.remaining ?? item.quantity) > 0)
+        .length,
+    [items, trackingAssignmentMap],
+  );
+  const isTrackingAssignmentComplete = useMemo(
+    () => items.length > 0 && items.every((item) => (trackingAssignmentMap.get(item.id)?.remaining ?? item.quantity) === 0),
+    [items, trackingAssignmentMap],
+  );
+  const trackingProductRows = useMemo(
+    () =>
+      items.map((item, index) => {
+        const assignment = trackingAssignmentMap.get(item.id) ?? {
+          assigned: 0,
+          remaining: item.quantity,
+          status: "unassigned" as const,
+        };
 
-    const record = data?.data;
-    const cnPackages = useMemo(() => record?.cn_packages ?? [], [record?.cn_packages]);
-    const orderTrackings = useMemo(() => record?.order_trackings ?? [], [record?.order_trackings]);
-    const items = useMemo(() => record?.items ?? [], [record?.items]);
-    const currentStepIndex = getTrackerStepIndex(record?.status);
-    const statusMeta = getStatusMeta(record?.status);
-    const allTrackingCodes = useMemo(() => {
-        const trackingMap = new Map<
-            string,
-            {
-                trackingNumber: string;
-                carrier?: string | null;
-                declaredValue?: number | null;
-                status?: string | null;
-                warehouseName?: string | null;
-                createdAt?: string | null;
-                shops: string[];
-                items: string[];
-            }
-        >();
+        return {
+          key: item.id,
+          index: index + 1,
+          item,
+          assignment,
+        };
+      }),
+    [items, trackingAssignmentMap],
+  );
+  const trackingProductColumns: ColumnsType<TrackingProductRow> = [
+    {
+      title: "#",
+      dataIndex: "index",
+      width: 48,
+      align: "center",
+    },
+    {
+      title: "Sản phẩm",
+      key: "product",
+      width: 280,
+      render: (_, row) => (
+        <Space align="start" size={12} style={{ minWidth: 0 }}>
+          <ProductThumb item={row.item} />
+          <Space
+            direction="vertical"
+            size={2}
+            style={{ minWidth: 0, width: "100%" }}
+          >
+            <Text strong style={clampTwoLinesStyle}>
+              {row.item.product_name}
+            </Text>
+            <Text type="secondary" style={clampTwoLinesStyle}>
+              {row.item.note || row.item.seller || "-"}
+            </Text>
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: "Shop",
+      key: "shop",
+      width: 160,
+      render: (_, row) => (
+        <Text style={clampTwoLinesStyle}>
+          {row.item.shop_name ?? row.item.seller ?? "-"}
+        </Text>
+      ),
+    },
+    {
+      title: "Phân loại",
+      key: "variant",
+      width: 120,
+      render: (_, row) => (
+        <Text style={clampTwoLinesStyle}>{getVariantLabel(row.item)}</Text>
+      ),
+    },
+    {
+      title: "SL đặt",
+      key: "ordered",
+      dataIndex: ["item", "quantity"],
+      width: 72,
+      align: "center",
+    },
+    {
+      title: "Đã gán",
+      key: "assigned",
+      width: 80,
+      align: "center",
+      render: (_, row) => {
+        const tone =
+          row.assignment.status === "complete"
+            ? "#16a34a"
+            : row.assignment.status === "partial"
+              ? "#f97316"
+              : "#64748b";
 
-        orderTrackings.forEach((tracking) => {
-            const trackingNumber = tracking.tracking_number?.trim();
+        return (
+          <Text style={{ color: tone, fontWeight: 700 }}>
+            {row.assignment.assigned}
+          </Text>
+        );
+      },
+    },
+    {
+      title: "Còn lại",
+      key: "remaining",
+      width: 80,
+      align: "center",
+      render: (_, row) => {
+        const tone =
+          row.assignment.status === "complete"
+            ? "#16a34a"
+            : row.assignment.status === "partial"
+              ? "#f97316"
+              : "#64748b";
 
-            if (!trackingNumber) {
-                return;
-            }
+        return (
+          <Text style={{ color: tone, fontWeight: 700 }}>
+            {row.assignment.remaining}
+          </Text>
+        );
+      },
+    },
+    {
+      title: "Trạng thái",
+      key: "status",
+      width: 120,
+      render: (_, row) => (
+        <Tag
+          color={
+            row.assignment.status === "complete"
+              ? "green"
+              : row.assignment.status === "partial"
+                ? "orange"
+                : "default"
+          }
+        >
+          {row.assignment.status === "complete"
+            ? "Đã gán đủ"
+            : row.assignment.status === "partial"
+              ? "Chưa gán đủ"
+              : "Chưa gán"}
+        </Tag>
+      ),
+    },
+  ];
+  const allTrackingCodes = useMemo(() => {
+    const trackingMap = new Map<
+      string,
+      {
+        trackingNumber: string;
+        carrier?: string | null;
+        declaredValue?: number | null;
+        status?: string | null;
+        warehouseName?: string | null;
+        createdAt?: string | null;
+        shops: string[];
+        items: string[];
+      }
+    >();
 
-            const shops = Array.from(
-                new Set(
-                    (tracking.tracking_items ?? [])
-                        .map(
-                            (trackingItem) =>
-                                trackingItem.order_item?.shop_name ??
-                                trackingItem.order_item?.seller ??
-                                trackingItem.order_item?.shop_id ??
-                                null,
-                        )
-                        .filter((value): value is string => Boolean(value)),
-                ),
-            );
+    orderTrackings.forEach((tracking) => {
+      const trackingNumber = tracking.tracking_number?.trim();
 
-            const itemLabels = (tracking.tracking_items ?? []).map((trackingItem) => {
-                const itemName = trackingItem.order_item?.product_name ?? "Sản phẩm";
-                return `${itemName} x${trackingItem.quantity ?? 0}`;
-            });
+      if (!trackingNumber) {
+        return;
+      }
 
-            trackingMap.set(trackingNumber.toUpperCase(), {
-                trackingNumber,
-                carrier: tracking.carrier,
-                declaredValue: tracking.declared_value,
-                status: tracking.status,
-                warehouseName: null,
-                createdAt: null,
-                shops,
-                items: itemLabels,
-            });
-        });
+      const shops = Array.from(
+        new Set(
+          (tracking.tracking_items ?? [])
+            .map(
+              (trackingItem) =>
+                trackingItem.order_item?.shop_name ??
+                trackingItem.order_item?.seller ??
+                trackingItem.order_item?.shop_id ??
+                null,
+            )
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
 
-        cnPackages.forEach((pkg) => {
-            const trackingNumber = pkg.tracking_number?.trim();
+      const itemLabels = (tracking.tracking_items ?? []).map((trackingItem) => {
+        const itemName = trackingItem.order_item?.product_name ?? "Sáº£n pháº©m";
+        return `${itemName} x${trackingItem.quantity ?? 0}`;
+      });
 
-            if (!trackingNumber) {
-                return;
-            }
+      trackingMap.set(trackingNumber.toUpperCase(), {
+        trackingNumber,
+        carrier: tracking.carrier,
+        declaredValue: tracking.declared_value,
+        status: tracking.status,
+        warehouseName: null,
+        createdAt: null,
+        shops,
+        items: itemLabels,
+      });
+    });
 
-            const key = trackingNumber.toUpperCase();
-            const existing = trackingMap.get(key);
-            const packageItems = (pkg.package_items ?? []).map((packageItem) => {
-                const itemName = packageItem.order_item?.product_name ?? "Sản phẩm";
-                return `${itemName} x${packageItem.quantity ?? 0}`;
-            });
-            const packageShops = Array.from(
-                new Set(
-                    (pkg.order_tracking?.tracking_items ?? [])
-                        .map(
-                            (trackingItem) =>
-                                trackingItem.order_item?.shop_name ??
-                                trackingItem.order_item?.seller ??
-                                trackingItem.order_item?.shop_id ??
-                                null,
-                        )
-                        .filter((value): value is string => Boolean(value)),
-                ),
-            );
+    cnPackages.forEach((pkg) => {
+      const trackingNumber = pkg.tracking_number?.trim();
 
-            trackingMap.set(key, {
-                trackingNumber,
-                carrier: pkg.carrier ?? existing?.carrier,
-                declaredValue: pkg.declared_value ?? existing?.declaredValue,
-                status: pkg.status ?? existing?.status,
-                warehouseName: pkg.warehouse?.name ?? existing?.warehouseName,
-                createdAt: pkg.received_at ?? pkg.created_at ?? existing?.createdAt,
-                shops: Array.from(new Set([...(existing?.shops ?? []), ...packageShops])),
-                items: Array.from(new Set([...(existing?.items ?? []), ...packageItems])),
-            });
-        });
+      if (!trackingNumber) {
+        return;
+      }
 
-        return Array.from(trackingMap.values());
-    }, [cnPackages, orderTrackings]);
+      const key = trackingNumber.toUpperCase();
+      const existing = trackingMap.get(key);
+      const packageItems = (pkg.package_items ?? []).map((packageItem) => {
+        const itemName = packageItem.order_item?.product_name ?? "Sáº£n pháº©m";
+        return `${itemName} x${packageItem.quantity ?? 0}`;
+      });
+      const packageShops = Array.from(
+        new Set(
+          (pkg.order_tracking?.tracking_items ?? [])
+            .map(
+              (trackingItem) =>
+                trackingItem.order_item?.shop_name ??
+                trackingItem.order_item?.seller ??
+                trackingItem.order_item?.shop_id ??
+                null,
+            )
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
 
-    const itemsSubtotal = useMemo(
-        () => items.reduce((sum, item) => sum + item.price_cny * item.quantity, 0),
-        [items],
+      trackingMap.set(key, {
+        trackingNumber,
+        carrier: pkg.carrier ?? existing?.carrier,
+        declaredValue: pkg.declared_value ?? existing?.declaredValue,
+        status: pkg.status ?? existing?.status,
+        warehouseName: pkg.warehouse?.name ?? existing?.warehouseName,
+        createdAt: pkg.received_at ?? pkg.created_at ?? existing?.createdAt,
+        shops: Array.from(
+          new Set([...(existing?.shops ?? []), ...packageShops]),
+        ),
+        items: Array.from(
+          new Set([...(existing?.items ?? []), ...packageItems]),
+        ),
+      });
+    });
+
+    return Array.from(trackingMap.values());
+  }, [cnPackages, orderTrackings]);
+  const productSummaryRows = useMemo(
+    () =>
+      items.map((item, index) => {
+        const assignment = trackingAssignmentMap.get(item.id) ?? {
+          assigned: 0,
+          remaining: item.quantity,
+          status: "unassigned" as const,
+        };
+
+        return {
+          key: item.id,
+          image: item.product_image,
+          productName: item.product_name,
+          sku: getProductSku(item, index),
+          shop: item.shop_name ?? item.seller ?? "-",
+          variant: getVariantLabel(item),
+          orderedQuantity: item.quantity,
+          assignedQuantity: assignment.assigned,
+          remainingQuantity: assignment.remaining,
+          unitPrice: item.price_cny,
+          subtotal: item.price_cny * item.quantity,
+        };
+      }),
+    [items, trackingAssignmentMap],
+  );
+  const trackingSummaryRows = useMemo(
+    () =>
+      allTrackingCodes.map((tracking) => {
+        const matchedTracking = orderTrackings.find(
+          (entry) =>
+            entry.tracking_number?.trim().toUpperCase() ===
+            tracking.trackingNumber.trim().toUpperCase(),
+        );
+        const matchedPackage = cnPackages.find(
+          (pkg) =>
+            pkg.tracking_number?.trim().toUpperCase() ===
+            tracking.trackingNumber.trim().toUpperCase(),
+        );
+        const trackingItems = matchedTracking?.tracking_items ?? [];
+        const packageItems = matchedPackage?.package_items ?? [];
+        const sourceItems =
+          trackingItems.length > 0
+            ? trackingItems.map((entry) => ({
+                quantity: entry.quantity,
+                productName: entry.order_item?.product_name ?? "Sản phẩm",
+              }))
+            : packageItems.map((entry) => ({
+                quantity: entry.quantity,
+                productName: entry.order_item?.product_name ?? "Sản phẩm",
+              }));
+
+        return {
+          key: tracking.trackingNumber,
+          trackingNumber: tracking.trackingNumber,
+          carrier: tracking.carrier ?? "Chưa cập nhật",
+          productCount: sourceItems.length,
+          totalQuantity: sourceItems.reduce(
+            (sum, item) => sum + item.quantity,
+            0,
+          ),
+          declaredValue: tracking.declaredValue ?? 0,
+          note:
+            matchedTracking?.note ??
+            matchedPackage?.note ??
+            "Không có ghi chú",
+          products:
+            sourceItems.length > 0
+              ? sourceItems
+                  .map((item) => `${item.productName} (${item.quantity})`)
+                  .join(", ")
+              : "Chưa gán sản phẩm",
+          createdAt: tracking.createdAt,
+        };
+      }),
+    [allTrackingCodes, cnPackages, orderTrackings],
+  );
+  const historyTimelineItems = useMemo(() => {
+    const events = [
+      {
+        key: `created-${record?.id ?? "order"}`,
+        createdAt: record?.created_at ?? "",
+        title: "Tạo đơn hàng",
+        description: record?.creator?.name
+          ? `Người tạo: ${record.creator.name}`
+          : "Đơn hàng đã được tạo.",
+      },
+      ...orderTrackings.map((tracking) => ({
+        key: `tracking-${tracking.id}`,
+        createdAt: tracking.dispatched_at ?? record?.created_at ?? "",
+        title: `Đã khai báo mã vận đơn ${tracking.tracking_number}`,
+        description:
+          tracking.note?.trim() ||
+          `Đơn vị vận chuyển: ${tracking.carrier ?? "Chưa cập nhật"}`,
+      })),
+      ...cnPackages.map((pkg) => ({
+        key: `package-${pkg.id}`,
+        createdAt: pkg.received_at ?? pkg.created_at ?? record?.created_at ?? "",
+        title: `Kiện ${pkg.tracking_number ?? pkg.id} cập nhật kho`,
+        description:
+          pkg.warehouse?.name ??
+          pkg.status ??
+          "Kiện hàng đã được cập nhật trạng thái.",
+      })),
+    ];
+
+    return events.sort((left, right) =>
+      dayjs(right.createdAt).valueOf() - dayjs(left.createdAt).valueOf(),
     );
-    const packageRiskSubtotal = useMemo(
-        () => cnPackages.reduce((sum, pkg) => sum + (pkg.declared_value ?? 0), 0),
-        [cnPackages],
+  }, [cnPackages, orderTrackings, record?.created_at, record?.creator?.name, record?.id]);
+  const paidStatuses = [
+    "deposited",
+    "purchasing",
+    "awaiting_tracking",
+    "waiting_cn_warehouse",
+    "receiving",
+    "shipped",
+    "delivered",
+    "completed",
+  ];
+  const hasPaidDeposit = paidStatuses.includes(normalizedOrderStatus ?? "");
+  const productColumns: ColumnsType<(typeof productSummaryRows)[number]> = [
+    {
+      title: "Sản phẩm",
+      dataIndex: "productName",
+      key: "productName",
+      render: (_, row) => (
+        <Space align="start" size={12}>
+          <ProductThumb
+            item={{
+              id: row.key,
+              product_name: row.productName,
+              product_image: row.image,
+              price_cny: row.unitPrice,
+              quantity: row.orderedQuantity,
+            }}
+          />
+          <Space direction="vertical" size={2}>
+            <Text strong>{row.productName}</Text>
+            <Text type="secondary">{row.sku}</Text>
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: "Shop",
+      dataIndex: "shop",
+      key: "shop",
+      render: (value) => <Text>{value}</Text>,
+    },
+    {
+      title: "Phân loại",
+      dataIndex: "variant",
+      key: "variant",
+      render: (value) => <Text>{value}</Text>,
+    },
+    {
+      title: "SL đặt",
+      dataIndex: "orderedQuantity",
+      key: "orderedQuantity",
+      align: "center",
+      width: 96,
+    },
+    {
+      title: "SL đã gán mã",
+      dataIndex: "assignedQuantity",
+      key: "assignedQuantity",
+      align: "center",
+      width: 120,
+      render: (value) => <Text strong>{value}</Text>,
+    },
+    {
+      title: "SL còn lại",
+      dataIndex: "remainingQuantity",
+      key: "remainingQuantity",
+      align: "center",
+      width: 112,
+      render: (value) => (
+        <Text strong style={{ color: value > 0 ? "#ef4444" : "#16a34a" }}>
+          {value}
+        </Text>
+      ),
+    },
+    {
+      title: "Đơn giá",
+      dataIndex: "unitPrice",
+      key: "unitPrice",
+      align: "right",
+      width: 120,
+      render: (value) => <NumberField value={value} options={currencyOptions} />,
+    },
+    {
+      title: "Thành tiền",
+      dataIndex: "subtotal",
+      key: "subtotal",
+      align: "right",
+      width: 132,
+      render: (value) => <NumberField value={value} options={currencyOptions} />,
+    },
+  ];
+  const trackingColumns: ColumnsType<(typeof trackingSummaryRows)[number]> = [
+    {
+      title: "Mã vận đơn",
+      dataIndex: "trackingNumber",
+      key: "trackingNumber",
+      render: (value) => <Text strong>{value}</Text>,
+    },
+    {
+      title: "Đơn vị vận chuyển",
+      dataIndex: "carrier",
+      key: "carrier",
+    },
+    {
+      title: "Số lượng sản phẩm",
+      dataIndex: "productCount",
+      key: "productCount",
+      align: "center",
+      width: 132,
+    },
+    {
+      title: "Tổng số lượng",
+      dataIndex: "totalQuantity",
+      key: "totalQuantity",
+      align: "center",
+      width: 120,
+    },
+    {
+      title: "Giá trị kiện hàng RMB",
+      dataIndex: "declaredValue",
+      key: "declaredValue",
+      align: "right",
+      width: 160,
+      render: (value) => <Text>{Number(value ?? 0).toFixed(2)}</Text>,
+    },
+    {
+      title: "Ghi chú",
+      dataIndex: "note",
+      key: "note",
+      render: (value) => (
+        <Text ellipsis={{ tooltip: value }}>{value || "Không có ghi chú"}</Text>
+      ),
+    },
+    {
+      title: "Sản phẩm",
+      dataIndex: "products",
+      key: "products",
+      render: (value) => (
+        <Text ellipsis={{ tooltip: value }} style={{ maxWidth: 260 }}>
+          {value}
+        </Text>
+      ),
+    },
+    {
+      title: "Ngày gán",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      width: 160,
+      render: (value) => <Text>{formatDateTime(value ?? undefined)}</Text>,
+    },
+  ];
+
+  useEffect(() => {
+    if (!isTrackingManagerOpen) {
+      return;
+    }
+
+    setTrackingDrafts(buildTrackingDrafts(orderTrackings));
+  }, [isTrackingManagerOpen, orderTrackings]);
+
+  const itemsSubtotal = useMemo(
+    () => items.reduce((sum, item) => sum + item.price_cny * item.quantity, 0),
+    [items],
+  );
+  const estimateTotal =
+    items.length > 0 ? itemsSubtotal : (record?.total_amount ?? 0);
+  const depositAmount = Math.round((depositPercentage / 100) * estimateTotal);
+  const canOpenConfirmModal = normalizedOrderStatus === "pending";
+  const canOpenDepositModal = normalizedOrderStatus === "awaiting_deposit";
+  const canStartPurchasing = normalizedOrderStatus === "deposited";
+  const canConfirmPurchased = normalizedOrderStatus === "purchasing";
+  const canManageTrackings = ["awaiting_tracking", "waiting_cn_warehouse"].includes(
+    normalizedOrderStatus ?? "",
+  );
+  const primaryActionLabel = canOpenConfirmModal
+    ? "Xác nhận đơn hàng"
+    : canOpenDepositModal
+      ? "Xác nhận tiền cọc"
+      : canStartPurchasing
+        ? "Bắt đầu đặt hàng"
+        : canConfirmPurchased
+          ? "Xác nhận đã đặt hàng"
+          : canManageTrackings
+            ? "Quản lý mã vận đơn"
+            : "Đơn hàng đã xử lý";
+
+  const handleUpdateOrderStatus = (
+    nextStatus: string,
+    onSuccessCallback?: () => void,
+  ) => {
+    if (!record?.id) return;
+
+    setIsUpdatingStatus(true);
+
+    updateOrder(
+      {
+        resource: "orders",
+        id: record.id,
+        values: { status: nextStatus },
+      },
+      {
+        onSuccess: async () => {
+          await query.refetch();
+          setIsUpdatingStatus(false);
+          onSuccessCallback?.();
+        },
+        onError: (error) => {
+          messageApi.error(
+            error instanceof Error
+              ? error.message
+              : "Cập nhật trạng thái đơn hàng thất bại.",
+          );
+          setIsUpdatingStatus(false);
+        },
+      },
     );
+  };
+  const handleConfirmOrder = () => {
+    if (depositOpions === "deposit") {
+      handleUpdateOrderStatus("awaiting_deposit", () => {
+        setIsConfirmModalOpen(false);
+        setIsDepositModalOpen(true);
+        messageApi.success("Đơn hàng đã chuyển sang trạng thái chờ đặt cọc.");
+      });
+      return;
+    }
+    handleUpdateOrderStatus("purchasing", () => {
+      setIsConfirmModalOpen(false);
+      messageApi.success("Đơn hàng đã chuyển sang trạng thái đang đặt hàng.");
+    });
+  };
 
-    const handleTrackOrder = () => {
-        trackerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
+  const handleConfirmDepositPaid = () => {
+    handleUpdateOrderStatus("deposited", () => {
+      setIsDepositModalOpen(false);
+      messageApi.success("Đơn hàng đã được xác nhận là đã đặt cọc.");
+    });
+  };
 
-    const handlePrint = () => {
-        window.print();
-    };
+  const updateOrderTrackingPayload = async (
+    values: { packages?: NonNullable<IOrder["order_trackings"]> | TrackingDraft[]; status?: string },
+    successMessage: string,
+    onSuccessCallback?: (nextTrackings: NonNullable<IOrder["order_trackings"]>) => void,
+  ) => {
+    if (!record?.id) {
+      return;
+    }
 
-    const handleConfirmOrder = () => {
-        if (!record?.id || record.status?.toLowerCase() !== "pending") {
-            return;
+    setIsUpdatingStatus(true);
+
+    const packages = Array.isArray(values.packages)
+      ? values.packages.map((tracking) => {
+          const trackingDraft = "local_id" in tracking ? tracking : {
+            local_id: createTrackingLocalId(),
+            id: tracking.id,
+            tracking_number: tracking.tracking_number,
+            carrier: tracking.carrier,
+            dispatched_at: tracking.dispatched_at,
+            note: tracking.note,
+            tracking_items: (tracking.tracking_items ?? []).map((item) => ({
+              order_item_id: item.order_item_id,
+              quantity: item.quantity,
+            })),
+          };
+
+          const declaredValue = trackingDraft.tracking_items.reduce((sum, trackingItem) => {
+            const item = items.find((orderItem) => orderItem.id === trackingItem.order_item_id);
+            return sum + (item?.price_cny ?? 0) * trackingItem.quantity;
+          }, 0);
+
+          return {
+            id: trackingDraft.id,
+            tracking_number: trackingDraft.tracking_number.trim().toUpperCase(),
+            carrier: trackingDraft.carrier ?? null,
+            dispatched_at: trackingDraft.dispatched_at
+              ? dayjs(trackingDraft.dispatched_at).startOf("day").toISOString()
+              : null,
+            note: trackingDraft.note?.trim() || null,
+            declared_value: declaredValue,
+            tracking_items: trackingDraft.tracking_items.map((trackingItem) => ({
+              order_item_id: trackingItem.order_item_id,
+              quantity: trackingItem.quantity,
+            })),
+          };
+        })
+      : undefined;
+
+    updateOrder(
+      {
+        resource: "orders",
+        id: record.id,
+        values: {
+          ...(packages ? { packages } : {}),
+          ...(values.status ? { status: values.status } : {}),
+        },
+      },
+      {
+        onSuccess: async () => {
+          const refreshed = await query.refetch();
+          const nextTrackings = refreshed.data?.data?.order_trackings ?? [];
+          setTrackingDrafts(buildTrackingDrafts(nextTrackings));
+          messageApi.success(successMessage);
+          setIsUpdatingStatus(false);
+          onSuccessCallback?.(nextTrackings);
+        },
+        onError: (error) => {
+          messageApi.error(
+            error instanceof Error ? error.message : "Không thể lưu mã vận đơn.",
+          );
+          setIsUpdatingStatus(false);
+        },
+      },
+    );
+  };
+
+  const getTrackingItemQuantity = (tracking: TrackingDraft, orderItemId: string) =>
+    tracking.tracking_items.find((item) => item.order_item_id === orderItemId)?.quantity ?? 0;
+
+  const getMaxAssignableQuantity = (trackingIndex: number, orderItemId: string) => {
+    const orderedQuantity = items.find((item) => item.id === orderItemId)?.quantity ?? 0;
+    const assignedInOtherTrackings = trackingDrafts.reduce((sum, tracking, index) => {
+      if (index === trackingIndex) {
+        return sum;
+      }
+
+      return sum + getTrackingItemQuantity(tracking, orderItemId);
+    }, 0);
+
+    return Math.max(orderedQuantity - assignedInOtherTrackings, 0);
+  };
+
+  const addTrackingDraft = () => {
+    setTrackingDrafts((current) => [
+      ...current,
+      {
+        local_id: createTrackingLocalId(),
+        tracking_number: "",
+        carrier: "YTO Express",
+        dispatched_at: null,
+        note: "",
+        tracking_items: [],
+      },
+    ]);
+  };
+
+  const removeTrackingDraft = (trackingIndex: number) => {
+    setTrackingDrafts((current) => current.filter((_, index) => index !== trackingIndex));
+  };
+
+  const updateTrackingDraft = (
+    trackingIndex: number,
+    field: keyof Omit<TrackingDraft, "local_id" | "id" | "tracking_items">,
+    value: string | null | undefined,
+  ) => {
+    setTrackingDrafts((current) =>
+      current.map((tracking, index) =>
+        index === trackingIndex ? { ...tracking, [field]: value } : tracking,
+      ),
+    );
+  };
+
+  const toggleTrackingItem = (trackingIndex: number, orderItemId: string, checked: boolean) => {
+    setTrackingDrafts((current) =>
+      current.map((tracking, index) => {
+        if (index !== trackingIndex) {
+          return tracking;
         }
 
-        setIsUpdatingStatus(true);
-        updateOrderStatus(
-            {
-                resource: "orders",
-                id: record.id,
-                values: { status: "approved" },
-            },
-            {
-                onSuccess: async () => {
-                    messageApi.success("Đã xác nhận đơn hàng.");
-                    await query.refetch();
-                    setIsUpdatingStatus(false);
-                },
-                onError: (error) => {
-                    messageApi.error(error instanceof Error ? error.message : "Không thể xác nhận đơn hàng.");
-                    setIsUpdatingStatus(false);
-                },
-            },
-        );
-    };
+        if (checked) {
+          if (tracking.tracking_items.some((item) => item.order_item_id === orderItemId)) {
+            return tracking;
+          }
 
-    return (
-        <>
-            {contextHolder}
-            <Show
-                isLoading={isLoading}
-                title={false}
-                headerButtons={() => <></>}
-                contentProps={{
-                    style: {
-                        padding: 0,
-                        background: "transparent",
-                        boxShadow: "none",
-                    },
-                }}
-            >
-                <div
-                    style={{
-                        minHeight: "100%",
-                        background:
-                            "radial-gradient(circle at top right, rgba(59,130,246,0.08), transparent 28%), #f4f7fb",
-                    }}
-                >
-                    <Space direction="vertical" size={24} style={{ width: "100%" }}>
-                    <Card bordered={false} style={surfaceCardStyle} styles={{ body: { padding: 28 } }}>
-                        <Space direction="vertical" size={20} style={{ width: "100%" }}>
-                            <Breadcrumb
-                                items={[
-                                    { title: <Link to="/orders">Orders</Link> },
-                                    { title: "Order Details" },
-                                ]}
-                            />
+          const nextQuantity = Math.max(Math.min(getMaxAssignableQuantity(trackingIndex, orderItemId), 1), 1);
 
-                            <Row gutter={[20, 20]} align="middle" justify="space-between">
-                                <Col xs={24} xl={10}>
-                                    <Space direction="vertical" size={10}>
-                                        <Space size={12} wrap>
-                                            <Button
-                                                icon={<SearchOutlined />}
-                                                style={{
-                                                    ...actionButtonStyle,
-                                                    width: 42,
-                                                    paddingInline: 0,
-                                                }}
-                                                onClick={handleTrackOrder}
-                                            />
-                                            <Title
-                                                level={1}
-                                                style={{
-                                                    margin: 0,
-                                                    color: "#0f172a",
-                                                    fontSize: navigateScreens.md ? 38 : 30,
-                                                    lineHeight: 1.08,
-                                                }}
-                                            >
-                                                {record?.order_code || "Order Details"}
-                                            </Title>
-                                            <Tag
-                                                color={statusMeta.color}
-                                                style={{
-                                                    borderRadius: 999,
-                                                    padding: "6px 14px",
-                                                    fontWeight: 700,
-                                                    textTransform: "uppercase",
-                                                    marginInlineEnd: 0,
-                                                }}
-                                            >
-                                                {statusMeta.label}
-                                            </Tag>
-                                        </Space>
-                                        <Text style={{ ...mutedTextStyle, fontSize: 15 }}>
-                                            Placed on {formatDateTime(record?.created_at)}
-                                        </Text>
-                                    </Space>
-                                </Col>
+          return {
+            ...tracking,
+            tracking_items: [
+              ...tracking.tracking_items,
+              { order_item_id: orderItemId, quantity: nextQuantity },
+            ],
+          };
+        }
 
-                                <Col xs={24} xl={14}>
-                                    <Space
-                                        size={[12, 12]}
-                                        wrap
-                                        style={{
-                                            width: "100%",
-                                            justifyContent: navigateScreens.xl ? "flex-end" : "flex-start",
-                                        }}
-                                    >
-                                        <Button
-                                            type="primary"
-                                            icon={<TruckOutlined />}
-                                            style={primaryButtonStyle}
-                                            onClick={handleTrackOrder}
-                                        >
-                                            Track Order
-                                        </Button>
-                                        <Button
-                                            icon={<PrinterOutlined />}
-                                            style={actionButtonStyle}
-                                            onClick={handlePrint}
-                                        >
-                                            Print Label
-                                        </Button>
-                                        <Button
-                                            icon={<ReloadOutlined />}
-                                            style={actionButtonStyle}
-                                            onClick={() => query.refetch()}
-                                        >
-                                            Refresh
-                                        </Button>
-                                        <DeleteButton
-                                            recordItemId={record?.id}
-                                            resource="orders"
-                                            icon={<DeleteOutlined />}
-                                            style={dangerButtonStyle}
-                                            disabled={!record?.id}
-                                        >
-                                            Delete Order
-                                        </DeleteButton>
-                                    </Space>
-                                </Col>
-                            </Row>
-                        </Space>
-                    </Card>
-
-                    <div ref={trackerRef}>
-                        <Card bordered={false} style={surfaceCardStyle} styles={{ body: { padding: 28 } }}>
-                        <Space direction="vertical" size={24} style={{ width: "100%" }}>
-                            <Title level={5} style={sectionTitleStyle}>
-                                Order Journey
-                            </Title>
-
-                            <div style={trackerContainerStyle}>
-                                {trackerSteps.map((step, index) => {
-                                    const isActive = index === currentStepIndex;
-                                    const isCompleted = index < currentStepIndex;
-                                    const tone = isActive || isCompleted ? "#0b4aa2" : "#94a3b8";
-
-                                    return (
-                                        <div key={step.key} style={trackerStepStyle}>
-                                            {index < trackerSteps.length - 1 ? (
-                                                <div
-                                                    style={{
-                                                        ...trackerLineStyle,
-                                                        background:
-                                                            index < currentStepIndex ? "#0b4aa2" : "#d7e1f0",
-                                                    }}
-                                                />
-                                            ) : null}
-
-                                            <Space direction="vertical" size={10}>
-                                                <div
-                                                    style={{
-                                                        width: 44,
-                                                        height: 44,
-                                                        borderRadius: 16,
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        background: isActive
-                                                            ? "#0b4aa2"
-                                                            : isCompleted
-                                                              ? "#dbeafe"
-                                                              : "#ffffff",
-                                                        color: isActive
-                                                            ? "#ffffff"
-                                                            : isCompleted
-                                                              ? "#0b4aa2"
-                                                              : "#94a3b8",
-                                                        border: `1px solid ${
-                                                            isActive || isCompleted ? "#0b4aa2" : "#d7e1f0"
-                                                        }`,
-                                                        boxShadow: isActive
-                                                            ? "0 14px 28px rgba(11, 74, 162, 0.28)"
-                                                            : "0 8px 18px rgba(15, 23, 42, 0.05)",
-                                                        position: "relative",
-                                                        zIndex: 1,
-                                                    }}
-                                                >
-                                                    {step.icon}
-                                                </div>
-
-                                                <Space direction="vertical" size={0}>
-                                                    <Text strong style={{ color: tone, fontSize: 14 }}>
-                                                        {step.title}
-                                                    </Text>
-                                                    <Text style={{ ...mutedTextStyle, fontSize: 12 }}>
-                                                        {index <= currentStepIndex
-                                                            ? formatDateTime(record?.created_at)
-                                                            : "Waiting..."}
-                                                    </Text>
-                                                </Space>
-                                            </Space>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </Space>
-                        </Card>
-                    </div>
-
-                    <Row gutter={[24, 24]} align="stretch">
-                        <Col xs={24} xxl={16}>
-                            <Card bordered={false} style={surfaceCardStyle} styles={{ body: { padding: 28 } }}>
-                                <Space direction="vertical" size={24} style={{ width: "100%" }}>
-                                    <Row justify="space-between" align="middle" gutter={[16, 16]}>
-                                        <Col>
-                                            <Space size={10}>
-                                                <div
-                                                    style={{
-                                                        width: 42,
-                                                        height: 42,
-                                                        borderRadius: 14,
-                                                        background: "#edf4ff",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        color: "#0b4aa2",
-                                                    }}
-                                                >
-                                                    <ShoppingOutlined />
-                                                </div>
-                                                <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
-                                                    Items Summary
-                                                </Title>
-                                            </Space>
-                                        </Col>
-                                        <Col>
-                                            <Tag
-                                                style={{
-                                                    margin: 0,
-                                                    borderRadius: 999,
-                                                    padding: "4px 12px",
-                                                    background: "#eff6ff",
-                                                    borderColor: "#dbeafe",
-                                                    color: "#0b4aa2",
-                                                    fontWeight: 700,
-                                                }}
-                                            >
-                                                {items.length} item{items.length === 1 ? "" : "s"}
-                                            </Tag>
-                                        </Col>
-                                    </Row>
-
-                                    <div>
-                                        {items.map((item, index) => (
-                                            <div key={item.id ?? `${item.product_name}-${index}`} style={itemRowStyle}>
-                                                <Row gutter={[16, 16]} align="middle">
-                                                    <Col xs={24} md={15}>
-                                                        <Space size={16} align="start">
-                                                            <ProductThumb item={item} />
-                                                            <Space direction="vertical" size={4}>
-                                                                <Text strong style={{ color: "#0f172a", fontSize: 15 }}>
-                                                                    {item.product_name}
-                                                                </Text>
-                                                                <Text style={{ ...mutedTextStyle, fontSize: 12 }}>
-                                                                    {getProductSku(item, index)}
-                                                                </Text>
-                                                                {item.seller ? (
-                                                                    <Text style={{ ...mutedTextStyle, fontSize: 12 }}>
-                                                                        Shop: {item.seller}
-                                                                    </Text>
-                                                                ) : null}
-                                                                <Text style={{ ...mutedTextStyle, fontSize: 13 }}>
-                                                                    Quantity: {item.quantity}
-                                                                </Text>
-                                                            </Space>
-                                                        </Space>
-                                                    </Col>
-                                                    <Col xs={12} md={4}>
-                                                        <Space direction="vertical" size={2}>
-                                                            <Text style={{ ...mutedTextStyle, fontSize: 11, textTransform: "uppercase" }}>
-                                                                Price
-                                                            </Text>
-                                                            <Text strong style={{ color: "#0f172a" }}>
-                                                                <NumberField value={item.price_cny} options={currencyOptions} />
-                                                            </Text>
-                                                        </Space>
-                                                    </Col>
-                                                    <Col xs={12} md={5}>
-                                                        <Space
-                                                            direction="vertical"
-                                                            size={2}
-                                                            style={{ width: "100%", textAlign: navigateScreens.md ? "right" : "left" }}
-                                                        >
-                                                            <Text style={{ ...mutedTextStyle, fontSize: 11, textTransform: "uppercase" }}>
-                                                                Subtotal
-                                                            </Text>
-                                                            <Text strong style={{ color: "#0b4aa2", fontSize: 16 }}>
-                                                                <NumberField
-                                                                    value={item.price_cny * item.quantity}
-                                                                    options={currencyOptions}
-                                                                />
-                                                            </Text>
-                                                        </Space>
-                                                    </Col>
-                                                </Row>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <Divider style={{ margin: 0, borderColor: "#e7edf6" }} />
-
-                                    <Space direction="vertical" size={14} style={{ width: "100%" }}>
-                                        <div style={summaryRowStyle}>
-                                            <Text style={mutedTextStyle}>Subtotal</Text>
-                                            <Text strong>
-                                                <NumberField value={itemsSubtotal} options={currencyOptions} />
-                                            </Text>
-                                        </div>
-                                        <div style={summaryRowStyle}>
-                                            <Text style={mutedTextStyle}>Shipping Fee</Text>
-                                            <Text strong>
-                                                <NumberField value={0} options={currencyOptions} />
-                                            </Text>
-                                        </div>
-                                        <div style={summaryRowStyle}>
-                                            <Text style={mutedTextStyle}>Taxes</Text>
-                                            <Text strong>
-                                                <NumberField value={0} options={currencyOptions} />
-                                            </Text>
-                                        </div>
-                                        <Divider style={{ margin: "4px 0", borderColor: "#dbe3f0" }} />
-                                        <div style={summaryRowStyle}>
-                                            <Text
-                                                style={{
-                                                    color: "#0f172a",
-                                                    fontWeight: 800,
-                                                    fontSize: 15,
-                                                    letterSpacing: 0.6,
-                                                    textTransform: "uppercase",
-                                                }}
-                                            >
-                                                Total Amount
-                                            </Text>
-                                            <Title level={2} style={{ margin: 0, color: "#0b4aa2" }}>
-                                                <NumberField
-                                                    value={items.length > 0 ? itemsSubtotal : record?.total_amount}
-                                                    options={currencyOptions}
-                                                />
-                                            </Title>
-                                        </div>
-                                    </Space>
-                                </Space>
-                            </Card>
-                            <div
-                                style={{
-                                    display: "flex",
-                                    justifyContent: navigateScreens.md ? "flex-end" : "stretch",
-                                    marginTop: 16,
-                                }}
-                            >
-                                <Button
-                                    type="primary"
-                                    icon={<CheckCircleOutlined />}
-                                    style={primaryButtonStyle}
-                                    block={!navigateScreens.md}
-                                    loading={isUpdatingStatus}
-                                    disabled={record?.status?.toLowerCase() !== "pending"}
-                                    onClick={handleConfirmOrder}
-                                >
-                                    Xác nhận đơn hàng
-                                </Button>
-                            </div>
-                        </Col>
-                                   
-                        <Col xs={24} xxl={8}>
-                            <Space direction="vertical" size={24} style={{ width: "100%" }}>
-                                <Card bordered={false} style={surfaceCardStyle} styles={{ body: infoCardBodyStyle }}>
-                                    <Space direction="vertical" size={14} style={{ width: "100%" }}>
-                                        <Space size={12}>
-                                            <Avatar
-                                                size={52}
-                                                style={{
-                                                    background: "linear-gradient(135deg, #0b4aa2 0%, #2563eb 100%)",
-                                                    fontWeight: 700,
-                                                }}
-                                            >
-                                                {getInitials(record?.customer?.name)}
-                                            </Avatar>
-                                            <Space direction="vertical" size={0}>
-                                                <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
-                                                    Customer Info
-                                                </Title>
-                                                <Text style={mutedTextStyle}>Primary contact details</Text>
-                                            </Space>
-                                        </Space>
-
-                                        <Divider style={{ margin: 0, borderColor: "#e7edf6" }} />
-
-                                        <InfoRow
-                                            icon={<UserOutlined />}
-                                            label="Full Name"
-                                            value={record?.customer?.name}
-                                        />
-                                        <InfoRow
-                                            icon={<MailOutlined />}
-                                            label="Email Address"
-                                            value={record?.customer?.email}
-                                        />
-                                        <InfoRow
-                                            icon={<PhoneOutlined />}
-                                            label="Phone Number"
-                                            value={record?.customer?.phone}
-                                        />
-                                    </Space>
-                                </Card>
-
-                                <Card bordered={false} style={surfaceCardStyle} styles={{ body: infoCardBodyStyle }}>
-                                    <Space direction="vertical" size={14} style={{ width: "100%" }}>
-                                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
-                                            Shipping Details
-                                        </Title>
-                                        <Text style={mutedTextStyle}>Operational delivery information</Text>
-
-                                        <Divider style={{ margin: 0, borderColor: "#e7edf6" }} />
-
-                                        <InfoRow
-                                            icon={<EnvironmentOutlined />}
-                                            label="Delivery Address"
-                                            value={record?.customer?.address}
-                                        />
-                                        <InfoRow
-                                            icon={<TruckOutlined />}
-                                            label="Shipping Method"
-                                            value="Not specified"
-                                        />
-                                        <InfoRow
-                                            icon={<CheckCircleOutlined />}
-                                            label="Delivery Status"
-                                            value={statusMeta.label}
-                                        />
-
-                                        <Divider style={{ margin: 0, borderColor: "#e7edf6" }} />
-
-                                        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                                            <Space size={10}>
-                                                <InboxOutlined style={{ color: "#0b4aa2" }} />
-                                                <Title level={5} style={{ margin: 0, color: "#0f172a" }}>
-                                                    Guangzhou Warehouse Packages
-                                                </Title>
-                                            </Space>
-                                            <Text style={mutedTextStyle}>
-                                                Tất cả mã vận đơn hiện có của đơn hàng này. Tổng giá trị khai báo hiện tại:
-                                                {" "}{packageRiskSubtotal} RMB.
-                                            </Text>
-
-                                            {allTrackingCodes.length === 0 ? (
-                                                <Alert
-                                                    type="info"
-                                                    showIcon
-                                                    message="Chưa có mã vận đơn"
-                                                    description="Đơn hàng này hiện chưa có tracking number nào được liên kết."
-                                                />
-                                            ) : (
-                                                <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                                                    {allTrackingCodes.map((tracking) => (
-                                                        <Card
-                                                            key={tracking.trackingNumber}
-                                                            size="small"
-                                                            styles={{ body: { padding: 14 } }}
-                                                        >
-                                                            <Space direction="vertical" size={4} style={{ width: "100%" }}>
-                                                                <Text strong>{tracking.trackingNumber}</Text>
-                                                                <Text type="secondary">
-                                                                    {(tracking.warehouseName ?? "Kho Quảng Châu")} • {(tracking.status ?? "pending").toUpperCase()}
-                                                                </Text>
-                                                                <Text type="secondary">
-                                                                    Carrier: {tracking.carrier ?? "VN Express"} • Giá trị khai báo: {tracking.declaredValue ?? 0} RMB
-                                                                </Text>
-                                                                {tracking.shops.length > 0 ? (
-                                                                    <Text type="secondary">
-                                                                        Shop: {tracking.shops.join(", ")}
-                                                                    </Text>
-                                                                ) : null}
-                                                                {tracking.items.length > 0 ? (
-                                                                    <Text type="secondary">
-                                                                        Sản phẩm: {tracking.items.join(", ")}
-                                                                    </Text>
-                                                                ) : (
-                                                                    <Text type="secondary">
-                                                                        Chưa liên kết sản phẩm cho mã vận đơn này.
-                                                                    </Text>
-                                                                )}
-                                                                <Text type="secondary">
-                                                                    Created at {formatDateTime(tracking.createdAt ?? undefined)}
-                                                                </Text>
-                                                            </Space>
-                                                        </Card>
-                                                    ))}
-                                                </Space>
-                                            )}
-                                        </Space>
-                                    </Space>
-                                </Card>
-                            </Space>
-                        </Col>
-                    </Row>
-                </Space>
-            </div>
-            </Show>
-        </>
+        return {
+          ...tracking,
+          tracking_items: tracking.tracking_items.filter((item) => item.order_item_id !== orderItemId),
+        };
+      }),
     );
+  };
+
+  const updateTrackingItemQuantity = (
+    trackingIndex: number,
+    orderItemId: string,
+    quantity: number | null,
+  ) => {
+    const maxAssignable = getMaxAssignableQuantity(trackingIndex, orderItemId);
+    const normalizedQuantity = Math.max(1, Math.min(Number(quantity ?? 1), maxAssignable || 1));
+
+    setTrackingDrafts((current) =>
+      current.map((tracking, index) => {
+        if (index !== trackingIndex) {
+          return tracking;
+        }
+
+        return {
+          ...tracking,
+          tracking_items: tracking.tracking_items.map((item) =>
+            item.order_item_id === orderItemId
+              ? { ...item, quantity: normalizedQuantity }
+              : item,
+          ),
+        };
+      }),
+    );
+  };
+
+  const openTrackingManager = () => {
+    setTrackingDrafts(buildTrackingDrafts(orderTrackings));
+    setIsTrackingManagerOpen(true);
+  };
+
+  const handleSaveAllTrackings = () => {
+    const validationMessage = validateTrackingDrafts(items, trackingDrafts);
+
+    if (validationMessage) {
+      messageApi.error(validationMessage);
+      return;
+    }
+
+    updateOrderTrackingPayload(
+      { packages: trackingDrafts },
+      "Đã lưu danh sách mã vận đơn.",
+    );
+  };
+
+  const handleMoveToWaitingCnWarehouse = () => {
+    const validationMessage = validateTrackingDrafts(items, trackingDrafts);
+
+    if (validationMessage) {
+      messageApi.error(validationMessage);
+      return;
+    }
+
+    if (!isTrackingAssignmentComplete) {
+      messageApi.error(
+        "Vui lòng gán đủ mã vận đơn cho tất cả sản phẩm trước khi chuyển sang trạng thái Chờ kho Trung Quốc nhận hàng.",
+      );
+      return;
+    }
+
+    updateOrderTrackingPayload(
+      { packages: trackingDrafts, status: "waiting_cn_warehouse" },
+      "Đơn hàng đã chuyển sang trạng thái chờ kho Trung Quốc nhận hàng.",
+      () => {
+        setIsTrackingManagerOpen(false);
+      },
+    );
+  };
+
+  const handlePrimaryAction = () => {
+    if (canOpenConfirmModal) {
+      setIsConfirmModalOpen(true);
+      return;
+    }
+
+    if (canOpenDepositModal) {
+      setIsDepositModalOpen(true);
+      return;
+    }
+
+    if (canStartPurchasing) {
+      handleUpdateOrderStatus("purchasing", () => {
+        messageApi.success("Đơn hàng đã chuyển sang trạng thái đang đặt hàng.");
+      });
+      return;
+    }
+
+    if (canConfirmPurchased) {
+      handleUpdateOrderStatus("awaiting_tracking", () => {
+        messageApi.success("Đơn hàng đã chuyển sang trạng thái chờ mã vận đơn.");
+      });
+      return;
+    }
+
+    if (canManageTrackings) {
+      openTrackingManager();
+    }
+  };
+  return (
+    <>
+      {contextHolder}
+      <Show
+        isLoading={isLoading}
+        title={false}
+        headerButtons={() => <></>}
+        contentProps={{
+          style: {
+            padding: 0,
+            background: "transparent",
+            boxShadow: "none",
+          },
+        }}
+      >
+        <div
+          style={{
+            minHeight: "100%",
+            background:
+              "radial-gradient(circle at top right, rgba(59,130,246,0.08), transparent 30%), #f4f7fb",
+          }}
+        >
+          <Space direction="vertical" size={20} style={{ width: "100%" }}>
+            <Card
+              variant="borderless"
+              style={surfaceCardStyle}
+              styles={{ body: { padding: 28 } }}
+            >
+              <Space direction="vertical" size={20} style={{ width: "100%" }}>
+                <Breadcrumb
+                  items={[
+                    {
+                      title: (
+                        <Space size={6}>
+                          <HomeOutlined />
+                          <Link to="/orders">Đơn hàng</Link>
+                        </Space>
+                      ),
+                    },
+                    { title: "Chi tiết đơn hàng" },
+                  ]}
+                />
+
+                <Row gutter={[20, 20]} justify="space-between" align="middle">
+                  <Col xs={24} xl={10}>
+                    <Space direction="vertical" size={8}>
+                      <Space size={12} wrap>
+                        <Title
+                          level={1}
+                          style={{
+                            margin: 0,
+                            color: "#0f172a",
+                            fontSize: navigateScreens.md ? 38 : 30,
+                            lineHeight: 1.08,
+                          }}
+                        >
+                          {record?.order_code || "Chi tiết đơn hàng"}
+                        </Title>
+                        <Tag
+                          color={statusMeta.color}
+                          style={{
+                            borderRadius: 999,
+                            padding: "6px 14px",
+                            fontWeight: 700,
+                            marginInlineEnd: 0,
+                          }}
+                        >
+                          {statusMeta.label}
+                        </Tag>
+                      </Space>
+                      <Text style={{ ...mutedTextStyle, fontSize: 14 }}>
+                        Ngày tạo: {formatDateTime(record?.created_at)}{" "}
+                        <Text style={mutedTextStyle}>
+                          • Tạo bởi: {record?.creator?.name || "-"}
+                        </Text>
+                      </Text>
+                    </Space>
+                  </Col>
+
+                  <Col xs={24} xl={14}>
+                    <Space
+                      size={[12, 12]}
+                      wrap
+                      style={{
+                        width: "100%",
+                        justifyContent: navigateScreens.xl
+                          ? "flex-end"
+                          : "flex-start",
+                      }}
+                    >
+                      <Button
+                        type="primary"
+                        icon={<CheckCircleOutlined />}
+                        style={primaryButtonStyle}
+                        loading={isUpdatingStatus}
+                        disabled={
+                          !canOpenConfirmModal &&
+                          !canOpenDepositModal &&
+                          !canStartPurchasing &&
+                          !canConfirmPurchased &&
+                          !canManageTrackings
+                        }
+                        onClick={handlePrimaryAction}
+                      >
+                        {primaryActionLabel}
+                      </Button>
+                      <Button
+                        icon={<InboxOutlined />}
+                        style={actionButtonStyle}
+                        onClick={openTrackingManager}
+                      >
+                        Quản lý mã vận đơn
+                      </Button>
+                      <Button
+                        icon={<ReloadOutlined />}
+                        style={actionButtonStyle}
+                        onClick={() => query.refetch()}
+                      >
+                        Làm mới
+                      </Button>
+                      <DeleteButton
+                        recordItemId={record?.id}
+                        resource="orders"
+                        icon={<DeleteOutlined />}
+                        disabled={!record?.id}
+                        style={{
+                          ...actionButtonStyle,
+                          color: "#dc2626",
+                          borderColor: "#fecaca",
+                          background: "#fff",
+                        }}
+                      >
+                        Hủy đơn
+                      </DeleteButton>
+                    </Space>
+                  </Col>
+                </Row>
+              </Space>
+            </Card>
+
+            <Card
+              variant="borderless"
+              style={surfaceCardStyle}
+              styles={{ body: { padding: 24 } }}
+            >
+              <Steps
+                current={currentStepIndex}
+                responsive
+                items={orderJourneySteps.map((step) => ({
+                  title: step.title,
+                  icon: step.icon,
+                }))}
+              />
+            </Card>
+
+            <Row gutter={[20, 20]} align="top">
+              <Col xs={24} xl={16}>
+                <Space direction="vertical" size={20} style={{ width: "100%" }}>
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <Space direction="vertical" size={18} style={{ width: "100%" }}>
+                      <Space size={12}>
+                        <div style={sectionIconWrapStyle}>
+                          <UserOutlined />
+                        </div>
+                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                          Thông tin đơn hàng & khách hàng
+                        </Title>
+                      </Space>
+
+                      <Descriptions
+                        column={navigateScreens.lg ? 2 : 1}
+                        colon={false}
+                        labelStyle={{ color: "#64748b", width: 180 }}
+                        contentStyle={{ color: "#0f172a", fontWeight: 500 }}
+                        items={[
+                          {
+                            key: "customer",
+                            label: "Khách hàng",
+                            children: record?.customer?.name || "-",
+                          },
+                          {
+                            key: "phone",
+                            label: "SĐT",
+                            children: record?.customer?.phone || "-",
+                          },
+                          {
+                            key: "email",
+                            label: "Email",
+                            children: record?.customer?.email || "-",
+                          },
+                          {
+                            key: "address",
+                            label: "Địa chỉ nhận hàng",
+                            children: record?.customer?.address || "-",
+                          },
+                          {
+                            key: "note",
+                            label: "Ghi chú khách hàng",
+                            children: record?.note || "Không có",
+                          },
+                          {
+                            key: "source",
+                            label: "Nguồn đơn hàng",
+                            children: record?.creator?.name
+                              ? `Nhân viên tạo: ${record.creator.name}`
+                              : "-",
+                          },
+                        ]}
+                      />
+                    </Space>
+                  </Card>
+
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <Space direction="vertical" size={18} style={{ width: "100%" }}>
+                      <Space size={12}>
+                        <div style={sectionIconWrapStyle}>
+                          <ShoppingOutlined />
+                        </div>
+                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                          Danh sách sản phẩm
+                        </Title>
+                      </Space>
+
+                      <Table
+                        rowKey="key"
+                        dataSource={productSummaryRows}
+                        columns={productColumns}
+                        pagination={false}
+                        scroll={{ x: 980 }}
+                        locale={{ emptyText: "Chưa có sản phẩm trong đơn hàng." }}
+                        summary={() => (
+                          <Table.Summary.Row>
+                            <Table.Summary.Cell index={0} colSpan={3}>
+                              <Text strong>Tổng cộng</Text>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={1} align="center">
+                              <Text strong>
+                                {productSummaryRows.reduce(
+                                  (sum, row) => sum + row.orderedQuantity,
+                                  0,
+                                )}
+                              </Text>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={2} align="center">
+                              <Text strong>
+                                {productSummaryRows.reduce(
+                                  (sum, row) => sum + row.assignedQuantity,
+                                  0,
+                                )}
+                              </Text>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={3} align="center">
+                              <Text strong style={{ color: remainingSkuCount > 0 ? "#ef4444" : "#16a34a" }}>
+                                {productSummaryRows.reduce(
+                                  (sum, row) => sum + row.remainingQuantity,
+                                  0,
+                                )}
+                              </Text>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={4} />
+                            <Table.Summary.Cell index={5} align="right">
+                              <Text strong>
+                                <NumberField value={itemsSubtotal} options={currencyOptions} />
+                              </Text>
+                            </Table.Summary.Cell>
+                          </Table.Summary.Row>
+                        )}
+                      />
+                    </Space>
+                  </Card>
+
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: { padding: 24 } }}
+                  >
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      <Row justify="space-between" align="middle" gutter={[12, 12]}>
+                        <Col>
+                          <Space size={12}>
+                            <div style={sectionIconWrapStyle}>
+                              <InboxOutlined />
+                            </div>
+                            <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                              Mã vận đơn
+                            </Title>
+                          </Space>
+                        </Col>
+                        <Col>
+                          <Button icon={<InboxOutlined />} onClick={openTrackingManager}>
+                            Quản lý mã vận đơn
+                          </Button>
+                        </Col>
+                      </Row>
+
+                      {items.length > 0 && !isTrackingAssignmentComplete ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          title={`Đã gán ${assignedSkuCount}/${items.length} sản phẩm. Còn ${remainingSkuCount} sản phẩm chưa có mã vận đơn.`}
+                        />
+                      ) : null}
+
+                      {trackingSummaryRows.length === 0 ? (
+                        <Empty description="Chưa có mã vận đơn nào." />
+                      ) : (
+                        <Table
+                          rowKey="key"
+                          dataSource={trackingSummaryRows}
+                          columns={trackingColumns}
+                          pagination={false}
+                          scroll={{ x: 1100 }}
+                        />
+                      )}
+                    </Space>
+                  </Card>
+
+                  <Row gutter={[20, 20]}>
+                    <Col xs={24} lg={12}>
+                      <Card
+                        variant="borderless"
+                        style={surfaceCardStyle}
+                        styles={{ body: { padding: 24 } }}
+                      >
+                        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                          <Space size={12}>
+                            <div style={sectionIconWrapStyle}>
+                              <FileSearchOutlined />
+                            </div>
+                            <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                              Lịch sử đơn hàng
+                            </Title>
+                          </Space>
+
+                          {historyTimelineItems.length === 0 ? (
+                            <Empty description="Chưa có lịch sử đơn hàng." />
+                          ) : (
+                            <Timeline
+                              items={historyTimelineItems.map((entry) => ({
+                                children: (
+                                  <Space direction="vertical" size={2}>
+                                    <Text strong>{entry.title}</Text>
+                                    <Text type="secondary">
+                                      {formatDateTime(entry.createdAt)}
+                                    </Text>
+                                    <Text type="secondary">{entry.description}</Text>
+                                  </Space>
+                                ),
+                              }))}
+                            />
+                          )}
+                        </Space>
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} lg={12}>
+                      <Card
+                        variant="borderless"
+                        style={surfaceCardStyle}
+                        styles={{ body: { padding: 24 } }}
+                      >
+                        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                          <Space size={12}>
+                            <div style={sectionIconWrapStyle}>
+                              <FileTextOutlined />
+                            </div>
+                            <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                              Ghi chú nội bộ
+                            </Title>
+                          </Space>
+
+                          <Input.TextArea
+                            value={record?.note ?? ""}
+                            readOnly
+                            autoSize={{ minRows: 6, maxRows: 8 }}
+                            placeholder="Chưa có ghi chú nội bộ."
+                          />
+                        </Space>
+                      </Card>
+                    </Col>
+                  </Row>
+                </Space>
+              </Col>
+
+              <Col xs={24} xl={8}>
+                <Space direction="vertical" size={20} style={{ width: "100%" }}>
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: infoCardBodyStyle }}
+                  >
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      <Space size={12}>
+                        <div style={sectionIconWrapStyle}>
+                          <ProfileOutlined />
+                        </div>
+                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                          Thông tin tổng quan
+                        </Title>
+                      </Space>
+
+                      <Descriptions
+                        column={1}
+                        colon={false}
+                        labelStyle={{ color: "#64748b", width: 180 }}
+                        contentStyle={{ color: "#0f172a", fontWeight: 500 }}
+                        items={[
+                          {
+                            key: "orderCode",
+                            label: "Mã đơn hàng",
+                            children: record?.order_code || "-",
+                          },
+                          {
+                            key: "createdAt",
+                            label: "Ngày tạo",
+                            children: formatDateTime(record?.created_at),
+                          },
+                          {
+                            key: "creator",
+                            label: "Nhân viên phụ trách",
+                            children: record?.creator?.name || "-",
+                          },
+                          {
+                            key: "warehouse",
+                            label: "Kho nhận hàng",
+                            children:
+                              cnPackages[0]?.warehouse?.name ||
+                              allTrackingCodes[0]?.warehouseName ||
+                              "Chưa cập nhật",
+                          },
+                          {
+                            key: "shippingMethod",
+                            label: "Phương thức vận chuyển dự kiến",
+                            children: "Chưa cập nhật",
+                          },
+                        ]}
+                      />
+                    </Space>
+                  </Card>
+
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: infoCardBodyStyle }}
+                  >
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      <Space size={12}>
+                        <div style={sectionIconWrapStyle}>
+                          <DollarCircleOutlined />
+                        </div>
+                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                          Thanh toán
+                        </Title>
+                      </Space>
+
+                      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                        <div style={modalSummaryRowStyle}>
+                          <Text style={mutedTextStyle}>Tạm tính ({items.length} sản phẩm)</Text>
+                          <Text strong>
+                            <NumberField value={itemsSubtotal} options={currencyOptions} />
+                          </Text>
+                        </div>
+                        <div style={modalSummaryRowStyle}>
+                          <Text style={mutedTextStyle}>Phí dịch vụ</Text>
+                          <Text strong>
+                            <NumberField value={0} options={currencyOptions} />
+                          </Text>
+                        </div>
+                        <div style={modalSummaryRowStyle}>
+                          <Text style={mutedTextStyle}>Phí vận chuyển dự kiến</Text>
+                          <Text strong>
+                            <NumberField value={0} options={currencyOptions} />
+                          </Text>
+                        </div>
+                        <div style={modalSummaryRowStyle}>
+                          <Text style={mutedTextStyle}>Đặt cọc ({depositPercentage}%)</Text>
+                          <Text strong style={{ color: "#2563eb" }}>
+                            {formatVnd(depositAmount)}
+                          </Text>
+                        </div>
+                        <Divider style={{ margin: "2px 0", borderColor: "#e7edf6" }} />
+                        <div style={modalSummaryRowStyle}>
+                          <Text style={mutedTextStyle}>Đã thanh toán</Text>
+                          <Text strong style={{ color: "#16a34a" }}>
+                            {hasPaidDeposit ? formatVnd(depositAmount) : "0đ"}
+                          </Text>
+                        </div>
+                        <div style={modalSummaryRowStyle}>
+                          <Text style={mutedTextStyle}>Còn lại phải thanh toán</Text>
+                          <Text strong style={{ color: "#ef4444" }}>
+                            {hasPaidDeposit ? "0đ" : formatVnd(depositAmount)}
+                          </Text>
+                        </div>
+                      </Space>
+                    </Space>
+                  </Card>
+
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: infoCardBodyStyle }}
+                  >
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      <Space size={12}>
+                        <div style={sectionIconWrapStyle}>
+                          <CheckCircleOutlined />
+                        </div>
+                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                          Trạng thái thanh toán
+                        </Title>
+                      </Space>
+
+                      <Row justify="space-between" align="middle">
+                        <Text style={mutedTextStyle}>Trạng thái</Text>
+                        <Tag
+                          color={hasPaidDeposit ? "green" : "gold"}
+                          style={{ borderRadius: 999, marginInlineEnd: 0, padding: "4px 12px" }}
+                        >
+                          {hasPaidDeposit ? "Đã đặt cọc" : "Chờ đặt cọc"}
+                        </Tag>
+                      </Row>
+
+                      <Descriptions
+                        column={1}
+                        colon={false}
+                        labelStyle={{ color: "#64748b", width: 150 }}
+                        contentStyle={{ color: "#0f172a", fontWeight: 500 }}
+                        items={[
+                          {
+                            key: "paidAt",
+                            label: "Đặt cọc lúc",
+                            children: hasPaidDeposit
+                              ? formatDateTime(record?.created_at)
+                              : "Chưa cập nhật",
+                          },
+                          {
+                            key: "method",
+                            label: "Phương thức",
+                            children: hasPaidDeposit
+                              ? "Xác nhận nội bộ"
+                              : "Chưa cập nhật",
+                          },
+                        ]}
+                      />
+                    </Space>
+                  </Card>
+
+                  <Card
+                    variant="borderless"
+                    style={surfaceCardStyle}
+                    styles={{ body: infoCardBodyStyle }}
+                  >
+                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                      <Space size={12}>
+                        <div style={sectionIconWrapStyle}>
+                          <PaperClipOutlined />
+                        </div>
+                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                          Tệp đính kèm
+                        </Title>
+                      </Space>
+
+                      <List
+                        dataSource={[]}
+                        locale={{
+                          emptyText: (
+                            <Empty description="Chưa có tệp đính kèm." />
+                          ),
+                        }}
+                        renderItem={() => null}
+                      />
+                    </Space>
+                  </Card>
+                </Space>
+              </Col>
+            </Row>
+          </Space>
+        </div>
+      </Show>
+      <Modal
+        open={isConfirmModalOpen}
+        onCancel={() => setIsConfirmModalOpen(false)}
+        onOk={handleConfirmOrder}
+        confirmLoading={isUpdatingStatus}
+        title={`Xác nhận đơn hàng ${record?.order_code}`}
+        okText="Xác nhận"
+        cancelText="Hủy"
+      >
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+          <Text>Đơn hàng hợp lệ, bạn muốn xử lý tiếp?</Text>
+
+          <Radio.Group
+            value={depositOpions}
+            onChange={(e) => setDepositOptions(e.target.value)}
+            style={{ width: "100%" }}
+          >
+            <Space orientation="vertical" size={12} style={{ width: "100%" }}>
+              <div
+                style={{
+                  ...optionCardStyle,
+                  borderColor:
+                    depositOpions === "deposit" ? "#1677ff" : "#e5e7eb",
+                }}
+              >
+                <Radio value="deposit">
+                  <Text strong>Cần đặt cọc</Text>
+                </Radio>
+
+                <div style={{ marginTop: 8, marginLeft: 24 }}>
+                  <Text type="secondary">
+                    Đơn hàng sẽ chuyển sang trạng thái "awaiting_deposit"
+                  </Text>
+
+                  {depositOpions === "deposit" ? (
+                    <Space
+                      orientation="vertical"
+                      size={12}
+                      style={{ width: "100%", marginTop: 12 }}
+                    >
+                      <Space>
+                        <Text>Tỷ lệ đặt cọc</Text>
+                        <InputNumber
+                          min={0}
+                          max={100}
+                          value={depositPercentage}
+                          onChange={(value) =>
+                            setDepositPercentage(Number(value ?? 0))
+                          }
+                        />
+                        <Text>%</Text>
+                      </Space>
+
+                      <Text>
+                        Số tiền cần đặt cọc:{" "}
+                        <Text strong style={{ color: "#dc2626" }}>
+                          {formatVnd(depositAmount)}
+                        </Text>
+                      </Text>
+                    </Space>
+                  ) : null}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  ...optionCardStyle,
+                  borderColor:
+                    depositOpions === "no_deposit" ? "#1677ff" : "#e5e7eb",
+                }}
+              >
+                <Radio value="no_deposit">
+                  <Text strong>Không cần đặt cọc</Text>
+                </Radio>
+
+                <div style={{ marginTop: 8, marginLeft: 24 }}>
+                  <Text type="secondary">
+                    Đơn hàng sẽ chuyển sang trạng thái "purchasing"
+                  </Text>
+                </div>
+              </div>
+            </Space>
+          </Radio.Group>
+        </Space>
+      </Modal>
+      <Modal
+        open={isDepositModalOpen}
+        onCancel={() => setIsDepositModalOpen(false)}
+        footer={null}
+        title={`Đơn hàng: ${record?.order_code ?? ""}`}
+      >
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+          <Tag color={normalizedOrderStatus === "deposited" ? "green" : "purple"}>
+            {normalizedOrderStatus === "deposited" ? "Đã đặt cọc" : "Chờ đặt cọc"}
+          </Tag>
+
+          <div style={summaryBlockStyle}>
+            <div style={modalSummaryRowStyle}>
+              <Text>Tổng tiền tạm tính</Text>
+              <Text strong>{formatVnd(estimateTotal)}</Text>
+            </div>
+            <div style={modalSummaryRowStyle}>
+              <Text>Tỷ lệ đặt cọc</Text>
+              <Text strong>{depositPercentage}%</Text>
+            </div>
+            <div style={modalSummaryRowStyle}>
+              <Text>Số tiền cần đặt cọc</Text>
+              <Text strong>{formatVnd(depositAmount)}</Text>
+            </div>
+            <div style={modalSummaryRowStyle}>
+              <Text>Đã thanh toán</Text>
+              <Text strong>{normalizedOrderStatus === "deposited" ? formatVnd(depositAmount) : "0đ"}</Text>
+            </div>
+            <div style={modalSummaryRowStyle}>
+              <Text>Còn phải thanh toán</Text>
+              <Text strong style={{ color: "#dc2626" }}>
+                {normalizedOrderStatus === "deposited" ? "0đ" : formatVnd(depositAmount)}
+              </Text>
+            </div>
+          </div>
+
+          <div style={bankInfoStyle}>
+            <Text strong>Hướng dẫn thanh toán</Text>
+            <div>
+              <Text>Ngân hàng: Vietcombank</Text>
+            </div>
+            <div>
+              <Text>STK: 1234 5678 9999</Text>
+            </div>
+            <div>
+              <Text>Chủ TK: CONG TY TNHH LOGISTICS</Text>
+            </div>
+            <div>
+              <Text>
+                Nội dung: COC {record?.order_code} - {record?.customer?.name}
+              </Text>
+            </div>
+          </div>
+
+          <Space style={{ width: "100%", justifyContent: "space-between" }}>
+            <Button
+              type="primary"
+              loading={isUpdatingStatus}
+              disabled={normalizedOrderStatus === "deposited"}
+              onClick={handleConfirmDepositPaid}
+            >
+              Xác nhận đã thanh toán
+            </Button>
+            <Button>Gửi nhắc nhở</Button>
+          </Space>
+        </Space>
+      </Modal>
+      <Modal
+        open={isTrackingManagerOpen}
+        onCancel={() => setIsTrackingManagerOpen(false)}
+        width={1240}
+        destroyOnHidden={false}
+        title={`Quản lý mã vận đơn - Đơn hàng ${record?.order_code ?? ""}`}
+        footer={
+          <Space style={{ width: "100%", justifyContent: "space-between" }}>
+            <div>
+              {isTrackingEditable && normalizedOrderStatus === "awaiting_tracking" ? (
+                <Button
+                  type="primary"
+                  ghost
+                  disabled={!isTrackingAssignmentComplete}
+                  loading={isUpdatingStatus}
+                  onClick={handleMoveToWaitingCnWarehouse}
+                >
+                  Chuyển sang chờ kho TQ nhận hàng
+                </Button>
+              ) : null}
+            </div>
+            <Space>
+              <Button onClick={() => setIsTrackingManagerOpen(false)}>Hủy</Button>
+              <Button
+                type="primary"
+                loading={isUpdatingStatus}
+                disabled={!isTrackingEditable}
+                onClick={handleSaveAllTrackings}
+              >
+                Lưu tất cả
+              </Button>
+            </Space>
+          </Space>
+        }
+      >
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+          <Card size="small">
+            <Row gutter={[16, 16]} align="middle">
+              <Col xs={24} md={7}>
+                <Space orientation="vertical" size={2}>
+                  <Text type="secondary">Mã đơn hàng</Text>
+                  <Text strong>{record?.order_code ?? "-"}</Text>
+                  <Text type="secondary">Khách hàng: {record?.customer?.name ?? "-"}</Text>
+                  <Text type="secondary">Ngày đặt: {formatDateOnly(record?.created_at)}</Text>
+                </Space>
+              </Col>
+              <Col xs={12} md={3}>
+                <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
+                  <Text type="secondary">Tổng SKU</Text>
+                  <Title level={2} style={{ margin: 0 }}>{items.length}</Title>
+                </Space>
+              </Col>
+              <Col xs={12} md={4}>
+                <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
+                  <Text type="secondary">Đã gán mã vận đơn</Text>
+                  <Title level={2} style={{ margin: 0, color: "#16a34a" }}>{assignedSkuCount}</Title>
+                </Space>
+              </Col>
+              <Col xs={12} md={4}>
+                <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
+                  <Text type="secondary">Còn chưa gán</Text>
+                  <Title level={2} style={{ margin: 0, color: "#f97316" }}>{remainingSkuCount}</Title>
+                </Space>
+              </Col>
+              <Col xs={24} md={6}>
+                <Alert
+                  type="info"
+                  showIcon
+                  title="Lưu ý"
+                  description="Tổng số lượng đã gán cho mỗi sản phẩm không được vượt quá số lượng đã đặt."
+                />
+              </Col>
+            </Row>
+          </Card>
+
+          <Row gutter={[16, 16]} align="top">
+            <Col xs={24} xl={10}>
+              <Card title="1. Danh sách sản phẩm trong đơn" size="small">
+                {items.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đơn hàng chưa có sản phẩm." />
+                ) : (
+                  <Space orientation="vertical" size={12} style={{ width: "100%" }}>
+                    <Space size={20} wrap>
+                      <Tag color="green">Đã gán đủ</Tag>
+                      <Tag color="orange">Chưa gán đủ</Tag>
+                      <Tag>Chưa gán</Tag>
+                    </Space>
+                    <Table<TrackingProductRow>
+                      size="small"
+                      pagination={false}
+                      rowKey="key"
+                      scroll={{ x: 860 }}
+                      dataSource={trackingProductRows}
+                      columns={trackingProductColumns}
+                    />
+                  </Space>
+                )}
+              </Card>
+            </Col>
+
+            <Col xs={24} xl={14}>
+              <Card
+                title="2. Danh sách mã vận đơn"
+                size="small"
+                extra={
+                  <Button type="dashed" onClick={addTrackingDraft} disabled={!isTrackingEditable}>
+                    + Thêm mã vận đơn khác
+                  </Button>
+                }
+              >
+                {trackingDrafts.length === 0 ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="Chưa có mã vận đơn nào. Hãy thêm block mã vận đơn đầu tiên."
+                  />
+                ) : (
+                  <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+                    {trackingDrafts.map((tracking, trackingIndex) => (
+                      <Card
+                        key={tracking.local_id}
+                        size="small"
+                        title={`Mã vận đơn #${trackingIndex + 1}`}
+                        extra={
+                          <Button
+                            danger
+                            type="text"
+                            disabled={!isTrackingEditable}
+                            onClick={() => removeTrackingDraft(trackingIndex)}
+                          >
+                            Xóa mã này
+                          </Button>
+                        }
+                      >
+                        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+                          <Row gutter={[12, 12]}>
+                            <Col xs={24} md={10}>
+                              <Text>Mã vận đơn *</Text>
+                              <Input
+                                value={tracking.tracking_number}
+                                disabled={!isTrackingEditable}
+                                onChange={(event) =>
+                                  updateTrackingDraft(
+                                    trackingIndex,
+                                    "tracking_number",
+                                    event.target.value.toUpperCase(),
+                                  )
+                                }
+                                placeholder="VD: YD123456789CN"
+                              />
+                            </Col>
+                            <Col xs={24} md={7}>
+                              <Text>Đơn vị vận chuyển *</Text>
+                              <Select
+                                value={tracking.carrier ?? undefined}
+                                disabled={!isTrackingEditable}
+                                options={carrierOptions}
+                                onChange={(value) =>
+                                  updateTrackingDraft(trackingIndex, "carrier", value)
+                                }
+                                placeholder="Chọn đơn vị"
+                              />
+                            </Col>
+                            <Col xs={24} md={7}>
+                              <Text>Shop / người bán</Text>
+                              <Input value={getTrackingShopSummary(tracking, items)} disabled />
+                            </Col>
+                            <Col xs={24} md={7}>
+                              <Text>Ngày phát hàng</Text>
+                              <DatePicker
+                                style={{ width: "100%" }}
+                                value={tracking.dispatched_at ? dayjs(tracking.dispatched_at) : null}
+                                disabled={!isTrackingEditable}
+                                format="DD/MM/YYYY"
+                                onChange={(value) =>
+                                  updateTrackingDraft(
+                                    trackingIndex,
+                                    "dispatched_at",
+                                    value ? value.startOf("day").toISOString() : null,
+                                  )
+                                }
+                              />
+                            </Col>
+                            <Col xs={24} md={17}>
+                              <Text>Ghi chú</Text>
+                              <Input.TextArea
+                                rows={2}
+                                value={tracking.note ?? ""}
+                                disabled={!isTrackingEditable}
+                                onChange={(event) =>
+                                  updateTrackingDraft(trackingIndex, "note", event.target.value)
+                                }
+                                placeholder="Ví dụ: Shop đóng gói cẩn thận"
+                              />
+                            </Col>
+                          </Row>
+
+                          <Space orientation="vertical" size={10} style={{ width: "100%" }}>
+                            <Text strong>Sản phẩm trong mã vận đơn này *</Text>
+                            <div style={{ display: "grid", gridTemplateColumns: "56px 1.6fr 1fr 80px 130px", gap: 12, fontWeight: 700, fontSize: 12 }}>
+                              <div>Chọn</div>
+                              <div>Sản phẩm</div>
+                              <div>Phân loại</div>
+                              <div>SL đặt</div>
+                              <div>Số lượng trong mã này</div>
+                            </div>
+                            {items.map((item) => {
+                              const selectedQuantity = getTrackingItemQuantity(tracking, item.id);
+                              const isChecked = selectedQuantity > 0;
+                              const maxAssignable = getMaxAssignableQuantity(trackingIndex, item.id);
+                              return (
+                                <div
+                                  key={`${tracking.local_id}-${item.id}`}
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "56px 1.6fr 1fr 80px 130px",
+                                    gap: 12,
+                                    alignItems: "center",
+                                    padding: "10px 12px",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: 12,
+                                  }}
+                                >
+                                  <Checkbox
+                                    checked={isChecked}
+                                    disabled={!isTrackingEditable || maxAssignable <= 0}
+                                    onChange={(event) =>
+                                      toggleTrackingItem(trackingIndex, item.id, event.target.checked)
+                                    }
+                                  />
+                                  <Space align="start">
+                                    <ProductThumb item={item} />
+                                    <Space orientation="vertical" size={2}>
+                                      <Text strong>{item.product_name}</Text>
+                                      <Text type="secondary">{item.shop_name ?? item.seller ?? "-"}</Text>
+                                    </Space>
+                                  </Space>
+                                  <Text>{getVariantLabel(item)}</Text>
+                                  <Text>{item.quantity}</Text>
+                                  <InputNumber
+                                    min={1}
+                                    max={Math.max(maxAssignable, 1)}
+                                    value={selectedQuantity || null}
+                                    disabled={!isTrackingEditable || !isChecked}
+                                    onChange={(value) =>
+                                      updateTrackingItemQuantity(trackingIndex, item.id, value)
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
+                          </Space>
+                        </Space>
+                      </Card>
+                    ))}
+                  </Space>
+                )}
+              </Card>
+            </Col>
+          </Row>
+
+          {!isTrackingAssignmentComplete && isTrackingEditable ? (
+            <Alert
+              type="warning"
+              showIcon
+              title="Chưa thể chuyển sang chờ kho TQ nhận hàng"
+              description="Vui lòng gán đủ mã vận đơn cho tất cả sản phẩm trước khi chuyển sang trạng thái Chờ kho Trung Quốc nhận hàng."
+            />
+          ) : null}
+
+          {isTrackingReadonly ? (
+            <Alert
+              type="info"
+              showIcon
+              title="Đơn hàng đang ở chế độ chỉ xem"
+              description="Đơn hàng đã ở trạng thái không còn cho phép chỉnh sửa mã vận đơn."
+            />
+          ) : null}
+        </Space>
+      </Modal>
+    </>
+  );
 };

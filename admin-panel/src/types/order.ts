@@ -4,14 +4,18 @@ import type { Customer } from "./customer";
 export type OrderStatus =
   | "draft"
   | "pending"
-  | "approved"
-  | "deposit"
+  | "awaiting_deposit"
+  | "deposited"
+  | "purchasing"
+  | "awaiting_tracking"
+  | "waiting_cn_warehouse"
   | "receiving"
   | "shipped"
   | "delivered"
   | "completed"
   | "complaint"
-  | "cancelled";
+  | "cancelled"
+  | "awaiting_tracking";
 
 export interface OrderItem {
   id: string;
@@ -121,7 +125,7 @@ export interface CnPackage {
   received_at?: string | null;
   created_at?: string | null;
   warehouse: CnWarehouse;
-  order?: Pick<OrderSummary, "id" | "order_code"> & {
+  order?: Pick<OrderSummary, "id" | "order_code" | "status"> & {
     customer?: Pick<Customer, "id" | "name" | "phone" | "email" | "address">;
   };
   order_tracking?: OrderTracking | null;
@@ -135,6 +139,7 @@ export interface OrderTracking {
   tracking_number: string;
   carrier?: string | null;
   declared_value?: number | null;
+  dispatched_at?: string | null;
   note?: string | null;
   status: string;
   tracking_items?: OrderTrackingItem[];
@@ -225,6 +230,8 @@ export interface OrderPackageInput {
   tracking_number?: string | null;
   declared_value?: number | null;
   carrier?: string | null;
+  dispatched_at?: string | null;
   note?: string | null;
-  package_items: OrderPackageItemInput[];
+  package_items?: OrderPackageItemInput[];
+  tracking_items?: OrderPackageItemInput[];
 }

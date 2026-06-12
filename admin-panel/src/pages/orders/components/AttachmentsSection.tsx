@@ -10,17 +10,20 @@ const { Text } = Typography;
 type AttachmentsSectionProps = {
   fileList: UploadFile[];
   onChange: (files: UploadFile[]) => void;
+  disabled?: boolean;
 };
 
 export const AttachmentsSection = ({
   fileList,
   onChange,
+  disabled = false,
 }: AttachmentsSectionProps) => (
   <OrderEditSectionCard icon={<PaperClipOutlined />} title="Tệp đính kèm">
     <Form.Item<OrderEditFormValues> style={{ marginBottom: 0 }}>
       <Dragger
         accept=".pdf,.jpg,.jpeg,.png"
         beforeUpload={() => false}
+        disabled={disabled}
         fileList={fileList}
         itemRender={() => null}
         maxCount={5}
@@ -30,8 +33,8 @@ export const AttachmentsSection = ({
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
-        <p className="order-edit-upload-title">Kéo thả hoặc chọn tệp đính kèm</p>
-        <Text type="secondary">PDF, JPG, PNG up to 10MB</Text>
+        <p className="order-edit-upload-title">Kéo thả hoặc chọn tệp để tải lên</p>
+        <Text type="secondary">PDF, JPG, PNG - tối đa 10MB</Text>
       </Dragger>
     </Form.Item>
   </OrderEditSectionCard>

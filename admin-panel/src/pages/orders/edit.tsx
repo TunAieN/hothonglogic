@@ -45,7 +45,10 @@ const { Title, Text } = Typography;
 const PAGE_STYLES = `
   .order-edit-app {
     min-height: 100vh;
-    background: #f7f5f2;
+    background:
+      radial-gradient(circle at top left, rgba(93, 146, 255, 0.12), transparent 24%),
+      radial-gradient(circle at top right, rgba(255, 208, 145, 0.12), transparent 18%),
+      linear-gradient(180deg, #f7fafe 0%, #f5f8fc 100%);
   }
 
   .order-edit-app .ant-layout-sider {
@@ -125,7 +128,7 @@ const PAGE_STYLES = `
   }
 
   .order-edit-main {
-    background: #faf8f4;
+    background: transparent;
   }
 
   .order-edit-header {
@@ -181,7 +184,7 @@ const PAGE_STYLES = `
   }
 
   .order-edit-page-body {
-    padding: 18px 34px 36px;
+    padding: 26px 38px 42px;
   }
 
   .order-edit-breadcrumb,
@@ -192,34 +195,44 @@ const PAGE_STYLES = `
 
   .order-edit-page-title {
     color: #081a43 !important;
-    font-size: 42px !important;
+    font-size: 44px !important;
     font-weight: 800 !important;
     letter-spacing: -0.03em;
     margin: 4px 0 0 !important;
   }
 
+  .order-edit-page-meta {
+    color: #667085;
+    font-size: 14px;
+  }
+
+  .order-edit-page-meta .order-edit-meta-dot {
+    color: #c2c8d2;
+    margin: 0 10px;
+  }
+
   .order-edit-rate-card.ant-card {
-    background: #f3efea;
-    border: 0;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #e6edf8;
     border-radius: 16px;
-    box-shadow: none;
+    box-shadow: 0 10px 26px rgba(32, 55, 104, 0.08);
   }
 
   .order-edit-rate-card .ant-card-body {
-    padding: 14px 18px;
+    padding: 14px 20px;
     text-align: center;
   }
 
   .order-edit-rate-label {
-    color: #6b7280;
+    color: #7d89a0;
     font-size: 12px;
     letter-spacing: 0.16em;
     text-transform: uppercase;
   }
 
   .order-edit-rate-value {
-    color: #108d4f !important;
-    font-size: 20px !important;
+    color: #16a34a !important;
+    font-size: 28px !important;
     font-weight: 800 !important;
     line-height: 1;
     margin-top: 4px;
@@ -228,26 +241,27 @@ const PAGE_STYLES = `
   .order-edit-section-card.ant-card,
   .order-edit-summary-card.ant-card,
   .order-edit-context-card.ant-card {
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid #efe9e2;
-    border-radius: 30px;
-    box-shadow: 0 12px 32px rgba(31, 41, 55, 0.06);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #e8eef7;
+    border-radius: 22px;
+    box-shadow: 0 14px 34px rgba(31, 65, 114, 0.07);
   }
 
   .order-edit-section-card .ant-card-body,
   .order-edit-context-card .ant-card-body {
-    padding: 26px;
+    padding: 22px 24px;
   }
 
   .order-edit-section-head {
     align-items: center;
     display: flex;
     justify-content: space-between;
+    gap: 12px;
   }
 
   .order-edit-section-title.ant-typography {
-    color: #0a1f55;
-    font-size: 20px;
+    color: #11338f;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.02em;
   }
@@ -257,9 +271,9 @@ const PAGE_STYLES = `
   }
 
   .order-edit-page-body .ant-form-item-label > label {
-    color: #111827;
-    font-size: 14px;
-    font-weight: 500;
+    color: #344054;
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .order-edit-page-body .ant-form-item-required::before {
@@ -273,9 +287,9 @@ const PAGE_STYLES = `
   .order-edit-page-body .ant-select-selector,
   .order-edit-page-body .ant-input-affix-wrapper,
   .order-edit-page-body textarea.ant-input {
-    background: #f0edeb !important;
-    border-color: transparent !important;
-    border-radius: 14px !important;
+    background: #ffffff !important;
+    border-color: #d9e3f2 !important;
+    border-radius: 12px !important;
     box-shadow: none !important;
   }
 
@@ -283,7 +297,32 @@ const PAGE_STYLES = `
   .order-edit-page-body .ant-select-selector,
   .order-edit-page-body .ant-input-number,
   .order-edit-page-body .ant-input-affix-wrapper {
-    min-height: 48px;
+    min-height: 44px;
+  }
+
+  .order-edit-page-body .ant-input:hover,
+  .order-edit-page-body .ant-input-number:hover,
+  .order-edit-page-body .ant-select:hover .ant-select-selector,
+  .order-edit-page-body .ant-input-affix-wrapper:hover {
+    border-color: #bfd1ec !important;
+  }
+
+  .order-edit-page-body .ant-input:focus,
+  .order-edit-page-body .ant-input-focused,
+  .order-edit-page-body .ant-input-number-focused,
+  .order-edit-page-body .ant-select-focused .ant-select-selector,
+  .order-edit-page-body .ant-input-affix-wrapper-focused {
+    border-color: #7aa2f7 !important;
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.12) !important;
+  }
+
+  .order-edit-page-body .ant-input[disabled],
+  .order-edit-page-body .ant-input-number-disabled,
+  .order-edit-page-body .ant-select-disabled .ant-select-selector,
+  .order-edit-page-body .ant-input-affix-wrapper-disabled,
+  .order-edit-page-body textarea.ant-input[disabled] {
+    background: #f8fafc !important;
+    color: #667085 !important;
   }
 
   .order-edit-page-body .ant-select-selector {
@@ -296,13 +335,13 @@ const PAGE_STYLES = `
   }
 
   .order-edit-tip-banner {
-    background: #f4efe7;
-    border-left: 4px solid #ffb300;
-    border-radius: 10px;
-    color: #d98d00;
-    font-size: 14px;
+    background: #fff9ef;
+    border: 1px solid #f8d9a0;
+    border-radius: 14px;
+    color: #b7791f;
+    font-size: 13px;
     line-height: 1.55;
-    padding: 12px 16px;
+    padding: 10px 14px;
   }
 
   .order-edit-shipping-remove {
@@ -323,10 +362,10 @@ const PAGE_STYLES = `
   }
 
   .order-edit-add-tracking {
-    background: #e3f4eb;
-    border: 0;
+    background: #f5fbf6;
+    border: 1px solid #b7e4c7;
     border-radius: 12px;
-    color: #137d4d;
+    color: #12824c;
     font-weight: 600;
     width: fit-content;
   }
@@ -336,42 +375,43 @@ const PAGE_STYLES = `
   }
 
   .order-edit-section-card .ant-upload-wrapper .ant-upload-drag {
-    background: #fff;
-    border: 2px dashed #d8dce6;
-    border-radius: 20px;
-    min-height: 190px;
-    padding: 22px 18px;
+    background: #ffffff;
+    border: 1px dashed #cfdbef;
+    border-radius: 16px;
+    min-height: 160px;
+    padding: 20px 18px;
   }
 
   .order-edit-upload-title {
-    color: #111827;
-    font-size: 18px;
-    font-weight: 500;
+    color: #1d2939;
+    font-size: 16px;
+    font-weight: 600;
     margin-bottom: 6px;
   }
 
   .order-edit-summary-card.ant-card {
-    background: linear-gradient(180deg, #091d4b 0%, #081936 100%);
-    color: #fff;
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid #e7eef8;
+    color: #101828;
     overflow: hidden;
     position: sticky;
     top: 112px;
   }
 
   .order-edit-summary-card .ant-card-body {
-    padding: 26px;
+    padding: 24px;
   }
 
   .order-edit-summary-kicker {
-    color: #9fb3da;
-    font-size: 12px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+    color: #12358f;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
   }
 
   .order-edit-summary-row {
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid #edf2f7;
     display: flex;
     justify-content: space-between;
     padding-bottom: 14px;
@@ -379,36 +419,39 @@ const PAGE_STYLES = `
 
   .order-edit-summary-row .ant-typography,
   .order-edit-summary-row .ant-badge {
-    color: #fff;
+    color: #101828;
   }
 
   .order-edit-live-badge {
-    background: #fff;
+    background: #f8fafc;
+    border: 1px solid #d7e4f5;
     border-radius: 999px;
-    color: #0f172a;
+    color: #344054;
     display: inline-block;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.16em;
-    padding: 10px 14px;
+    letter-spacing: 0.08em;
+    padding: 7px 12px;
   }
 
   .order-edit-confirm-button,
   .order-edit-update-button {
-    border-radius: 14px;
-    font-size: 18px;
+    border-radius: 12px;
+    font-size: 17px;
     font-weight: 700;
-    height: 58px;
+    height: 52px;
+    width: 100%;
   }
 
   .order-edit-confirm-button {
-    background: #0e8f4f;
-    border-color: #0e8f4f;
+    background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+    border-color: #16a34a;
   }
 
   .order-edit-update-button {
-    border: 0;
-    color: #0b1533;
+    background: #ffffff;
+    border: 1px solid #d6dfec;
+    color: #12358f;
   }
 
   .order-edit-context-label {
@@ -420,7 +463,7 @@ const PAGE_STYLES = `
 
   .order-edit-context-map {
     background:
-      linear-gradient(180deg, rgba(247, 245, 242, 0.18), rgba(247, 245, 242, 0.88)),
+      linear-gradient(180deg, rgba(247, 250, 255, 0.25), rgba(247, 250, 255, 0.9)),
       radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.68), transparent 18%),
       radial-gradient(circle at 72% 42%, rgba(255, 255, 255, 0.6), transparent 14%),
       linear-gradient(135deg, #d6d8dd 0%, #f0f1f4 100%);
@@ -525,6 +568,26 @@ const buildStaffOptions = (
 const getStatusLabel = (status?: string) => {
   const normalized = status?.toLowerCase();
 
+  if (normalized === "awaiting_deposit") {
+    return "CHỜ ĐẶT CỌC";
+  }
+
+  if (normalized === "deposited") {
+    return "ĐÃ ĐẶT CỌC";
+  }
+
+  if (normalized === "purchasing") {
+    return "ĐANG ĐẶT HÀNG";
+  }
+
+  if (normalized === "awaiting_tracking") {
+    return "CHỜ MÃ VẬN ĐƠN";
+  }
+
+  if (normalized === "waiting_cn_warehouse") {
+    return "CHỜ KHO TQ NHẬN HÀNG";
+  }
+
   switch (normalized) {
     case "approved":
       return "ĐÃ DUYỆT";
@@ -544,7 +607,66 @@ const getStatusLabel = (status?: string) => {
   }
 };
 
-const isOrderEditable = (status?: string) => status?.toLowerCase() === "pending";
+const normalizeStatus = (status?: string | null) => status?.trim().toLowerCase() ?? "";
+
+const getDisplayStatusLabel = (status?: string) => {
+  const normalized = normalizeStatus(status);
+
+  switch (normalized) {
+    case "awaiting_deposit":
+      return "CHỜ ĐẶT CỌC";
+    case "deposited":
+      return "ĐÃ ĐẶT CỌC";
+    case "purchasing":
+      return "ĐANG ĐẶT HÀNG";
+    case "awaiting_tracking":
+      return "CHỜ MÃ VẬN ĐƠN";
+    case "waiting_cn_warehouse":
+      return "CHỜ KHO TQ NHẬN HÀNG";
+    case "approved":
+      return "ĐÃ DUYỆT";
+    case "pending":
+      return "CHỜ DUYỆT";
+    case "cancelled":
+      return "ĐÃ HỦY";
+    case "rejected":
+      return "ĐÃ TỪ CHỐI";
+    case "shipped":
+      return "ĐANG VẬN CHUYỂN";
+    case "completed":
+    case "delivered":
+      return "HOÀN THÀNH";
+    default:
+      return "ĐANG XỬ LÝ";
+  }
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) {
+    return "--";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "--";
+  }
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
+};
+
+void getStatusLabel;
+
+const isOrderCoreEditable = (status?: string) => normalizeStatus(status) === "pending";
+
+const isTrackingEditableStatus = (status?: string) =>
+  ["awaiting_tracking", "waiting_cn_warehouse"].includes(normalizeStatus(status));
 
 const validateShippingEntries = (
   shippingEntries: ShippingEntryFormValue[],
@@ -632,6 +754,23 @@ const mapPackageToShippingEntry = (
     })) ?? fallbackEntry?.selectedItems ?? [],
 });
 
+const mapTrackingToShippingEntry = (
+  tracking: NonNullable<IOrder["order_trackings"]>[number],
+  fallbackEntry?: ShippingEntryFormValue,
+): ShippingEntryFormValue => ({
+  packageId: tracking.id,
+  trackingCode: tracking.tracking_number ?? "",
+  parcelValue: tracking.declared_value ?? 0,
+  shippingCompany: fallbackEntry?.shippingCompany ?? mapCarrierToShippingCompany(tracking.carrier),
+  packagingType: fallbackEntry?.packagingType ?? "wooden-crating",
+  packageNote: tracking.note ?? fallbackEntry?.packageNote ?? "",
+  selectedItems:
+    tracking.tracking_items?.map((trackingItem) => ({
+      orderItemId: trackingItem.order_item_id,
+      quantity: trackingItem.quantity,
+    })) ?? fallbackEntry?.selectedItems ?? [],
+});
+
 export const OrderEdit = () => {
   const { id } = useParams();
   const { message } = App.useApp();
@@ -665,7 +804,9 @@ export const OrderEdit = () => {
   const { mutateAsync: updateOrder } = useUpdate<IOrder, HttpError, OrderUpdateInput>();
 
   const order = query.data?.data;
-  const isEditable = isOrderEditable(order?.status);
+  const canEditOrderCore = isOrderCoreEditable(order?.status);
+  const canEditTracking = isTrackingEditableStatus(order?.status);
+  const canSaveChanges = canEditOrderCore || canEditTracking;
   const isLoading = query.isLoading;
   const customers = customersResult?.data ?? [];
   const orders = ordersResult?.data ?? [];
@@ -696,8 +837,12 @@ export const OrderEdit = () => {
 
     const { meta, plainNote } = parseOrderEditNote(order.note);
     const shippingEntries =
-      order.cn_packages && order.cn_packages.length > 0
-        ? order.cn_packages.map((pkg, index) => mapPackageToShippingEntry(pkg, meta.shippingEntries?.[index]))
+      order.order_trackings && order.order_trackings.length > 0
+        ? order.order_trackings.map((tracking, index) =>
+            mapTrackingToShippingEntry(tracking, meta.shippingEntries?.[index]))
+        : order.cn_packages && order.cn_packages.length > 0
+          ? order.cn_packages.map((pkg, index) =>
+              mapPackageToShippingEntry(pkg, meta.shippingEntries?.[index]))
         : meta.shippingEntries?.length
           ? meta.shippingEntries
           : [getDefaultShippingEntry()];
@@ -718,7 +863,7 @@ export const OrderEdit = () => {
   }, [form, identity?.id, order]);
 
   useEffect(() => {
-    if (!selectedCustomer) {
+    if (!selectedCustomer || !canEditOrderCore) {
       return;
     }
 
@@ -727,7 +872,7 @@ export const OrderEdit = () => {
       receiverPhone: selectedCustomer.phone || "",
       receiverAddress: selectedCustomer.address || "",
     });
-  }, [form, selectedCustomer]);
+  }, [canEditOrderCore, form, selectedCustomer]);
 
   const handleAttachmentChange = (files: UploadFile[]) => {
     const validFiles = files.filter((file) => {
@@ -750,8 +895,8 @@ export const OrderEdit = () => {
     setAttachments(validFiles);
   };
 
-  const submitOrder = async (values: OrderEditFormValues, nextStatus?: string) => {
-    if (!order?.id || !isEditable) {
+  const submitOrderLegacy = async (values: OrderEditFormValues, nextStatus?: string) => {
+    if (!order?.id || !canEditOrderCore) {
       return;
     }
 
@@ -782,15 +927,65 @@ export const OrderEdit = () => {
     });
   };
 
+  const buildTrackingPackagesPayload = (values: OrderEditFormValues) => {
+    validateShippingEntries(values.shippingEntries, order?.items);
+
+    return values.shippingEntries.map((entry) => ({
+      id: entry.packageId,
+      tracking_number: entry.trackingCode.trim() || null,
+      declared_value: entry.parcelValue ?? 0,
+      carrier: mapShippingCompanyToCarrier(entry.shippingCompany),
+      note: entry.packageNote?.trim() || null,
+      package_items: entry.selectedItems.map((selectedItem) => ({
+        order_item_id: selectedItem.orderItemId,
+        quantity: selectedItem.quantity,
+      })),
+    }));
+  };
+
+  const submitOrderCoreUpdate = async (values: OrderEditFormValues) => {
+    if (!order?.id || !canEditOrderCore) {
+      return;
+    }
+
+    await updateOrder({
+      resource: "orders",
+      id: order.id,
+      values: {
+        account_manager_id: values.accountManagerId,
+        customer_id: values.customerId,
+        note: serializeOrderEditNote(values),
+      },
+    });
+  };
+
+  const submitTrackingUpdate = async (values: OrderEditFormValues) => {
+    if (!order?.id || !canEditTracking) {
+      return;
+    }
+
+    await updateOrder({
+      resource: "orders",
+      id: order.id,
+      values: {
+        packages: buildTrackingPackagesPayload(values),
+      },
+    });
+  };
+
   const handleFinish = async (values: OrderEditFormValues) => {
-    if (!isEditable) {
+    if (!canSaveChanges) {
       return;
     }
 
     setIsSaving(true);
 
     try {
-      await submitOrder(values);
+      if (canEditOrderCore) {
+        await submitOrderCoreUpdate(values);
+      } else if (canEditTracking) {
+        await submitTrackingUpdate(values);
+      }
       message.success("Đơn hàng đã được cập nhật.");
       await query.refetch();
     } catch (error) {
@@ -801,14 +996,14 @@ export const OrderEdit = () => {
   };
 
   const handleConfirmOrder = async () => {
-    if (!isEditable) {
+    if (!canEditOrderCore) {
       return;
     }
 
     try {
       setIsConfirming(true);
       const values = await form.validateFields();
-      await submitOrder(values, "approved");
+      await submitOrderLegacy(values, "purchasing");
       message.success("Đơn hàng đã được xác nhận.");
       await query.refetch();
     } catch (error) {
@@ -835,25 +1030,31 @@ export const OrderEdit = () => {
         <Layout className="order-edit-main">
           <Content className="order-edit-page-body">
             <Spin spinning={isLoading}>
-              <Space direction="vertical" size={28} style={{ width: "100%" }}>
+              <Space orientation="vertical" size={28} style={{ width: "100%" }}>
                 <Row justify="space-between" align="middle" gutter={[16, 16]}>
                   <Col>
-                    <Space direction="vertical" size={10}>
+                    <Space orientation="vertical" size={10}>
                       <Breadcrumb
                         className="order-edit-breadcrumb"
                         items={[
-                          { title: "Orders" },
-                          { title: order?.order_code ?? `#${id}` },
+                          { title: "Đơn hàng" },
+                          { title: "Quản lý đơn hàng" },
+                          { title: `Sửa đơn hàng #${id}` },
                         ]}
                       />
                       <Title className="order-edit-page-title" level={1}>
                         Sửa đơn hàng #{id}
                       </Title>
+                      <Text className="order-edit-page-meta">
+                        Mã đơn: {order?.order_code ?? "--"}
+                        <span className="order-edit-meta-dot">•</span>
+                        Tạo lúc: {formatDateTime(order?.created_at)}
+                      </Text>
                     </Space>
                   </Col>
                   <Col>
-                    <Card className="order-edit-rate-card" bordered={false}>
-                      <Text className="order-edit-rate-label">Rate (CNY/VND)</Text>
+                    <Card className="order-edit-rate-card" variant="borderless">
+                      <Text className="order-edit-rate-label">Tỷ giá (CNY/VND)</Text>
                       <Title className="order-edit-rate-value" level={5}>
                         3,450 đ
                       </Title>
@@ -862,7 +1063,6 @@ export const OrderEdit = () => {
                 </Row>
 
                 <Form<OrderEditFormValues>
-                  disabled={!isEditable}
                   form={form}
                   id="order-edit-form"
                   layout="vertical"
@@ -871,23 +1071,42 @@ export const OrderEdit = () => {
                 >
                   <Row gutter={[24, 24]} align="top">
                     <Col xs={24} xl={16}>
-                      <Space direction="vertical" size={24} style={{ width: "100%" }}>
-                        {!isEditable ? (
+                      <Space orientation="vertical" size={24} style={{ width: "100%" }}>
+                        {!canSaveChanges ? (
                           <Alert
                             type="warning"
                             showIcon
-                            message="Don hang da bi khoa chinh sua"
-                            description="Chi don hang o trang thai PENDING moi duoc cap nhat. Cac trang thai APPROVED, SHIPPED, DELIVERED va CANCELLED chi duoc xem."
+                            title="Đơn hàng đang ở chế độ chỉ xem"
+                            description="Trạng thái hiện tại không cho phép chỉnh sửa thông tin đơn hàng hoặc mã vận đơn từ màn hình này."
+                          />
+                        ) : null}
+                        {canEditOrderCore ? (
+                          <Alert
+                            type="info"
+                            showIcon
+                            title="Bạn đang chỉnh sửa thông tin đơn hàng"
+                            description="Ở trạng thái pending, bạn có thể cập nhật khách hàng, thông tin nhận hàng và ghi chú. Mã vận đơn sẽ được quản lý ở giai đoạn logistics."
+                          />
+                        ) : null}
+                        {canEditTracking ? (
+                          <Alert
+                            type="info"
+                            showIcon
+                            title="Bạn đang chỉnh sửa mã vận đơn"
+                            description="Ở trạng thái này chỉ cho phép cập nhật tracking, phân bổ sản phẩm và ghi chú kiện hàng. Thông tin đơn hàng gốc đã bị khóa."
                           />
                         ) : null}
                         <CustomerPersonnelSection
                           customerOptions={customerOptions}
                           staffOptions={staffOptions}
+                          disabled={!canEditOrderCore}
                         />
                         <ReceiverInformationSection
                           shippingMethodOptions={SHIPPING_METHOD_OPTIONS}
+                          disabled={!canEditOrderCore}
                         />
                         <ShippingInfoSection
+                          disabled={!canEditTracking}
                           orderItems={order?.items ?? []}
                           packagingTypeOptions={PACKAGING_TYPE_OPTIONS}
                           shippingCompanyOptions={SHIPPING_COMPANY_OPTIONS}
@@ -896,19 +1115,22 @@ export const OrderEdit = () => {
                     </Col>
 
                     <Col xs={24} xl={8}>
-                      <Space direction="vertical" size={24} style={{ width: "100%" }}>
-                        <NotesSection />
+                      <Space orientation="vertical" size={24} style={{ width: "100%" }}>
+                        <NotesSection disabled={!canEditOrderCore} />
                         <AttachmentsSection
+                          disabled={!canEditOrderCore}
                           fileList={attachments}
                           onChange={handleAttachmentChange}
                         />
                         <OrderSummaryPanel
+                          canConfirm={false}
+                          canSave={canSaveChanges}
                           isConfirming={isConfirming}
-                          isEditable={isEditable}
                           isSaving={isSaving}
                           onConfirm={handleConfirmOrder}
                           orderReference={order?.order_code ?? `#${id}`}
-                          statusLabel={getStatusLabel(order?.status)}
+                          saveLabel={canEditTracking ? "Cập nhật mã vận đơn" : "Cập nhật đơn hàng"}
+                          statusLabel={getDisplayStatusLabel(order?.status)}
                           totalAmount={order?.total_amount ?? 0}
                         />
                       </Space>
@@ -916,12 +1138,7 @@ export const OrderEdit = () => {
                   </Row>
                 </Form>
 
-                <Card className="order-edit-context-card" bordered={false}>
-                  <Text className="order-edit-context-label">
-                    Network Context: Hanoi - Logistics Hub
-                  </Text>
-                  <div className="order-edit-context-map" />
-                </Card>
+                
               </Space>
             </Spin>
           </Content>

@@ -1,0 +1,234 @@
+.admin-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at bottom left, rgba(31, 111, 235, 0.1), transparent 28%),
+    #f5f7fa;
+}
+
+.admin-shell__main {
+  min-height: 100vh;
+  margin-left: 244px;
+}
+
+.admin-shell__header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72px;
+  padding: 0 24px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.admin-shell__header-search {
+  flex: 1;
+  max-width: 480px;
+}
+
+.admin-shell__search-input {
+  height: 40px;
+  padding-left: 16px;
+  background: #f3f6fb;
+  border: none;
+  border-radius: 24px;
+  box-shadow: none;
+}
+
+.admin-shell__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.admin-shell__header-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 8px;
+  background: #ed8936;
+  border-radius: 999px;
+}
+
+.admin-shell__content {
+  min-height: calc(100vh - 72px);
+  padding: 32px;
+}
+
+.admin-sider.ant-layout-sider {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100vh;
+  background:
+    radial-gradient(circle at bottom left, rgba(31, 111, 235, 0.22), transparent 30%),
+    linear-gradient(180deg, #081827 0%, #071426 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 12px 0 32px rgba(3, 9, 20, 0.14);
+}
+
+.admin-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-sider__inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 20px 12px 16px;
+}
+
+.admin-sider__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 18px;
+}
+
+.admin-sider__brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #4f97ff;
+  font-size: 24px;
+}
+
+.admin-sider__brand-title.ant-typography {
+  margin: 0;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-sider__brand-subtitle.ant-typography {
+  color: #8fa1bc;
+  font-size: 12px;
+}
+
+.admin-sider__menu-wrap {
+  flex: 1;
+  margin-top: 10px;
+}
+
+.admin-sider__menu.ant-menu {
+  background: transparent;
+  border-inline-end: none;
+}
+
+.admin-sider__menu.ant-menu .ant-menu-item {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  margin: 6px 0;
+  padding-inline: 14px;
+  color: #c7d0df;
+  border-radius: 10px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.admin-sider__menu.ant-menu .ant-menu-item .ant-menu-title-content {
+  font-weight: 500;
+}
+
+.admin-sider__menu.ant-menu .ant-menu-item .ant-menu-item-icon,
+.admin-sider__menu.ant-menu .ant-menu-item .anticon {
+  color: currentColor;
+  font-size: 16px;
+}
+
+.admin-sider__menu.ant-menu .ant-menu-item:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-sider__menu.ant-menu .ant-menu-item-selected {
+  color: #ffffff;
+  background: linear-gradient(180deg, #1f6feb 0%, #1d63e9 100%);
+  box-shadow: 0 10px 24px rgba(29, 99, 233, 0.28);
+}
+
+.admin-sider__menu.ant-menu .ant-menu-item-selected::after {
+  display: none;
+}
+
+.admin-sider__menu-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.admin-sider__menu-arrow {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.admin-sider__profile-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+
+.admin-sider__profile-avatar {
+  flex-shrink: 0;
+}
+
+.admin-sider__profile-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-sider__profile-name {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-sider__profile-role {
+  margin-top: 4px;
+  color: #9db0cb;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.admin-sider__profile-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: #b7c6db;
+  font-size: 11px;
+}
+
+.admin-sider__profile-status-dot {
+  width: 8px;
+  height: 8px;
+  background: #2fd06d;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(47, 208, 109, 0.18);
+}
+
+.admin-sider__profile-arrow {
+  color: #c7d0df;
+  font-size: 11px;
+}
+
+@media (max-width: 991px) {
+  .admin-shell__content {
+    padding: 24px 20px;
+  }
+}

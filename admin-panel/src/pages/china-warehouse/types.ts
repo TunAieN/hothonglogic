@@ -1,5 +1,6 @@
 import type { Dayjs } from "dayjs";
 import type {
+  CnBatch,
   CnBatchStatus,
   CnPackage,
   CnPackageCreateInput,
@@ -54,3 +55,15 @@ export type ChinaWarehouseFilters = {
 export type ChinaWarehouseApiRecord = CnPackage;
 export type ChinaWarehouseCreateInput = CnPackageCreateInput;
 export type ChinaWarehouseUpdateInput = CnPackageUpdateInput;
+export type ChinaWarehouseBatchRecord = CnBatch;
+
+export type BatchMode = "create" | "existing";
+
+export type BatchModalFormValues = {
+  batchMode: BatchMode;
+  cnBatchId?: string;
+  shippingType?: "fast" | "normal";
+  destinationWarehouseName?: string;
+  expectedArrivalAt?: Dayjs;
+  note?: string;
+};

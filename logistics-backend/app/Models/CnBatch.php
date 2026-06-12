@@ -57,4 +57,14 @@ class CnBatch extends Model
         return $this->belongsToMany(CnPackage::class, 'cn_batch_packages', 'cn_batch_id', 'cn_package_id')
             ->withTimestamps();
     }
+
+    public function vnBatchReceipt()
+    {
+        return $this->hasOne(VnBatchReceipt::class, 'cn_batch_id');
+    }
+
+    public function vnPackages()
+    {
+        return $this->hasMany(VnPackage::class, 'cn_batch_id');
+    }
 }

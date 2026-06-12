@@ -3,105 +3,122 @@ import { Layout as AntdLayout, Menu, Typography, Avatar } from "antd";
 import { useLocation, useNavigate } from "react-router";
 import { useGetIdentity } from "@refinedev/core";
 import {
-  AppstoreOutlined,
-  BarChartOutlined,
-  CarOutlined,
-  EnvironmentOutlined,
+  ApartmentOutlined,
+  BankOutlined,
+  CreditCardOutlined,
+  HomeOutlined,
   InboxOutlined,
+  RightOutlined,
+  SettingOutlined,
+  ShoppingCartOutlined,
   TeamOutlined,
+  UserOutlined,
+  UsergroupAddOutlined,
 } from "@ant-design/icons";
+import type { User } from "../types";
+
+type SidebarUser = User & {
+  role?: User["role"] | { name?: string | null } | null;
+};
+
+const SIDEBAR_WIDTH = 244;
+
+const ROLE_LABELS: Record<number, string> = {
+  1: "Quản trị viên",
+  2: "CSKH",
+  3: "Nhân viên kho",
+  4: "Kế toán",
+  5: "Khách hàng",
+};
+
+const menuItems = [
+  { key: "/", icon: <HomeOutlined />, label: "Tổng quan" },
+  { key: "/customers", icon: <UsergroupAddOutlined />, label: "Khách hàng" },
+  { key: "/orders", icon: <ShoppingCartOutlined />, label: "Đơn hàng" },
+  { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển" },
+  { key: "/china-warehouse", icon: <BankOutlined />, label: "Kho hàng Trung Quốc" },
+  { key: "/vietnam-warehouse", icon: <ApartmentOutlined />, label: "Kho hàng Việt Nam" },
+  { key: "/analytics", icon: <CreditCardOutlined />, label: "Thanh toán / Công nợ" },
+  { key: "/fleet", icon: <TeamOutlined />, label: "Nhân viên" },
+  {
+    key: "/routes",
+    icon: <SettingOutlined />,
+    label: (
+      <span className="admin-sider__menu-label">
+        <span>Cấu hình</span>
+        <RightOutlined className="admin-sider__menu-arrow" />
+      </span>
+    ),
+  },
+] as const;
+
+const getSelectedKey = (pathname: string) => {
+  if (pathname === "/") {
+    return "/";
+  }
+
+  const matchedItem = menuItems.find((item) => item.key !== "/" && pathname.startsWith(item.key));
+  return matchedItem?.key ?? "";
+};
 
 export const CustomSider: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { data: identity } = useGetIdentity<SidebarUser>();
 
-  const menuItems = [
-    { key: "/", icon: <AppstoreOutlined />, label: "Dashboard" },
-    { key: "/customers", icon: <TeamOutlined />, label: "Customers" },
-    { key: "/orders", icon: <CarOutlined />, label: "Orders" },
-    { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển" },
-    { key: "/china-warehouse", icon: <InboxOutlined />, label: "Kho hàng Trung Quốc" },
-    { key: "/fleet", icon: <CarOutlined />, label: "Fleet Status" },
-    { key: "/drivers", icon: <TeamOutlined />, label: "Driver Management" },
-    { key: "/routes", icon: <EnvironmentOutlined />, label: "Routes" },
-    { key: "/analytics", icon: <BarChartOutlined />, label: "Analytics" },
-  ];
+  const selectedKey = getSelectedKey(location.pathname);
+  const userName = identity?.name?.trim() || "Admin";
+  const roleName =
+    identity?.role?.name?.trim() || ROLE_LABELS[Number(identity?.role_id)] || "Quản trị viên";
 
-  const { data: identity } = useGetIdentity();
-  const ROLE_LABELS: Record<number, string> = {
-    1: "Super Admin",
-    2: "CSKH",
-    3: "Nhân viên kho",
-    4: "Kế toán",
-    5: "Khách hàng",
-};
-  
   return (
-    <AntdLayout.Sider
-      width={260}
-      theme="dark"
-      style={{
-        height: "100vh",
-        position: "fixed",
-        left: 0,
-        top: 0,
-        bottom: 0,
-        backgroundColor: "var(--bg-dark)",
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-        borderRight: "1px solid #1A2B45",
-      }}
-    >
-      <div style={{ padding: "24px 20px", display: "flex", alignItems: "center", gap: "12px" }}>
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            backgroundColor: "#3182CE",
-            borderRadius: "8px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <CarOutlined style={{ fontSize: 18, color: "#fff" }} />
+    <AntdLayout.Sider width={SIDEBAR_WIDTH} theme="dark" className="admin-sider">
+      <div className="admin-sider__inner">
+        <div className="admin-sider__brand">
+          <div className="admin-sider__brand-mark">
+            <InboxOutlined />
+          </div>
+          <div>
+            <Typography.Title level={4} className="admin-sider__brand-title">
+              Logistics Pro
+            </Typography.Title>
+            <Typography.Text className="admin-sider__brand-subtitle">
+              Hệ thống quản trị
+            </Typography.Text>
+          </div>
         </div>
-        <div>
-          <Typography.Title level={4} style={{ margin: 0, color: "#fff", fontSize: 18, fontWeight: 600 }}>
-            Logistics Pro
-          </Typography.Title>
-          <Typography.Text style={{ color: "#94A3B8", fontSize: 12 }}>
-            National Fleet Admin
-          </Typography.Text>
+
+        <div className="admin-sider__menu-wrap">
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={selectedKey ? [selectedKey] : []}
+            items={menuItems.map((item) => ({
+              ...item,
+              className: "admin-sider__menu-item",
+            }))}
+            onClick={({ key }) => navigate(key)}
+            className="admin-sider__menu"
+          />
         </div>
-      </div>
 
-      <div style={{ flex: 1, marginTop: 24 }}>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ backgroundColor: "transparent", border: "none" }}
-        />
-      </div>
-
-      <div
-        style={{
-          padding: "20px",
-          borderTop: "1px solid #1A2B45",
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-        }}
-      >
-        <Avatar size={40} src="https://i.pravatar.cc/150?img=11" />
-        <div>
-          <div style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>{identity?.name}</div>
-          <div style={{ color: "#3182CE", fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>
-            {identity?.role?.name || ROLE_LABELS[Number(identity?.role_id)] || "Unknown Role"}
+        <div className="admin-sider__profile-card">
+          <Avatar
+            size={44}
+            icon={<UserOutlined />}
+            src="https://i.pravatar.cc/150?img=11"
+            className="admin-sider__profile-avatar"
+          />
+          <div className="admin-sider__profile-meta">
+            <div className="admin-sider__profile-name">{userName}</div>
+            <div className="admin-sider__profile-role">{roleName}</div>
+            <div className="admin-sider__profile-status">
+              <span className="admin-sider__profile-status-dot" />
+              <span>Online</span>
+            </div>
+          </div>
+          <div className="admin-sider__profile-arrow">
+            <RightOutlined />
           </div>
         </div>
       </div>

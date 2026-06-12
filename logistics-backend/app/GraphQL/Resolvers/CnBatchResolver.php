@@ -74,6 +74,10 @@ class CnBatchResolver
                 if ((int) $batch->warehouse_id !== $warehouseId) {
                     throw new HttpException(422, 'Existing batch belongs to a different warehouse.');
                 }
+
+                if (in_array($batch->status, [CnBatch::STATUS_EXPORTING, CnBatch::STATUS_ARRIVED_VN, CnBatch::STATUS_COMPLETED, CnBatch::STATUS_CANCELLED], true)) {
+                    throw new HttpException(422, 'Selected batch cannot receive more packages.');
+                }
             } else {
                 $warehouse = CnWarehouse::query()->findOrFail($warehouseId);
 
@@ -84,6 +88,7 @@ class CnBatchResolver
                     'total_packages' => 0,
                     'status' => CnBatch::STATUS_PENDING,
                     'shipping_type' => $this->normalizeShippingType($input['shipping_type'] ?? 'normal'),
+                    'expected_arrival_at' => $input['expected_arrival_at'] ?? null,
                     'note' => $this->normalizeOptionalString($input['note'] ?? null),
                 ]);
             }

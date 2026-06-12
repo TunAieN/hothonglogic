@@ -11,15 +11,15 @@ type OrderEditSectionCardProps = {
 };
 
 const iconBoxStyle: CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 12,
-  background: "#f4f7fe",
-  color: "#0a1f55",
+  width: 34,
+  height: 34,
+  borderRadius: 10,
+  background: "linear-gradient(180deg, #eff5ff 0%, #f8fbff 100%)",
+  color: "#2754c5",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "inset 0 0 0 1px #edf1f9",
+  boxShadow: "inset 0 0 0 1px #e1eafc",
 };
 
 export const OrderEditSectionCard = ({
@@ -28,8 +28,8 @@ export const OrderEditSectionCard = ({
   children,
   extra,
 }: OrderEditSectionCardProps) => (
-  <Card className="order-edit-section-card" bordered={false}>
-    <Space direction="vertical" size={24} style={{ width: "100%" }}>
+  <Card className="order-edit-section-card" variant="borderless">
+    <Space orientation="vertical" size={24} style={{ width: "100%" }}>
       <div className="order-edit-section-head">
         <Space size={14}>
           <div style={iconBoxStyle}>{icon}</div>

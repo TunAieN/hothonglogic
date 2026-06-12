@@ -6,13 +6,15 @@ import type { OrderEditFormValues, SelectOption } from "../orderEditTypes";
 type CustomerPersonnelSectionProps = {
   staffOptions: SelectOption[];
   customerOptions: SelectOption[];
+  disabled?: boolean;
 };
 
 export const CustomerPersonnelSection = ({
   staffOptions,
   customerOptions,
+  disabled = false,
 }: CustomerPersonnelSectionProps) => (
-  <OrderEditSectionCard icon={<UserOutlined />} title="Customer & Personnel">
+  <OrderEditSectionCard icon={<UserOutlined />} title="Khách hàng & Nhân sự">
     <Row gutter={[20, 0]}>
       <Col xs={24} md={12}>
         <Form.Item<OrderEditFormValues>
@@ -21,6 +23,7 @@ export const CustomerPersonnelSection = ({
           rules={[{ required: true, message: "Vui lòng chọn nhân viên CSKH" }]}
         >
           <Select
+            disabled={disabled}
             options={staffOptions}
             placeholder="Chọn nhân viên phụ trách"
             showSearch
@@ -35,6 +38,7 @@ export const CustomerPersonnelSection = ({
           rules={[{ required: true, message: "Vui lòng chọn khách hàng" }]}
         >
           <Select
+            disabled={disabled}
             options={customerOptions}
             placeholder="Chọn khách hàng"
             showSearch

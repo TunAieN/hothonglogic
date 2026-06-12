@@ -35,6 +35,12 @@ type Query {
   cnBatch(id: ID!): CnBatch
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@show")
+  cnBatchByCode(batch_code: String!): CnBatch
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@cnBatchByCode")
+  vietnamWarehouseReceipt(batch_code: String!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@vietnamWarehouseReceipt")
 }
 
 type CnWarehouse {
@@ -84,6 +90,7 @@ type OrderTracking {
   tracking_number: String!
   carrier: String
   declared_value: Float
+  dispatched_at: DateTime
   note: String
   status: String!
   created_at: DateTime!
@@ -120,6 +127,7 @@ type CnBatch {
   warehouse: CnWarehouse! @belongsTo
   batch_packages: [CnBatchPackage!]! @hasMany(relation: "batchPackages")
   packages: [CnPackage!]! @belongsToMany
+  vn_batch_receipt: VnBatchReceipt @hasOne(relation: "vnBatchReceipt")
 }
 
 type CnBatchPackage {
@@ -138,6 +146,93 @@ type VietnamInboundTaskPayload {
   total_packages: Int!
   total_weight: Float!
   batches: [CnBatch!]!
+}
+
+type VnWarehouse {
+  id: ID!
+  code: String!
+  name: String!
+  address: String
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+type VnBatchReceipt {
+  id: ID!
+  cn_batch_id: ID!
+  vn_warehouse_id: ID
+  batch_code: String!
+  actual_batch_weight: Float
+  package_material_weight: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  actual_volume: Float
+  wooden_fee: Float
+  other_fee: Float
+  status: String!
+  total_expected_packages: Int!
+  total_received_packages: Int!
+  total_inspected_packages: Int!
+  total_missing_packages: Int!
+  total_extra_packages: Int!
+  total_damaged_packages: Int!
+  note: String
+  handled_by: ID
+  confirmed_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  batch: CnBatch! @belongsTo(relation: "batch")
+  warehouse: VnWarehouse @belongsTo(relation: "warehouse")
+  packages: [VnPackage!]! @hasMany(relation: "packages")
+  handler: User @belongsTo(relation: "handler")
+}
+
+type VnPackage {
+  id: ID!
+  vn_batch_receipt_id: ID
+  cn_batch_id: ID
+  cn_package_id: ID
+  tracking_number_snapshot: String
+  actual_weight: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  actual_volume: Float
+  extra_fee: Float
+  wooden_fee: Float
+  other_fee: Float
+  order_code_snapshot: String
+  customer_name_snapshot: String
+  inspection_status: String!
+  note: String
+  handled_by: ID
+  scanned_at: DateTime
+  received_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  receipt: VnBatchReceipt @belongsTo(relation: "receipt")
+  cn_batch: CnBatch @belongsTo(relation: "cnBatch")
+  cn_package: CnPackage @belongsTo(relation: "cnPackage")
+  handler: User @belongsTo(relation: "handler")
+}
+
+type VietnamReceiptSummary {
+  expectedCount: Int!
+  receivedCount: Int!
+  inspectedCount: Int!
+  extraCount: Int!
+  damagedCount: Int!
+  missingCount: Int!
+  matched: Boolean!
+}
+
+type VietnamWarehouseReceiptPayload {
+  batch: CnBatch!
+  receipt: VnBatchReceipt
+  expectedPackages: [CnPackage!]!
+  receivedPackages: [VnPackage!]!
+  summary: VietnamReceiptSummary!
 }
 
 type User {
@@ -281,6 +376,21 @@ type Mutation {
   createVietnamInboundTask(input: CreateVietnamInboundTaskInput!): VietnamInboundTaskPayload!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@createVietnamInboundTask")
+  startVietnamWarehouseReceipt(input: StartVietnamWarehouseReceiptInput!): VnBatchReceipt!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@startVietnamWarehouseReceipt")
+  scanVietnamPackage(input: ScanVietnamPackageInput!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@scanVietnamPackage")
+  removeVietnamPackage(id: ID!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@removeVietnamPackage")
+  moveVietnamWarehouseReceiptToErrorQueue(receipt_id: ID!): VnBatchReceipt!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@moveVietnamWarehouseReceiptToErrorQueue")
+  confirmVietnamWarehouseReceipt(receipt_id: ID!): VnBatchReceipt!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@confirmVietnamWarehouseReceipt")
 }
 # Orders
 input OrderItemInput {
@@ -333,8 +443,10 @@ input OrderPackageInput {
     tracking_number: String
     declared_value: Float
     carrier: String
+    dispatched_at: DateTime
     note: String
-    package_items: [OrderPackageItemInput!]!
+    package_items: [OrderPackageItemInput!]
+    tracking_items: [OrderPackageItemInput!]
 }
 
 input CreateCnPackageInput {
@@ -372,6 +484,7 @@ input AddPackagesToCnBatchInput {
     cn_package_ids: [ID!]!
     destination_warehouse_name: String
     shipping_type: String
+    expected_arrival_at: DateTime
     note: String
 }
 
@@ -387,6 +500,37 @@ input UpdateCnBatchInput {
 
 input CreateVietnamInboundTaskInput {
     cn_batch_ids: [ID!]!
+}
+
+input StartVietnamWarehouseReceiptInput {
+    batch_code: String!
+    vn_warehouse_id: ID
+    actual_batch_weight: Float
+    package_material_weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    actual_volume: Float
+    wooden_fee: Float
+    other_fee: Float
+    note: String
+}
+
+input ScanVietnamPackageInput {
+    receipt_id: ID!
+    tracking_number: String!
+    actual_weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    actual_volume: Float
+    extra_fee: Float
+    wooden_fee: Float
+    other_fee: Float
+    order_code_snapshot: String
+    customer_name_snapshot: String
+    note: String
+    inspection_status: String
 }
 
 type OrderItem {
