@@ -1,9 +1,10 @@
 import React from "react";
-import { Layout as AntdLayout, Menu, Typography, Avatar } from "antd";
+import { Avatar, Layout as AntdLayout, Menu, Typography } from "antd";
 import { useLocation, useNavigate } from "react-router";
 import { useGetIdentity } from "@refinedev/core";
 import {
   ApartmentOutlined,
+  AppstoreOutlined,
   BankOutlined,
   CreditCardOutlined,
   HomeOutlined,
@@ -39,7 +40,7 @@ const menuItems = [
   { key: "/china-warehouse", icon: <BankOutlined />, label: "Kho hàng Trung Quốc" },
   { key: "/vietnam-warehouse", icon: <ApartmentOutlined />, label: "Kho hàng Việt Nam" },
   { key: "/analytics", icon: <CreditCardOutlined />, label: "Thanh toán / Công nợ" },
-  { key: "/fleet", icon: <TeamOutlined />, label: "Nhân viên" },
+  { key: "/employees", icon: <TeamOutlined />, label: "Nhân viên" },
   {
     key: "/routes",
     icon: <SettingOutlined />,
@@ -76,7 +77,7 @@ export const CustomSider: React.FC = () => {
       <div className="admin-sider__inner">
         <div className="admin-sider__brand">
           <div className="admin-sider__brand-mark">
-            <InboxOutlined />
+            <AppstoreOutlined />
           </div>
           <div>
             <Typography.Title level={4} className="admin-sider__brand-title">
