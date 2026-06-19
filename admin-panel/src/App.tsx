@@ -52,6 +52,9 @@ const VietnamWarehousePage = lazy(() =>
 const DashboardPage = lazy(() =>
   import("./pages/dashboard").then((module) => ({ default: module.DashboardPage })),
 );
+const EmployeesPage = lazy(() =>
+  import("./pages/employees").then((module) => ({ default: module.EmployeesPage })),
+);
 
 const RouteFallback = () => (
   <div style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Loading...</div>
@@ -64,7 +67,7 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   return (
     <Authenticated
       key={`auth-${location.pathname}`}
-     fallback={<Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />}
+      fallback={<Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />}
     >
       <>{children}</>
     </Authenticated>
@@ -112,6 +115,10 @@ function App() {
             list: "/vietnam-warehouse",
           },
           {
+            name: "employees",
+            list: "/employees",
+          },
+          {
             name: "users",
           },
         ]}
@@ -156,9 +163,9 @@ function App() {
               <Route path="/cn-batches" element={<CnBatchesPage />} />
               <Route path="/china-warehouse" element={<ChinaWarehousePage />} />
               <Route path="/vietnam-warehouse" element={<VietnamWarehousePage />} />
+              <Route path="/employees" element={<EmployeesPage />} />
 
-              {/* Added for menu items so they don't 404 immediately */}
-              <Route path="/fleet" element={<DashboardPage />} />
+              <Route path="/fleet" element={<Navigate to="/employees" replace />} />
               <Route path="/routes" element={<DashboardPage />} />
               <Route path="/analytics" element={<DashboardPage />} />
 

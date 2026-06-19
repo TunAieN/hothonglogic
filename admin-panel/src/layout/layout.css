@@ -16,7 +16,7 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 20px;
   height: 72px;
   padding: 0 24px;
   background: rgba(255, 255, 255, 0.96);
@@ -24,9 +24,13 @@
   backdrop-filter: blur(12px);
 }
 
+.admin-shell__menu-button.ant-btn {
+  color: #0f172a;
+}
+
 .admin-shell__header-search {
   flex: 1;
-  max-width: 480px;
+  max-width: 520px;
 }
 
 .admin-shell__search-input {
@@ -41,18 +45,14 @@
 .admin-shell__header-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 24px;
+  margin-left: auto;
 }
 
-.admin-shell__header-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-left: 8px;
-  background: #ed8936;
-  border-radius: 999px;
+.admin-shell__header-avatar.ant-avatar {
+  border: 2px solid #eff4fb;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
 }
 
 .admin-shell__content {

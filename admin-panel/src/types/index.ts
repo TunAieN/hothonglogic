@@ -1,4 +1,5 @@
 export type { Role, User } from "./common";
+export type { Department, Employee, EmployeeRole, EmployeeStatus } from "./employee";
 export type {
   Customer,
   CustomerCreateInput,

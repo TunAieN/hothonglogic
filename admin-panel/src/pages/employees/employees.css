@@ -1,0 +1,213 @@
+.employees-page {
+  color: #0f172a;
+}
+
+.employees-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.employees-page__title.ant-typography {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.employees-page__breadcrumb.ant-breadcrumb {
+  margin-bottom: 12px;
+}
+
+.employees-page__subtitle.ant-typography {
+  color: #64748b;
+}
+
+.employees-page__primary-button.ant-btn {
+  height: 44px;
+  padding-inline: 18px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2f6df6 0%, #1f5fe8 100%);
+  box-shadow: 0 12px 24px rgba(47, 109, 246, 0.18);
+  font-weight: 600;
+}
+
+.employees-page__stat-card.ant-card,
+.employees-page__filter-card.ant-card,
+.employees-page__table-card.ant-card {
+  border: 1px solid #e7edf5;
+  border-radius: 18px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.05);
+}
+
+.employees-page__stat-card .ant-card-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.employees-page__stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  font-size: 26px;
+}
+
+.employees-page__stat-meta {
+  min-width: 0;
+}
+
+.employees-page__stat-label.ant-typography {
+  display: block;
+  margin-bottom: 6px;
+  color: #475569;
+}
+
+.employees-page__stat-value.ant-typography {
+  display: block;
+  margin: 0;
+  color: #111827;
+}
+
+.employees-page__stat-description.ant-typography {
+  color: #94a3b8;
+}
+
+.employees-page__filter-card .ant-card-body,
+.employees-page__table-card .ant-card-body {
+  padding: 24px;
+}
+
+.employees-page__field-label.ant-typography {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.employees-page__filter-input.ant-input-affix-wrapper,
+.employees-page__filter-select.ant-select .ant-select-selector,
+.employees-page__filter-date.ant-picker {
+  height: 42px;
+  border-radius: 12px;
+}
+
+.employees-page__filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 12px;
+  height: 100%;
+}
+
+.employees-page__search-button.ant-btn {
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2f6df6 0%, #1f5fe8 100%);
+  font-weight: 600;
+}
+
+.employees-page__reset-button.ant-btn {
+  height: 40px;
+  border-radius: 12px;
+}
+
+.employees-page__table-card .ant-table-wrapper .ant-table {
+  background: transparent;
+}
+
+.employees-page__table-card .ant-table-thead > tr > th {
+  background: transparent;
+  color: #111827;
+  font-weight: 700;
+}
+
+.employees-page__table-card .ant-table-tbody > tr > td {
+  border-bottom-color: #edf2f7;
+  vertical-align: middle;
+}
+
+.employees-page__table-card .ant-table-tbody > tr:hover > td {
+  background: #f8fbff;
+}
+
+.employees-page__name-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.employees-page__name-text {
+  font-weight: 600;
+  color: #111827;
+}
+
+.employees-page__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  color: #475569;
+}
+
+.employees-page__pagination.ant-pagination {
+  margin: 0;
+}
+
+.employees-page__action-button.ant-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.employees-page__role-tag.ant-tag,
+.employees-page__status-tag.ant-tag {
+  margin-inline-end: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.employees-page__modal .ant-modal-content {
+  border-radius: 20px;
+}
+
+.employees-page__modal .ant-modal-header {
+  margin-bottom: 20px;
+}
+
+.employees-page__modal .ant-form-item {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  .employees-page__filter-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .employees-page__header,
+  .employees-page__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .employees-page__footer {
+    gap: 12px;
+  }
+
+  .employees-page__pagination.ant-pagination {
+    align-self: flex-start;
+  }
+}
