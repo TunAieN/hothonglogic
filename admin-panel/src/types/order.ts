@@ -118,15 +118,22 @@ export interface CnPackage {
   declared_value?: number | null;
   carrier?: string | null;
   weight?: number | null;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
   volume?: number | null;
+  volumetric_weight?: number | null;
+  chargeable_weight?: number | null;
   note?: string | null;
   status: string;
+  package_condition?: string | null;
   created_by?: string | null;
   received_at?: string | null;
   created_at?: string | null;
   warehouse: CnWarehouse;
   order?: Pick<OrderSummary, "id" | "order_code" | "status"> & {
     customer?: Pick<Customer, "id" | "name" | "phone" | "email" | "address">;
+    items?: OrderItem[];
   };
   order_tracking?: OrderTracking | null;
   current_batch_package?: CnBatchPackage | null;
@@ -162,9 +169,15 @@ export interface CnPackageCreateInput {
   declared_value?: number | null;
   carrier?: string | null;
   weight: number;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
   volume?: number | null;
+  volumetric_weight?: number | null;
+  chargeable_weight?: number | null;
   note?: string | null;
   status: string;
+  package_condition?: string | null;
   received_at: string | null;
 }
 
@@ -177,9 +190,15 @@ export interface CnPackageUpdateInput {
   declared_value?: number | null;
   carrier?: string | null;
   weight?: number;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
   volume?: number | null;
+  volumetric_weight?: number | null;
+  chargeable_weight?: number | null;
   note?: string | null;
   status?: string;
+  package_condition?: string | null;
   received_at?: string | null;
 }
 

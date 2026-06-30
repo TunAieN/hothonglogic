@@ -203,8 +203,8 @@ export const ReceiveBatchModal = ({
       return {
         id: `missing-${trackingCode}-${index}`,
         trackingCode,
-        orderCode: matchedExpected?.orderCode ?? "Chua xac dinh",
-        customerName: matchedExpected?.customerName ?? "Chua xac dinh",
+        orderCode: matchedExpected?.orderCode ?? "Chưa xác định",
+        customerName: matchedExpected?.customerName ?? "Chưa xác định",
         volumetricWeight: 0,
         status: "missing",
         weight: 0,
@@ -214,7 +214,7 @@ export const ReceiveBatchModal = ({
         extraFeeRmb: 0,
         declaredValue: 0,
         surcharge: 0,
-        note: "Chua nhap tai kho Viet Nam",
+        note: "Chưa nhập tại kho Việt Nam",
       };
     });
 
@@ -245,7 +245,7 @@ export const ReceiveBatchModal = ({
       );
     } catch (error) {
       if (error instanceof Error && "errorFields" in error) {
-        message.error("Vui long nhap du thong tin kien hang truoc khi tiep tuc.");
+        message.error("Vui lòng nhập đủ thông tin kiện hàng trước khi tiếp tục.");
       }
     }
   };
@@ -271,7 +271,7 @@ export const ReceiveBatchModal = ({
       render: (_, __, index) => index + 1,
     },
     {
-      title: "Ma van don",
+      title: "Mã vận đơn",
       dataIndex: "trackingCode",
       key: "trackingCode",
       width: 180,
@@ -331,7 +331,7 @@ export const ReceiveBatchModal = ({
 
   return (
     <Modal
-      title="Nhap kho Viet Nam"
+      title="Nhập kho Việt Nam"
       open={open}
       onCancel={onCancel}
       width={1230}
@@ -344,7 +344,7 @@ export const ReceiveBatchModal = ({
       footer={
         <Space style={{ width: "100%", justifyContent: "flex-end" }}>
           <Button icon={<CloseOutlined />} onClick={onCancel}>
-            Huy
+            Hủy
           </Button>
           <Button loading={loading} onClick={() => void onRefresh()}>
             Lam moi du lieu
@@ -366,7 +366,7 @@ export const ReceiveBatchModal = ({
             loading={loading}
             onClick={() => void handleConfirm()}
           >
-            Xac nhan nhap kho
+            Xác nhận nhập kho
           </Button>
         </Space>
       }
@@ -374,7 +374,7 @@ export const ReceiveBatchModal = ({
       <Space direction="vertical" size={18} style={{ width: "100%" }}>
         <div>
           <Title level={5} style={{ margin: 0, fontSize: 16 }}>
-            Thong tin lo hang: {batchInfo.batchCode}
+            Thông tin lô hàng: {batchInfo.batchCode}
           </Title>
         </div>
 
@@ -394,7 +394,7 @@ export const ReceiveBatchModal = ({
         <div style={{ ...sectionStyle, padding: 0 }}>
           <div style={{ padding: "14px 16px 0" }}>
             <Title level={5} style={{ margin: 0, fontSize: 16 }}>
-              Nhap thong so kien hang
+              Nhập thông số kiện hàng
             </Title>
           </div>
 
@@ -428,9 +428,9 @@ export const ReceiveBatchModal = ({
                   <Form.Item
                     name="trackingCode"
                     style={{ marginBottom: 0 }}
-                    rules={[{ required: true, message: "Vui long nhap ma van don." }]}
+                    rules={[{ required: true, message: "Vui lòng nhập mã vận đơn." }]}
                   >
-                    <Input placeholder="Nhap ma van don" style={{ height: 46 }} />
+                    <Input placeholder="Nhập mã vận đơn" style={{ height: 46 }} />
                   </Form.Item>
                 </Col>
 
@@ -438,36 +438,36 @@ export const ReceiveBatchModal = ({
                   <Form.Item
                     label="Khoi luong (kg)"
                     name="weight"
-                    rules={[{ required: true, message: "Vui long nhap khoi luong." }]}
+                    rules={[{ required: true, message: "Vui lòng nhập khối lượng." }]}
                   >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhap khoi luong" />
+                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập khối lượng" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item
                     label="Chieu dai (cm)"
                     name="length"
-                    rules={[{ required: true, message: "Vui long nhap chieu dai." }]}
+                    rules={[{ required: true, message: "Vui lòng nhập chiều dài." }]}
                   >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhap chieu dai" />
+                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chiều dài" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item
                     label="Chieu rong (cm)"
                     name="width"
-                    rules={[{ required: true, message: "Vui long nhap chieu rong." }]}
+                    rules={[{ required: true, message: "Vui lòng nhập chiều rộng." }]}
                   >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhap chieu rong" />
+                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chiều rộng" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item
                     label="Chieu cao (cm)"
                     name="height"
-                    rules={[{ required: true, message: "Vui long nhap chieu cao." }]}
+                    rules={[{ required: true, message: "Vui lòng nhập chiều cao." }]}
                   >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhap chieu cao" />
+                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chiều cao" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={4}>
@@ -479,22 +479,22 @@ export const ReceiveBatchModal = ({
 
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item label="Ma don hang" name="orderCode">
-                    <Input placeholder="Nhap ma don hang" />
+                    <Input placeholder="Nhập mã đơn hàng" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item label="Ten khach hang" name="customerName">
-                    <Input placeholder="Nhap ten khach hang" />
+                    <Input placeholder="Nhập tên khách hàng" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item label="Chi phi phat sinh (RMB)" name="extraFeeRmb">
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhap chi phi" />
+                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chi phí" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={5}>
                   <Form.Item label="Gia co" name="declaredValue">
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhap phi gia co" />
+                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập phí gia cố" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8} xl={4}>
@@ -509,8 +509,8 @@ export const ReceiveBatchModal = ({
                 </Col>
 
                 <Col xs={24} xl={19}>
-                  <Form.Item label="Ghi chu kho VN" name="note" style={{ marginBottom: 0 }}>
-                    <Input placeholder="Nhap ghi chu (neu co)" />
+                  <Form.Item label="Ghi chú kho VN" name="note" style={{ marginBottom: 0 }}>
+                    <Input placeholder="Nhập ghi chú (nếu có)" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} xl={5} style={{ display: "flex", alignItems: "end" }}>
@@ -536,19 +536,19 @@ export const ReceiveBatchModal = ({
         ) : null}
 
         {summary.missingCount === 0 && summary.extraCount === 0 ? (
-          <Alert type="success" showIcon message="Thong tin lo hang da khop, co the xac nhan nhap kho" />
+          <Alert type="success" showIcon message="Thông tin lô hàng da khop, co the xac nhan nhap kho" />
         ) : null}
 
         <div style={{ ...sectionStyle, overflow: "hidden" }}>
           <Row gutter={0}>
             <Col xs={24} md={8}>
               <div style={infoCellStyle}>
-                <Text strong>{`Da nhap kho: ${checkedPackages.length} kien/${formatWeight(checkedWeight)}`}</Text>
+                <Text strong>{`Da nhap kho: ${checkedPackages.length} kiện/${formatWeight(checkedWeight)}`}</Text>
               </div>
             </Col>
             <Col xs={24} md={8}>
               <div style={infoCellStyle}>
-                <Text strong>{`Luu tam: ${Math.max(receivedPackages.length - checkedPackages.length, 0)} kien/0kg`}</Text>
+                <Text strong>{`Luu tam: ${Math.max(receivedPackages.length - checkedPackages.length, 0)} kiện/0kg`}</Text>
               </div>
             </Col>
             <Col xs={24} md={8}>
@@ -558,7 +558,7 @@ export const ReceiveBatchModal = ({
             </Col>
             <Col xs={24} md={8}>
               <div style={{ ...infoCellStyle, borderBottom: "none" }}>
-                <Text strong>{`Tong kien co CPPS: ${chargeablePackages.length} kien/${totalExtraFee.toFixed(2)} RMB`}</Text>
+                <Text strong>{`Tổng kiện có CPPS: ${chargeablePackages.length} kiện/${totalExtraFee.toFixed(2)} RMB`}</Text>
               </div>
             </Col>
             <Col xs={24} md={8}>

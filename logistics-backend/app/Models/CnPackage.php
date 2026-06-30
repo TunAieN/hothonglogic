@@ -15,9 +15,15 @@ class CnPackage extends Model
         'declared_value',
         'carrier',
         'weight',
+        'actual_length',
+        'actual_width',
+        'actual_height',
         'volume',
+        'volumetric_weight',
+        'chargeable_weight',
         'note',
         'status',
+        'package_condition',
         'created_by',
         'received_at',
     ];
@@ -25,7 +31,12 @@ class CnPackage extends Model
     protected $casts = [
         'declared_value' => 'float',
         'weight' => 'float',
+        'actual_length' => 'float',
+        'actual_width' => 'float',
+        'actual_height' => 'float',
         'volume' => 'float',
+        'volumetric_weight' => 'float',
+        'chargeable_weight' => 'float',
         'received_at' => 'datetime',
     ];
 

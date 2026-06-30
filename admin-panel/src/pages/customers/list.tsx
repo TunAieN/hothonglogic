@@ -15,6 +15,7 @@ import {
 import type { CrudFilter } from "@refinedev/core";
 import type { ICustomer } from "../../interfaces";
 import { CustomerFormModal } from "./components/CustomerFormModal";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
 
 const { Search } = Input;
 const { Text, Title } = Typography;
@@ -34,6 +35,19 @@ const STATUS_OPTIONS = [
     { label: "Inactive", value: "inactive" },
     { label: "Blocked", value: "blocked" },
 ];
+const CustomerListStatsSkeleton = () => (
+    <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+            <SkeletonStatCard labelWidth={100} valueWidth={48} />
+        </Col>
+        <Col xs={24} md={8}>
+            <SkeletonStatCard labelWidth={108} valueWidth={48} />
+        </Col>
+        <Col xs={24} md={8}>
+            <SkeletonStatCard labelWidth={124} valueWidth={48} />
+        </Col>
+    </Row>
+);
 
 type DateFilterValue = {
     startOf: (unit: "day") => DateFilterValue;
@@ -102,6 +116,8 @@ export const CustomerList = () => {
     const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const customers = tableProps.dataSource ?? [];
+    const isInitialLoading = Boolean(tableQuery?.isLoading && customers.length === 0);
+    const isRefreshing = Boolean(tableQuery?.isFetching && !isInitialLoading);
     const totalCustomers =
         typeof tableProps.pagination === "object"
             ? tableProps.pagination.total ?? customers.length
@@ -314,32 +330,36 @@ export const CustomerList = () => {
                     </Col>
                 </Row>
 
-                <Row gutter={[16, 16]}>
-                    <Col xs={24} md={8}>
-                        <CustomerSummaryCard
-                            title="Total Partners"
-                            value={totalCustomers}
-                            prefix={<TeamOutlined />}
-                            description="All registered customers"
-                        />
-                    </Col>
-                    <Col xs={24} md={8}>
-                        <CustomerSummaryCard
-                            title="Active Accounts"
-                            value={activeCustomers}
-                            prefix={<CheckCircleOutlined />}
-                            description={`${activityRate}% of listed customers`}
-                        />
-                    </Col>
-                    <Col xs={24} md={8}>
-                        <CustomerSummaryCard
-                            title="Blocked Customers"
-                            value={blockedCustomers}
-                            prefix={<StopOutlined />}
-                            description="Requires account review"
-                        />
-                    </Col>
-                </Row>
+                {isInitialLoading ? (
+                    <CustomerListStatsSkeleton />
+                ) : (
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} md={8}>
+                            <CustomerSummaryCard
+                                title="Total Partners"
+                                value={totalCustomers}
+                                prefix={<TeamOutlined />}
+                                description="All registered customers"
+                            />
+                        </Col>
+                        <Col xs={24} md={8}>
+                            <CustomerSummaryCard
+                                title="Active Accounts"
+                                value={activeCustomers}
+                                prefix={<CheckCircleOutlined />}
+                                description={`${activityRate}% of listed customers`}
+                            />
+                        </Col>
+                        <Col xs={24} md={8}>
+                            <CustomerSummaryCard
+                                title="Blocked Customers"
+                                value={blockedCustomers}
+                                prefix={<StopOutlined />}
+                                description="Requires account review"
+                            />
+                        </Col>
+                    </Row>
+                )}
 
                 <Card size="small">
                     <Form<CustomerFilterValues>
@@ -439,7 +459,13 @@ export const CustomerList = () => {
                 </Card>
 
                 <Card>
-                    <Table<ICustomer> {...tableComponentProps} columns={columns} rowKey="id" />
+                    {isInitialLoading ? (
+                        <AdminTableSkeleton columns={columns} rowCount={10} />
+                    ) : (
+                        <LoadingOverlay spinning={isRefreshing}>
+                            <Table<ICustomer> {...tableComponentProps} loading={false} columns={columns} rowKey="id" />
+                        </LoadingOverlay>
+                    )}
                 </Card>
             </Space>
 
@@ -464,3 +490,4 @@ export const CustomerList = () => {
         </List>
     );
 };
+

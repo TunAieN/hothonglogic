@@ -7,6 +7,7 @@ import routerProvider from "@refinedev/react-router";
 import { authProvider } from "./providers/authProvider";
 import { dataProvider } from "./providers/dataProvider";
 import { CustomLayout } from "./layout";
+import { RouteLoadingFallback } from "./components/admin-loading";
 
 const LoginPage = lazy(() =>
   import("./pages/auth/LoginPage").then((module) => ({ default: module.LoginPage })),
@@ -56,9 +57,7 @@ const EmployeesPage = lazy(() =>
   import("./pages/employees").then((module) => ({ default: module.EmployeesPage })),
 );
 
-const RouteFallback = () => (
-  <div style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Loading...</div>
-);
+const RouteFallback = RouteLoadingFallback;
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();

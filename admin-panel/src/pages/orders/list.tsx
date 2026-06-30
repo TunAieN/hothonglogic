@@ -42,6 +42,7 @@ import type { ICustomer, IOrder, User } from "../../interfaces";
 import { dataProvider } from "../../providers/dataProvider";
 import { getTtlCache, setTtlCache } from "../../utils/ttlCache";
 import type { OrderUpdateInput } from "../../types";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -53,6 +54,19 @@ const filterActionsStyle = { marginBottom: 0, marginTop: 4 };
 const CUSTOMER_OPTIONS_CACHE_PREFIX = "orders:customer-options";
 const STAFF_OPTIONS_CACHE_KEY = "orders:staff-options";
 const LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const OrderListStatsSkeleton = () => (
+    <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+            <SkeletonStatCard labelWidth={92} valueWidth={48} />
+        </Col>
+        <Col xs={24} md={8}>
+            <SkeletonStatCard labelWidth={108} valueWidth={48} />
+        </Col>
+        <Col xs={24} md={8}>
+            <SkeletonStatCard labelWidth={126} valueWidth={48} />
+        </Col>
+    </Row>
+);
 
 type OrderStatus = IOrder["status"];
 
@@ -183,6 +197,8 @@ export const OrderList = () => {
     const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const orders = useMemo(() => tableProps.dataSource ?? [], [tableProps.dataSource]);
+    const isInitialLoading = Boolean(tableQuery?.isLoading && orders.length === 0);
+    const isRefreshing = Boolean(tableQuery?.isFetching && !isInitialLoading);
     const totalOrders =
         typeof tableProps.pagination === "object"
             ? tableProps.pagination.total ?? orders.length
@@ -580,35 +596,39 @@ export const OrderList = () => {
             )}
         >
             <Space orientation="vertical" size="large" style={{ width: "100%" }}>
-                <Row gutter={[16, 16]}>
-                    <Col xs={24} md={8}>
-                        <Card>
-                            <Statistic
-                                title="Total Orders"
-                                value={totalOrders}
-                                prefix={<ShoppingOutlined />}
-                            />
-                        </Card>
-                    </Col>
-                    <Col xs={24} md={8}>
-                        <Card>
-                            <Statistic
-                                title="Pending Orders"
-                                value={pendingOrders}
-                                prefix={<CarOutlined />}
-                            />
-                        </Card>
-                    </Col>
-                    <Col xs={24} md={8}>
-                        <Card>
-                            <Statistic
-                                title="Purchasing Orders"
-                                value={approvedOrders}
-                                prefix={<CheckCircleOutlined />}
-                            />
-                        </Card>
-                    </Col>
-                </Row>
+                {isInitialLoading ? (
+                    <OrderListStatsSkeleton />
+                ) : (
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} md={8}>
+                            <Card>
+                                <Statistic
+                                    title="Total Orders"
+                                    value={totalOrders}
+                                    prefix={<ShoppingOutlined />}
+                                />
+                            </Card>
+                        </Col>
+                        <Col xs={24} md={8}>
+                            <Card>
+                                <Statistic
+                                    title="Pending Orders"
+                                    value={pendingOrders}
+                                    prefix={<CarOutlined />}
+                                />
+                            </Card>
+                        </Col>
+                        <Col xs={24} md={8}>
+                            <Card>
+                                <Statistic
+                                    title="Purchasing Orders"
+                                    value={approvedOrders}
+                                    prefix={<CheckCircleOutlined />}
+                                />
+                            </Card>
+                        </Col>
+                    </Row>
+                )}
 
                 <Card size="small" styles={{ body: filterCardBodyStyle }}>
                     <Form<OrderFilterValues>
@@ -731,12 +751,19 @@ export const OrderList = () => {
                 </Card>
 
                 <Card>
-                    <Table<IOrder>
-                        {...restTableComponentProps}
-                        columns={columns}
-                        pagination={normalizedTablePagination}
-                        rowKey="id"
-                    />
+                    {isInitialLoading ? (
+                        <AdminTableSkeleton columns={columns} rowCount={10} />
+                    ) : (
+                        <LoadingOverlay spinning={isRefreshing}>
+                            <Table<IOrder>
+                                {...restTableComponentProps}
+                                loading={false}
+                                columns={columns}
+                                pagination={normalizedTablePagination}
+                                rowKey="id"
+                            />
+                        </LoadingOverlay>
+                    )}
                 </Card>
             </Space>
 
@@ -775,3 +802,4 @@ export const OrderList = () => {
         </List>
     );
 };
+

@@ -19,6 +19,9 @@ import type {
   Customer,
   CustomerCreateInput,
   CustomerUpdateInput,
+  EmployeeCreateInput,
+  EmployeeRecord,
+  EmployeeUpdateInput,
   Order,
   OrderCreateInput,
   OrderUpdateInput,
@@ -29,6 +32,7 @@ type ResourceRecordMap = {
   cnBatches: CnBatch;
   cnPackages: CnPackage;
   customers: Customer;
+  employees: EmployeeRecord;
   orders: Order;
   users: User;
 };
@@ -37,6 +41,7 @@ type ResourceCreateInputMap = {
   cnBatches: CnBatchCreateInput;
   cnPackages: CnPackageCreateInput;
   customers: CustomerCreateInput;
+  employees: EmployeeCreateInput;
   orders: OrderCreateInput;
   users: never;
 };
@@ -45,6 +50,7 @@ type ResourceUpdateInputMap = {
   cnBatches: CnBatchUpdateInput;
   cnPackages: CnPackageUpdateInput;
   customers: CustomerUpdateInput;
+  employees: EmployeeUpdateInput;
   orders: OrderUpdateInput;
   users: never;
 };
@@ -173,6 +179,14 @@ type CustomersListFilter = {
   created_to?: string;
 };
 
+type EmployeesListFilter = {
+  search?: string;
+  role_id?: string;
+  status?: string;
+  created_from?: string;
+  created_to?: string;
+};
+
 const isLogicalFilter = (filter: CrudFilter): filter is LogicalFilter =>
   "field" in filter && "operator" in filter;
 
@@ -279,6 +293,48 @@ const getCustomersListFilter = (
   return Object.keys(mappedFilter).length > 0 ? mappedFilter : undefined;
 };
 
+const getEmployeesListFilter = (
+  filters?: GetListParams["filters"],
+): EmployeesListFilter | undefined => {
+  if (!filters) {
+    return undefined;
+  }
+
+  const mappedFilter: EmployeesListFilter = {};
+
+  filters
+    .filter(isLogicalFilter)
+    .forEach((filter) => {
+      const value = normalizeFilterValue(filter.value);
+
+      if (value === undefined) {
+        return;
+      }
+
+      switch (filter.field) {
+        case "search":
+          mappedFilter.search = String(value);
+          break;
+        case "role_id":
+          mappedFilter.role_id = String(value);
+          break;
+        case "status":
+          mappedFilter.status = String(value);
+          break;
+        case "created_from":
+          mappedFilter.created_from = String(value);
+          break;
+        case "created_to":
+          mappedFilter.created_to = String(value);
+          break;
+        default:
+          break;
+      }
+    });
+
+  return Object.keys(mappedFilter).length > 0 ? mappedFilter : undefined;
+};
+
 const getListByResource = async <TResource extends ResourceName>(
   resource: TResource,
   pagination?: GetListParams["pagination"],
@@ -291,6 +347,7 @@ const getListByResource = async <TResource extends ResourceName>(
   const { page, perPage } = getPagination(pagination);
   const ordersFilter = resource === "orders" ? getOrdersListFilter(filters) : undefined;
   const customersFilter = resource === "customers" ? getCustomersListFilter(filters) : undefined;
+  const employeesFilter = resource === "employees" ? getEmployeesListFilter(filters) : undefined;
   const query =
     resource === "orders"
       ? buildListQuery(
@@ -306,12 +363,20 @@ const getListByResource = async <TResource extends ResourceName>(
             "first: $first, page: $page, filter: $filter",
             "$page: Int!, $first: Int!, $filter: CustomerFilterInput",
           )
-      : buildListQuery(listQueryName, fields);
+        : resource === "employees"
+          ? buildListQuery(
+              listQueryName,
+              fields,
+              "first: $first, page: $page, filter: $filter",
+              "$page: Int!, $first: Int!, $filter: EmployeeFilterInput",
+            )
+          : buildListQuery(listQueryName, fields);
   const response = await requestWithAuth<ListGraphQLResponse<TResource>>(query, {
     page,
     first: perPage,
     ...(ordersFilter ? { filter: ordersFilter } : {}),
     ...(customersFilter ? { filter: customersFilter } : {}),
+    ...(employeesFilter ? { filter: employeesFilter } : {}),
   });
   const result = response[listQueryName as TResource];
 

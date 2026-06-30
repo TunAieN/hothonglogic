@@ -4,7 +4,6 @@ import {
   App,
   Button,
   Card,
-  Checkbox,
   Col,
   Empty,
   Form,
@@ -23,11 +22,7 @@ import type { ColumnsType } from "antd/es/table";
 import { DeleteOutlined, EditOutlined, FileTextOutlined, PlusOutlined } from "@ant-design/icons";
 import { OrderEditSectionCard } from "./OrderEditSectionCard";
 import type { OrderItem } from "../../../types";
-import type {
-  SelectOption,
-  ShippingEntryFormValue,
-  ShippingEntryItemSelectionFormValue,
-} from "../orderEditTypes";
+import type { SelectOption, ShippingEntryFormValue } from "../orderEditTypes";
 
 const { Text } = Typography;
 
@@ -43,8 +38,6 @@ type ShippingEntryTableRow = {
   index: number;
   trackingCode: string;
   shippingCompanyLabel: string;
-  productCount: number;
-  totalQuantity: number;
   parcelValue: number;
   packageNote: string;
 };
@@ -56,91 +49,6 @@ type ModalState =
       snapshot: ShippingEntryFormValue | null;
     }
   | null;
-
-const ITEM_LIST_STYLES = `
-  .shipping-items-board {
-    border: 1px solid #eee6dc;
-    border-radius: 18px;
-    overflow: hidden;
-    background: #fffdfa;
-  }
-
-  .shipping-items-board-head,
-  .shipping-items-board-row {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: minmax(0, 2.4fr) 110px 90px 90px 120px;
-    align-items: center;
-  }
-
-  .shipping-items-board-head {
-    background: #f8f2eb;
-    color: #7a6d5b;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    padding: 12px 16px;
-    text-transform: uppercase;
-  }
-
-  .shipping-items-board-row {
-    cursor: pointer;
-    padding: 14px 16px;
-  }
-
-  .shipping-items-board-row + .shipping-items-board-row {
-    border-top: 1px solid #f1e8de;
-  }
-
-  .shipping-items-board-row.is-selected {
-    background: #f2fbf5;
-  }
-
-  .shipping-item-pick {
-    display: flex;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .shipping-item-check {
-    align-items: flex-start;
-    display: flex;
-    padding-top: 2px;
-  }
-
-  .shipping-item-title {
-    color: #0f172a;
-    display: block;
-    font-weight: 600;
-    line-height: 1.45;
-  }
-
-  .shipping-item-subline {
-    color: #8b7d69;
-    display: block;
-    font-size: 12px;
-    margin-top: 4px;
-  }
-
-  .shipping-items-board-cell {
-    color: #3f3a34;
-    font-size: 13px;
-  }
-
-  .shipping-items-board .ant-input-number {
-    min-height: 40px;
-  }
-
-  @media (max-width: 991px) {
-    .shipping-items-board-head {
-      display: none;
-    }
-
-    .shipping-items-board-row {
-      grid-template-columns: 1fr;
-    }
-  }
-`;
 
 const createDefaultShippingEntry = (): ShippingEntryFormValue => ({
   packageId: undefined,
@@ -159,7 +67,7 @@ const normalizeShippingEntry = (entry?: ShippingEntryFormValue): ShippingEntryFo
   shippingCompany: entry?.shippingCompany ?? "vn-express",
   packagingType: entry?.packagingType ?? "wooden-crating",
   packageNote: entry?.packageNote ?? "",
-  selectedItems: entry?.selectedItems?.map((item) => ({ ...item })) ?? [],
+  selectedItems: [],
 });
 
 const isMeaningfulEntry = (entry?: ShippingEntryFormValue) =>
@@ -167,8 +75,7 @@ const isMeaningfulEntry = (entry?: ShippingEntryFormValue) =>
     entry?.packageId ||
       entry?.trackingCode?.trim() ||
       entry?.packageNote?.trim() ||
-      (entry?.parcelValue ?? 0) > 0 ||
-      (entry?.selectedItems?.length ?? 0) > 0,
+      (entry?.parcelValue ?? 0) > 0,
   );
 
 const formatCurrency = (value: number) =>
@@ -182,197 +89,6 @@ const formatTrackingCode = (value?: string) => value?.trim() || "Chưa có";
 const getShippingCompanyLabel = (value: string | undefined, options: SelectOption[]) =>
   options.find((option) => option.value === value)?.label ?? "Chưa chọn";
 
-const calculateParcelValue = (
-  selectedItems: ShippingEntryItemSelectionFormValue[],
-  orderItems: OrderItem[],
-) =>
-  selectedItems.reduce((sum, selectedItem) => {
-    const orderItem = orderItems.find((item) => String(item.id) === String(selectedItem.orderItemId));
-
-    if (!orderItem) {
-      return sum;
-    }
-
-    return sum + Number(orderItem.price_cny) * Number(selectedItem.quantity);
-  }, 0);
-
-const buildSelectedItemsMap = (selectedItems: ShippingEntryItemSelectionFormValue[]) =>
-  new Map(selectedItems.map((item) => [String(item.orderItemId), item.quantity]));
-
-const validateShippingEntryQuantities = (
-  shippingEntries: ShippingEntryFormValue[],
-  orderItems: OrderItem[],
-) => {
-  const availableQuantityByItemId = new Map(
-    orderItems.map((item) => [String(item.id), Number(item.quantity)]),
-  );
-  const assignedQuantityByItemId = new Map<string, number>();
-
-  shippingEntries.forEach((entry, entryIndex) => {
-    entry.selectedItems.forEach((selectedItem) => {
-      const orderItemId = String(selectedItem.orderItemId);
-      const availableQuantity = availableQuantityByItemId.get(orderItemId);
-
-      if (!availableQuantity) {
-        throw new Error("Có sản phẩm không còn hợp lệ trong danh sách đơn hàng.");
-      }
-
-      if (Number(selectedItem.quantity) <= 0) {
-        throw new Error(`Số lượng trong mã vận đơn ${entryIndex + 1} phải lớn hơn 0.`);
-      }
-
-      const nextAssignedQuantity =
-        (assignedQuantityByItemId.get(orderItemId) ?? 0) + Number(selectedItem.quantity);
-
-      if (nextAssignedQuantity > availableQuantity) {
-        throw new Error("Tổng số lượng gán vào các mã vận đơn đang vượt quá số lượng mua.");
-      }
-
-      assignedQuantityByItemId.set(orderItemId, nextAssignedQuantity);
-    });
-  });
-};
-
-const PackageItemsSelector = ({
-  disabled,
-  onChange,
-  orderItems,
-  selectedItems,
-}: {
-  disabled: boolean;
-  onChange: (nextSelectedItems: ShippingEntryItemSelectionFormValue[]) => void;
-  orderItems: OrderItem[];
-  selectedItems: ShippingEntryItemSelectionFormValue[];
-}) => {
-  const selectedItemsMap = buildSelectedItemsMap(selectedItems);
-
-  const syncSelectedItems = (nextSelectedItems: ShippingEntryItemSelectionFormValue[]) => {
-    onChange(
-      nextSelectedItems.map((item) => ({
-        orderItemId: String(item.orderItemId),
-        quantity: Number(item.quantity),
-      })),
-    );
-  };
-
-  const toggleItemSelection = (orderItem: OrderItem) => {
-    const orderItemId = String(orderItem.id);
-    const isChecked = selectedItemsMap.has(orderItemId);
-
-    if (!isChecked) {
-      syncSelectedItems([
-        ...selectedItems.filter((item) => String(item.orderItemId) !== orderItemId),
-        {
-          orderItemId,
-          quantity: Number(orderItem.quantity || 1),
-        },
-      ]);
-      return;
-    }
-
-    syncSelectedItems(selectedItems.filter((item) => String(item.orderItemId) !== orderItemId));
-  };
-
-  const updateSelectedQuantity = (orderItemId: string, quantity: number | null) => {
-    syncSelectedItems(
-      selectedItems.map((item) =>
-        String(item.orderItemId) === String(orderItemId)
-          ? { ...item, quantity: Math.max(1, Number(quantity ?? 1)) }
-          : item,
-      ),
-    );
-  };
-
-  return (
-    <>
-      <style>{ITEM_LIST_STYLES}</style>
-      <Card
-        size="small"
-        styles={{ body: { padding: 0 } }}
-        style={{ background: "#fbfaf8", borderColor: "#eee6dc" }}
-        title="Sản phẩm trong kiện hàng"
-        extra={<Tag color="green">{selectedItems.length} đã chọn</Tag>}
-      >
-        <div className="shipping-items-board">
-          <div className="shipping-items-board-head">
-            <div>Sản phẩm</div>
-            <div>Shop</div>
-            <div>Đơn giá</div>
-            <div>SL mua</div>
-            <div>SL trong kiện</div>
-          </div>
-
-          {orderItems.map((orderItem) => {
-            const orderItemId = String(orderItem.id);
-            const selectedQuantity = selectedItemsMap.get(orderItemId);
-            const isChecked = selectedQuantity !== undefined;
-
-            return (
-              <div
-                className={`shipping-items-board-row${isChecked ? " is-selected" : ""}`}
-                key={orderItemId}
-                onClick={() => {
-                  if (!disabled) {
-                    toggleItemSelection(orderItem);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (!disabled && (event.key === "Enter" || event.key === " ")) {
-                    event.preventDefault();
-                    toggleItemSelection(orderItem);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="shipping-item-pick">
-                  <span
-                    className="shipping-item-check"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                  >
-                    <Checkbox
-                      checked={isChecked}
-                      disabled={disabled}
-                      onChange={() => toggleItemSelection(orderItem)}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </span>
-                  <span style={{ minWidth: 0 }}>
-                    <span className="shipping-item-title">{orderItem.product_name}</span>
-                    <span className="shipping-item-subline">
-                      {orderItem.size || orderItem.color
-                        ? [orderItem.size, orderItem.color].filter(Boolean).join(" | ")
-                        : "Không có phân loại"}
-                    </span>
-                  </span>
-                </div>
-                <div className="shipping-items-board-cell">
-                  {orderItem.shop_name ?? orderItem.seller ?? "Chưa rõ"}
-                </div>
-                <div className="shipping-items-board-cell">{formatCurrency(orderItem.price_cny)}</div>
-                <div className="shipping-items-board-cell">{orderItem.quantity}</div>
-                <div>
-                  <InputNumber
-                    disabled={disabled || !isChecked}
-                    max={Number(orderItem.quantity)}
-                    min={1}
-                    onChange={(value) => updateSelectedQuantity(orderItemId, value)}
-                    onClick={(event) => event.stopPropagation()}
-                    style={{ width: "100%" }}
-                    value={selectedQuantity ?? undefined}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    </>
-  );
-};
-
 export const ShippingInfoSection = ({
   shippingCompanyOptions,
   packagingTypeOptions,
@@ -384,9 +100,13 @@ export const ShippingInfoSection = ({
   const watchedShippingEntries = Form.useWatch("shippingEntries", form) as
     | ShippingEntryFormValue[]
     | undefined;
-  const shippingEntries = Array.isArray(watchedShippingEntries)
-    ? watchedShippingEntries
-    : ((form.getFieldValue("shippingEntries") as ShippingEntryFormValue[] | undefined) ?? []);
+  const shippingEntries = useMemo(
+    () =>
+      Array.isArray(watchedShippingEntries)
+        ? watchedShippingEntries
+        : ((form.getFieldValue("shippingEntries") as ShippingEntryFormValue[] | undefined) ?? []),
+    [form, watchedShippingEntries],
+  );
   const [modalState, setModalState] = useState<ModalState>(null);
   const [modalEntry, setModalEntry] = useState<ShippingEntryFormValue | null>(null);
 
@@ -402,8 +122,6 @@ export const ShippingInfoSection = ({
           index,
           trackingCode: entry.trackingCode,
           shippingCompanyLabel: getShippingCompanyLabel(entry.shippingCompany, shippingCompanyOptions),
-          productCount: entry.selectedItems.length,
-          totalQuantity: entry.selectedItems.reduce((sum, item) => sum + Number(item.quantity), 0),
           parcelValue: Number(entry.parcelValue ?? 0),
           packageNote: entry.packageNote?.trim() ?? "",
         })),
@@ -503,18 +221,7 @@ export const ShippingInfoSection = ({
         throw new Error("Vui lòng chọn loại đóng gói.");
       }
 
-      if (modalEntry.selectedItems.length === 0) {
-        throw new Error("Vui lòng chọn ít nhất 1 sản phẩm cho mã vận đơn này.");
-      }
-
-      const normalizedEntry = normalizeShippingEntry({
-        ...modalEntry,
-        parcelValue: calculateParcelValue(modalEntry.selectedItems, orderItems),
-      });
-
-      const nextEntries = [...getCurrentShippingEntries()];
-      nextEntries[currentEntryIndex] = normalizedEntry;
-      validateShippingEntryQuantities(nextEntries, orderItems);
+      const normalizedEntry = normalizeShippingEntry(modalEntry);
       form.setFieldValue(["shippingEntries", currentEntryIndex], normalizedEntry);
       closeModal();
     } catch (error) {
@@ -536,18 +243,6 @@ export const ShippingInfoSection = ({
       key: "shippingCompanyLabel",
       title: "Công ty chuyển phát",
       render: (value: string) => <Tag color="blue">{value}</Tag>,
-    },
-    {
-      dataIndex: "productCount",
-      key: "productCount",
-      title: "Số sản phẩm",
-      width: 120,
-    },
-    {
-      dataIndex: "totalQuantity",
-      key: "totalQuantity",
-      title: "Tổng số lượng",
-      width: 130,
     },
     {
       dataIndex: "parcelValue",
@@ -610,9 +305,9 @@ export const ShippingInfoSection = ({
             ))}
 
             <Alert
-              description="Mỗi tracking number tương ứng một lần shop phát hàng. Bấm Thêm mã vận đơn để khai báo hoặc Sửa để cập nhật chi tiết kiện hàng."
+              description={`Mỗi tracking number tương ứng một lần shop phát hàng. Ở bước này chỉ khai báo tracking thuộc đơn hàng, chưa xác định item bên trong ${orderItems.length} sản phẩm của đơn.`}
               showIcon
-              title="Quản lý mã vận đơn gọn hơn bằng bảng và modal."
+              title="Quản lý mã vận đơn bằng bảng và modal."
               type="info"
             />
 
@@ -635,7 +330,8 @@ export const ShippingInfoSection = ({
 
             <Space align="center" style={{ justifyContent: "space-between", width: "100%" }} wrap>
               <Text type="secondary">
-                Một order có thể có nhiều tracking number. Mỗi tracking phải gắn đúng sản phẩm và số lượng thuộc kiện đó.
+                Một order có thể có nhiều tracking number. Việc xác nhận item nào nằm trong tracking
+                sẽ do kho Trung Quốc xử lý khi nhận hàng.
               </Text>
               <Button
                 className="order-edit-add-tracking"
@@ -655,7 +351,7 @@ export const ShippingInfoSection = ({
               okText="Lưu mã vận đơn"
               open={currentEntryIndex !== null}
               title={modalState?.isNew ? "Thêm mã vận đơn" : "Sửa mã vận đơn"}
-              width={1000}
+              width={860}
               cancelText="Hủy"
             >
               {modalEntry ? (
@@ -693,12 +389,17 @@ export const ShippingInfoSection = ({
                       <Form.Item label="Giá trị kiện hàng RMB">
                         <Space.Compact style={{ width: "100%" }}>
                           <InputNumber
-                            disabled
+                            disabled={disabled}
                             min={0}
                             placeholder="0.00"
                             precision={2}
                             style={{ width: "100%" }}
-                            value={calculateParcelValue(modalEntry.selectedItems, orderItems)}
+                            value={modalEntry.parcelValue ?? 0}
+                            onChange={(value) =>
+                              setModalEntry((prev) =>
+                                prev ? { ...prev, parcelValue: Number(value ?? 0) } : prev,
+                              )
+                            }
                           />
                           <Input disabled style={{ width: 72 }} value="RMB" />
                         </Space.Compact>
@@ -757,25 +458,11 @@ export const ShippingInfoSection = ({
                     </Col>
                   </Row>
 
-                  <PackageItemsSelector
-                    disabled={disabled}
-                    onChange={(nextSelectedItems) =>
-                      setModalEntry((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              parcelValue: calculateParcelValue(nextSelectedItems, orderItems),
-                              selectedItems: nextSelectedItems,
-                            }
-                          : prev,
-                      )
-                    }
-                    orderItems={orderItems}
-                    selectedItems={modalEntry.selectedItems}
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="Item trong tracking này chưa được khai báo ở bước đặt hàng. Kho Trung Quốc sẽ xác nhận khi nhận hàng thực tế."
                   />
-                  {modalEntry.selectedItems.length === 0 ? (
-                    <Text type="danger">Vui lòng chọn ít nhất 1 sản phẩm cho mã vận đơn này.</Text>
-                  ) : null}
                 </Space>
               ) : null}
             </Modal>

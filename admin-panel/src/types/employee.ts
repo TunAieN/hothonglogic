@@ -29,3 +29,37 @@ export interface Employee {
   temporaryPassword?: string;
   avatar?: string;
 }
+export type EmployeeApiStatus = "active" | "inactive";
+
+export interface EmployeeRecord {
+  id: string;
+  name: string;
+  email: string;
+  role_id?: string | number | null;
+  role?: import("./common").Role | null;
+  phone?: string | null;
+  address?: string | null;
+  status?: EmployeeApiStatus | string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface EmployeeCreateInput {
+  name: string;
+  email: string;
+  password: string;
+  role_id: string | number;
+  phone?: string | null;
+  address?: string | null;
+  status?: EmployeeApiStatus | string | null;
+}
+
+export interface EmployeeUpdateInput {
+  name: string;
+  email: string;
+  password?: string | null;
+  role_id: string | number;
+  phone?: string | null;
+  address?: string | null;
+  status: EmployeeApiStatus | string;
+}

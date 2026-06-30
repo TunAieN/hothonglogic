@@ -670,38 +670,21 @@ const isTrackingEditableStatus = (status?: string) =>
 
 const validateShippingEntries = (
   shippingEntries: ShippingEntryFormValue[],
-  orderItems: NonNullable<IOrder["items"]> | undefined,
 ) => {
-  const availableQuantityByItemId = new Map(
-    (orderItems ?? []).map((item) => [item.id, item.quantity]),
-  );
-  const assignedQuantityByItemId = new Map<string, number>();
+  const trackingNumbers = new Set<string>();
 
   shippingEntries.forEach((entry, entryIndex) => {
-    if (entry.selectedItems.length === 0) {
-      throw new Error(`Ma van don thu ${entryIndex + 1} chua co san pham nao duoc chon.`);
+    const trackingCode = entry.trackingCode.trim().toUpperCase();
+
+    if (!trackingCode) {
+      throw new Error(`Mã vận đơn thứ ${entryIndex + 1} chưa được nhập.`);
     }
 
-    entry.selectedItems.forEach((selectedItem) => {
-      const availableQuantity = availableQuantityByItemId.get(selectedItem.orderItemId);
+    if (trackingNumbers.has(trackingCode)) {
+      throw new Error(`Mã vận đơn ${trackingCode} đang bị trùng trong cùng đơn hàng.`);
+    }
 
-      if (!availableQuantity) {
-        throw new Error("Co san pham khong con hop le trong danh sach don hang.");
-      }
-
-      if (selectedItem.quantity <= 0) {
-        throw new Error(`So luong cua mot san pham trong ma van don thu ${entryIndex + 1} phai lon hon 0.`);
-      }
-
-      const nextAssignedQuantity =
-        (assignedQuantityByItemId.get(selectedItem.orderItemId) ?? 0) + selectedItem.quantity;
-
-      if (nextAssignedQuantity > availableQuantity) {
-        throw new Error("Tong so luong mot san pham da phan bo vao cac kien hang vuot qua so luong cua don.");
-      }
-
-      assignedQuantityByItemId.set(selectedItem.orderItemId, nextAssignedQuantity);
-    });
+    trackingNumbers.add(trackingCode);
   });
 };
 
@@ -900,7 +883,7 @@ export const OrderEdit = () => {
       return;
     }
 
-    validateShippingEntries(values.shippingEntries, order?.items);
+    validateShippingEntries(values.shippingEntries);
 
     const payload: OrderUpdateInput = {
       account_manager_id: values.accountManagerId,
@@ -911,10 +894,6 @@ export const OrderEdit = () => {
         declared_value: entry.parcelValue ?? 0,
         carrier: mapShippingCompanyToCarrier(entry.shippingCompany),
         note: entry.packageNote?.trim() || null,
-        package_items: entry.selectedItems.map((selectedItem) => ({
-          order_item_id: selectedItem.orderItemId,
-          quantity: selectedItem.quantity,
-        })),
       })),
       status: nextStatus ?? order.status,
       note: serializeOrderEditNote(values),
@@ -928,7 +907,7 @@ export const OrderEdit = () => {
   };
 
   const buildTrackingPackagesPayload = (values: OrderEditFormValues) => {
-    validateShippingEntries(values.shippingEntries, order?.items);
+    validateShippingEntries(values.shippingEntries);
 
     return values.shippingEntries.map((entry) => ({
       id: entry.packageId,
@@ -936,10 +915,6 @@ export const OrderEdit = () => {
       declared_value: entry.parcelValue ?? 0,
       carrier: mapShippingCompanyToCarrier(entry.shippingCompany),
       note: entry.packageNote?.trim() || null,
-      package_items: entry.selectedItems.map((selectedItem) => ({
-        order_item_id: selectedItem.orderItemId,
-        quantity: selectedItem.quantity,
-      })),
     }));
   };
 

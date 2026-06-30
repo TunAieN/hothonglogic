@@ -45,7 +45,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
 
   return (
     <Modal
-      title="Nhap thong tin lo hang vao he thong"
+      title="Nhập thông tin lô hàng vào hệ thống"
       open={open}
       onCancel={onCancel}
       width={900}
@@ -53,7 +53,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
       footer={
         <Space>
           <Button icon={<CloseOutlined />} onClick={onCancel}>
-            Huy
+            Hủy
           </Button>
           <Button type="primary" icon={<CheckOutlined />} loading={loading} onClick={() => void handleStart()}>
             Bat dau
@@ -67,7 +67,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Ma lo hang"
               name="batchCode"
-              rules={[{ required: true, message: "Vui long nhap ma lo hang." }]}
+              rules={[{ required: true, message: "Vui lòng nhập mã lô hàng." }]}
             >
               <Input />
             </Form.Item>
@@ -76,7 +76,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Khoi luong lo hang (kg)"
               name="batchWeight"
-              rules={[{ required: true, message: "Vui long nhap khoi luong lo hang." }]}
+              rules={[{ required: true, message: "Vui lòng nhập khối lượng lô hàng." }]}
             >
               <InputNumber style={{ width: "100%" }} min={0} />
             </Form.Item>
@@ -85,7 +85,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Khoi luong go/bao tai (kg)"
               name="packagingWeight"
-              rules={[{ required: true, message: "Vui long nhap khoi luong go/bao tai." }]}
+              rules={[{ required: true, message: "Vui lòng nhập khối lượng gỗ/bao tải." }]}
             >
               <InputNumber style={{ width: "100%" }} min={0} />
             </Form.Item>
@@ -94,7 +94,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Gia co"
               name="packagingType"
-              rules={[{ required: true, message: "Vui long chon loai dong goi." }]}
+              rules={[{ required: true, message: "Vui lòng chọn loại đóng gói." }]}
             >
               <Select options={PACKAGING_TYPE_OPTIONS} />
             </Form.Item>
@@ -103,7 +103,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Chieu dai (cm)"
               name="length"
-              rules={[{ required: true, message: "Vui long nhap chieu dai." }]}
+              rules={[{ required: true, message: "Vui lòng nhập chiều dài." }]}
             >
               <InputNumber style={{ width: "100%" }} min={0} />
             </Form.Item>
@@ -112,7 +112,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Chieu rong (cm)"
               name="width"
-              rules={[{ required: true, message: "Vui long nhap chieu rong." }]}
+              rules={[{ required: true, message: "Vui lòng nhập chiều rộng." }]}
             >
               <InputNumber style={{ width: "100%" }} min={0} />
             </Form.Item>
@@ -121,7 +121,7 @@ export const BatchInfoModal = ({ open, initialValues, loading, onCancel, onStart
             <Form.Item
               label="Chieu cao (cm)"
               name="height"
-              rules={[{ required: true, message: "Vui long nhap chieu cao." }]}
+              rules={[{ required: true, message: "Vui lòng nhập chiều cao." }]}
             >
               <InputNumber style={{ width: "100%" }} min={0} />
             </Form.Item>
