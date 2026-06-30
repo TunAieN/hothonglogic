@@ -19,7 +19,6 @@ import {
   Row,
   Select,
   Space,
-  Spin,
   Statistic,
   Table,
   Tag,
@@ -31,6 +30,7 @@ import {
 import {
   DeleteOutlined,
   EditOutlined,
+  FileSearchOutlined,
   InboxOutlined,
   PlusCircleOutlined,
   PlusOutlined,
@@ -62,6 +62,8 @@ import {
   mapRecordToFormValues,
   renderBatchTag,
 } from "./helpers";
+import { ConfirmPackageItemsModal } from "./components/ConfirmPackageItemsModal";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
 import type {
   ChinaWarehouseApiRecord,
   ChinaWarehouseBatchRecord,
@@ -77,6 +79,22 @@ const { Dragger } = Upload;
 const filterCardBodyStyle = { padding: 20 };
 const toolbarCardBodyStyle = { padding: "14px 18px" };
 const defaultFilterValues: ChinaWarehouseFilters = {};
+const ChinaWarehouseStatsSkeleton = () => (
+  <Row gutter={[12, 12]}>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={76} valueWidth={42} />
+    </Col>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={62} valueWidth={42} />
+    </Col>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={74} valueWidth={42} />
+    </Col>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={70} valueWidth={42} />
+    </Col>
+  </Row>
+);
 
 const ADD_PACKAGES_TO_BATCH_MUTATION = `
   mutation AddPackagesToCnBatch($input: AddPackagesToCnBatchInput!) {
@@ -85,6 +103,14 @@ const ADD_PACKAGES_TO_BATCH_MUTATION = `
       batch_code
       status
       total_weight
+    }
+  }
+`;
+
+const CONFIRM_CN_PACKAGE_ITEMS_MUTATION = `
+  mutation ConfirmCnPackageItems($packageId: ID!, $items: [OrderPackageItemInput!]!) {
+    confirmCnPackageItems(package_id: $packageId, items: $items) {
+      id
     }
   }
 `;
@@ -139,6 +165,9 @@ export const ChinaWarehousePage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [isSyncingStatuses, setIsSyncingStatuses] = useState(false);
+  const [confirmItemsModalOpen, setConfirmItemsModalOpen] = useState(false);
+  const [confirmingPackage, setConfirmingPackage] = useState<ChinaWarehousePackage | null>(null);
+  const [isConfirmingItems, setIsConfirmingItems] = useState(false);
   const screens = Grid.useBreakpoint();
   const {
     result: packageListResponse,
@@ -209,6 +238,31 @@ export const ChinaWarehousePage = () => {
     [batches, selectedWarehouseId],
   );
   const batchMode = Form.useWatch("batchMode", batchForm) ?? "create";
+  const watchedWeight = Form.useWatch("weight", form) ?? 0;
+  const watchedLength = Form.useWatch("actualLength", form) ?? 0;
+  const watchedWidth = Form.useWatch("actualWidth", form) ?? 0;
+  const watchedHeight = Form.useWatch("actualHeight", form) ?? 0;
+
+  const measuredVolume = useMemo(() => {
+    if (!watchedLength || !watchedWidth || !watchedHeight) {
+      return 0;
+    }
+
+    return Number(((watchedLength * watchedWidth * watchedHeight) / 1000000).toFixed(4));
+  }, [watchedHeight, watchedLength, watchedWidth]);
+
+  const volumetricWeight = useMemo(() => {
+    if (!watchedLength || !watchedWidth || !watchedHeight) {
+      return 0;
+    }
+
+    return Number(((watchedLength * watchedWidth * watchedHeight) / 6000).toFixed(2));
+  }, [watchedHeight, watchedLength, watchedWidth]);
+
+  const chargeableWeight = useMemo(
+    () => Number(Math.max(watchedWeight, volumetricWeight).toFixed(2)),
+    [volumetricWeight, watchedWeight],
+  );
 
   useEffect(() => {
     if (!batchModalOpen) {
@@ -232,6 +286,10 @@ export const ChinaWarehousePage = () => {
       receiverName: "",
       warehouseName: "Kho Quảng Châu",
       weight: 0.1,
+      actualLength: 0,
+      actualWidth: 0,
+      actualHeight: 0,
+      packageCondition: "normal",
       receivedDate: dayjs(),
       status: "unmatched",
       note: "",
@@ -243,6 +301,11 @@ export const ChinaWarehousePage = () => {
     setEditingRecord(record);
     form.setFieldsValue(mapRecordToFormValues(record));
     setDrawerOpen(true);
+  };
+
+  const openConfirmItemsModal = (record: ChinaWarehousePackage) => {
+    setConfirmingPackage(record);
+    setConfirmItemsModalOpen(true);
   };
 
   const closeDrawer = () => {
@@ -338,6 +401,37 @@ export const ChinaWarehousePage = () => {
     }
 
     setBatchModalOpen(true);
+  };
+
+  const handleConfirmPackageItems = async (
+    items: Array<{ order_item_id: string; quantity: number }>,
+  ) => {
+    if (!confirmingPackage) {
+      return;
+    }
+
+    try {
+      setIsConfirmingItems(true);
+      syncGraphqlAuthToken();
+      await client.request(
+        CONFIRM_CN_PACKAGE_ITEMS_MUTATION,
+        {
+          packageId: confirmingPackage.id,
+          items,
+        },
+        getGraphqlAuthHeaders(),
+      );
+      await packageListQuery.refetch();
+      setConfirmItemsModalOpen(false);
+      setConfirmingPackage(null);
+      message.success("Da xac nhan item trong kien hang.");
+    } catch (error) {
+      console.error(error);
+      message.error("Khong the xac nhan item trong kien hang.");
+      throw error;
+    } finally {
+      setIsConfirmingItems(false);
+    }
   };
 
   const handleAddToBatch = async () => {
@@ -521,20 +615,89 @@ export const ChinaWarehousePage = () => {
     },
   ];
 
-  const isPageLoading = packageListQuery.isLoading;
+  const tableColumns = useMemo<ColumnsType<ChinaWarehousePackage>>(() => {
+    const confirmItemsColumn: ColumnsType<ChinaWarehousePackage>[number] = {
+      title: "Item da xac nhan",
+      key: "confirmedItems",
+      width: 150,
+      render: (_, record) => (
+        <Tag color={record.confirmedItemCount > 0 ? "green" : "default"}>
+          {record.confirmedItemCount > 0 ? `${record.confirmedItemCount} item` : "Chưa xác nhận"}
+        </Tag>
+      ),
+    };
+
+    return columns.flatMap((column) => {
+      if (column.key === "actions") {
+        const nextColumn = {
+          ...column,
+          width: 180,
+          render: (_: unknown, record: ChinaWarehousePackage) => {
+            const deleteState = canDeletePackage(record);
+            const canConfirmItems = Boolean(
+              record.orderId && record.orderTrackingId && record.orderItems.length > 0,
+            );
+
+            return (
+              <Space size="small">
+                <Tooltip
+                  title={
+                    canConfirmItems
+                      ? "Xác nhận item trong kiện"
+                      : "Tracking chua khop don hang de xac nhan item"
+                  }
+                >
+                  <Button
+                    type="text"
+                    icon={<FileSearchOutlined />}
+                    disabled={!canConfirmItems}
+                    onClick={() => openConfirmItemsModal(record)}
+                  />
+                </Tooltip>
+                <Tooltip title="Sửa kiện hàng">
+                  <Button type="text" icon={<EditOutlined />} onClick={() => openEditDrawer(record)} />
+                </Tooltip>
+                {deleteState.canDelete ? (
+                  <Popconfirm
+                    title="Xóa kiện hàng?"
+                    description="Bạn có chắc muốn xóa kiện hàng này không? Hành động này không thể hoàn tác."
+                    okText="Xóa"
+                    cancelText="Hủy"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => handleDeletePackage(record)}
+                  >
+                    <Tooltip title="Xóa kiện hàng">
+                      <Button danger type="text" icon={<DeleteOutlined />} />
+                    </Tooltip>
+                  </Popconfirm>
+                ) : (
+                  <Tooltip title={deleteState.reason}>
+                    <span>
+                      <Button danger type="text" icon={<DeleteOutlined />} disabled />
+                    </span>
+                  </Tooltip>
+                )}
+              </Space>
+            );
+          },
+        };
+
+        return [confirmItemsColumn, nextColumn];
+      }
+
+      return [column];
+    });
+  }, [columns]);
+
+  const isInitialLoading = (packageListQuery.isLoading || batchListQuery.isLoading) && !packageListResponse && !batchListResponse;
+  const isRefreshing = Boolean(
+    (packageListQuery.isFetching || batchListQuery.isFetching) && !isInitialLoading,
+  );
   const pageError = packageListQuery.isError
     ? packageListQuery.error instanceof Error
       ? packageListQuery.error.message
       : "Không thể tải dữ liệu kiện hàng."
     : null;
-
-  if (isPageLoading) {
-    return (
-      <div style={{ minHeight: 360, display: "grid", placeItems: "center" }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -554,28 +717,32 @@ export const ChinaWarehousePage = () => {
             </Space>
           </Col>
           <Col xs={24} xl={14}>
-            <Row gutter={[12, 12]}>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Tổng kiện" value={stats.total} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Đã khớp" value={stats.matched} valueStyle={{ color: "#389e0d" }} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Chưa khớp" value={stats.unmatched} valueStyle={{ color: "#d46b08" }} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Đã vào lô" value={stats.batched} valueStyle={{ color: "#1677ff" }} />
-                </Card>
-              </Col>
-            </Row>
+            {isInitialLoading ? (
+              <ChinaWarehouseStatsSkeleton />
+            ) : (
+              <Row gutter={[12, 12]}>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Tổng kiện" value={stats.total} />
+                  </Card>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Đã khớp" value={stats.matched} valueStyle={{ color: "#389e0d" }} />
+                  </Card>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Chưa khớp" value={stats.unmatched} valueStyle={{ color: "#d46b08" }} />
+                  </Card>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Đã vào lô" value={stats.batched} valueStyle={{ color: "#1677ff" }} />
+                  </Card>
+                </Col>
+              </Row>
+            )}
           </Col>
         </Row>
       </Card>
@@ -669,31 +836,37 @@ export const ChinaWarehousePage = () => {
       </Card>
 
       <Card>
-        {filteredPackages.length ? (
-          <Table<ChinaWarehousePackage>
-            rowKey="id"
-            columns={columns}
-            dataSource={filteredPackages}
-            scroll={{ x: 1280 }}
-            pagination={{ pageSize: 8, showSizeChanger: false }}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys, rows) => {
-                setSelectedRowKeys(keys);
-                setSelectedRows(rows);
-              },
-              getCheckboxProps: (record) => ({
-                disabled: !canSelectPackage(record),
-                title: getPackageSelectionReason(record),
-              }),
-            }}
-          />
+        {isInitialLoading ? (
+          <AdminTableSkeleton columns={tableColumns} scroll={{ x: 1280 }} rowSelection />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có kiện hàng nào trong kho Trung Quốc.">
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
-              Nhập hàng
-            </Button>
-          </Empty>
+          <LoadingOverlay spinning={isRefreshing}>
+            {filteredPackages.length ? (
+              <Table<ChinaWarehousePackage>
+                rowKey="id"
+                columns={tableColumns}
+                dataSource={filteredPackages}
+                scroll={{ x: 1280 }}
+                pagination={{ pageSize: 8, showSizeChanger: false }}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: (keys, rows) => {
+                    setSelectedRowKeys(keys);
+                    setSelectedRows(rows);
+                  },
+                  getCheckboxProps: (record) => ({
+                    disabled: !canSelectPackage(record),
+                    title: getPackageSelectionReason(record),
+                  }),
+                }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có kiện hàng nào trong kho Trung Quốc.">
+                <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+                  Nhập hàng
+                </Button>
+              </Empty>
+            )}
+          </LoadingOverlay>
         )}
       </Card>
 
@@ -719,6 +892,35 @@ export const ChinaWarehousePage = () => {
             type="info"
             message="Nếu thay đổi mã vận đơn, hệ thống sẽ cập nhật lại trạng thái khớp của kiện hàng theo dữ liệu đơn hàng."
           />
+
+          {editingRecord?.orderId ? (
+            <Card size="small" style={{ background: "#fafcff" }}>
+              <Row gutter={[12, 12]}>
+                <Col xs={24} md={12}>
+                  <Text type="secondary">Mã vận đơn</Text>
+                  <div><Text strong>{editingRecord.trackingCode}</Text></div>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Text type="secondary">Ma don hang</Text>
+                  <div><Text strong>{editingRecord.invoiceCode ?? "-"}</Text></div>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Text type="secondary">Khách hàng</Text>
+                  <div><Text strong>{editingRecord.customerName ?? "-"}</Text></div>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Text type="secondary">Shop</Text>
+                  <div>
+                    <Text strong>
+                      {editingRecord.orderItems.length > 0
+                        ? Array.from(new Set(editingRecord.orderItems.map((item) => item.shop_name ?? item.seller ?? "-"))).join(", ")
+                        : "-"}
+                    </Text>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+          ) : null}
 
           <Form<PackageFormValues> form={form} layout="vertical">
             <Form.Item
@@ -765,6 +967,24 @@ export const ChinaWarehousePage = () => {
             </Row>
 
             <Row gutter={16}>
+              <Col xs={24} md={8}>
+                <Form.Item label="Dai (cm)" name="actualLength">
+                  <InputNumber min={0} precision={2} placeholder="Nhập chiều dài" style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Rong (cm)" name="actualWidth">
+                  <InputNumber min={0} precision={2} placeholder="Nhập chiều rộng" style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Cao (cm)" name="actualHeight">
+                  <InputNumber min={0} precision={2} placeholder="Nhập chiều cao" style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item
                   label="Ngày nhận hàng"
@@ -793,6 +1013,23 @@ export const ChinaWarehousePage = () => {
             <Form.Item label="Ghi chú" name="note">
               <Input.TextArea rows={4} placeholder="Nhập ghi chú nếu có..." />
             </Form.Item>
+            <Row gutter={16}>
+              <Col xs={24} md={8}>
+                <Form.Item label="The tich tu tinh (m3)">
+                  <InputNumber value={measuredVolume} readOnly style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Can nang quy doi">
+                  <InputNumber value={volumetricWeight} readOnly addonAfter="kg" style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item label="Can tinh phi">
+                  <InputNumber value={chargeableWeight} readOnly addonAfter="kg" style={{ width: "100%" }} />
+                </Form.Item>
+              </Col>
+            </Row>
           </Form>
         </Space>
       </Drawer>
@@ -935,6 +1172,18 @@ export const ChinaWarehousePage = () => {
           </Form>
         </Space>
       </Modal>
+
+      <ConfirmPackageItemsModal
+        open={confirmItemsModalOpen}
+        loading={isConfirmingItems}
+        packageRecord={confirmingPackage}
+        onCancel={() => {
+          setConfirmItemsModalOpen(false);
+          setConfirmingPackage(null);
+        }}
+        onSubmit={handleConfirmPackageItems}
+      />
     </Space>
   );
 };
+

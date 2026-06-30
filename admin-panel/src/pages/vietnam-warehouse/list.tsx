@@ -102,9 +102,9 @@ const getProcessingStatusTag = (status?: VietnamWarehouseTableItem["receiptStatu
     case "matched":
       return <Tag color="green">Da khop, cho xac nhan</Tag>;
     case "checking":
-      return <Tag color="gold">Dang kiem</Tag>;
+      return <Tag color="gold">Đang kiểm</Tag>;
     default:
-      return <Tag>Dang kiem</Tag>;
+      return <Tag>Đang kiểm</Tag>;
   }
 };
 
@@ -238,7 +238,7 @@ export const VietnamWarehousePage = () => {
     const normalizedCode = values.batchCode.trim();
 
     if (!normalizedCode) {
-      message.warning("Vui long nhap ma lo hang.");
+      message.warning("Vui lòng nhập mã lô hàng.");
       return;
     }
 
@@ -402,7 +402,7 @@ export const VietnamWarehousePage = () => {
       width: 160,
     },
     {
-      title: "Tong kien",
+      title: "Tổng kiện",
       dataIndex: "totalPackages",
       key: "totalPackages",
       width: 110,
@@ -456,7 +456,7 @@ export const VietnamWarehousePage = () => {
           <Tooltip title="Xem chi tiet">
             <Button icon={<EyeOutlined />} onClick={() => void handleOpenReceiptDetail(record.batchCode)} />
           </Tooltip>
-          <Tooltip title="Sua">
+          <Tooltip title="Sửa">
             <Button icon={<EditOutlined />} />
           </Tooltip>
           <Tooltip title="Khac">
@@ -472,7 +472,7 @@ export const VietnamWarehousePage = () => {
     pagination: { pageSize: 5, showSizeChanger: true, pageSizeOptions: [5, 10, 20] },
     scroll: { x: 1300 },
     locale: {
-      emptyText: batch.batchCode ? "Chua co du lieu nhap kho cho lo nay." : "Nhap ma lo de bat dau doi soat.",
+      emptyText: batch.batchCode ? "Chưa có dữ liệu nhập kho cho lô này." : "Nhập mã lô để bắt đầu đối soát.",
     },
     rowSelection: {
       selectedRowKeys,
@@ -519,7 +519,7 @@ export const VietnamWarehousePage = () => {
             <Row gutter={[12, 12]}>
               <Col xs={12} md={6}>
                 <Card size="small">
-                  <Statistic title="Tong lo" value={stats.totalBatches} prefix={<InboxOutlined />} />
+                  <Statistic title="Tổng lô" value={stats.totalBatches} prefix={<InboxOutlined />} />
                 </Card>
               </Col>
               <Col xs={12} md={6}>

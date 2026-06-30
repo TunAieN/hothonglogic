@@ -15,14 +15,17 @@ const { Text } = Typography;
 
 export const getStatusTag = (status: PackageMatchStatus) => {
   if (status === "matched") {
-    return <Tag color="green">Khớp</Tag>;
+    return <Tag color="green">Khop tracking</Tag>;
   }
 
-  return <Tag color="orange">Chưa khớp</Tag>;
+  return <Tag color="orange">Chưa khớp tracking</Tag>;
 };
 
 export const isPackageEligibleForBatch = (record: ChinaWarehousePackage) =>
-  !record.batchId && !record.batchCode && record.isImportedToVietnam !== true;
+  !record.batchId &&
+  !record.batchCode &&
+  record.isImportedToVietnam !== true &&
+  record.confirmedItemCount > 0;
 
 export const canSelectPackage = (record: ChinaWarehousePackage) =>
   isPackageEligibleForBatch(record);
@@ -83,6 +86,10 @@ export const mapRecordToFormValues = (record: ChinaWarehousePackage): PackageFor
   receiverName: record.receiverName,
   warehouseName: record.warehouseName,
   weight: record.weight,
+  actualLength: record.actualLength,
+  actualWidth: record.actualWidth,
+  actualHeight: record.actualHeight,
+  packageCondition: record.packageCondition ?? "normal",
   receivedDate: dayjs(record.receivedDate),
   status: record.status,
   note: record.note,
@@ -91,15 +98,15 @@ export const mapRecordToFormValues = (record: ChinaWarehousePackage): PackageFor
 export const getWarehouseCode = (warehouseName: string) => {
   const normalized = warehouseName.toLowerCase();
 
-  if (normalized.includes("quảng châu a") || normalized.includes("quang chau a")) {
+  if (normalized.includes("quang chau a")) {
     return "QCA";
   }
 
-  if (normalized.includes("thâm quyến b") || normalized.includes("tham quyen b")) {
+  if (normalized.includes("tham quyen b")) {
     return "SZB";
   }
 
-  if (normalized.includes("thâm quyến") || normalized.includes("tham quyen")) {
+  if (normalized.includes("tham quyen")) {
     return "SZ";
   }
 
@@ -111,18 +118,18 @@ export const getWarehouseDisplayName = (warehouseName?: string, warehouseCode?: 
   const normalizedCode = warehouseCode?.toUpperCase() ?? "";
 
   if (normalizedCode === "QCA" || normalizedName.includes("quang chau a")) {
-    return "Kho Quảng Châu A";
+    return "Kho Quang Chau A";
   }
 
   if (normalizedCode === "SZB" || normalizedName.includes("tham quyen b")) {
-    return "Kho Thâm Quyến B";
+    return "Kho Tham Quyen B";
   }
 
   if (normalizedCode === "SZ" || normalizedName.includes("tham quyen")) {
-    return "Kho Thâm Quyến";
+    return "Kho Tham Quyen";
   }
 
-  return "Kho Quảng Châu";
+  return "Kho Quang Chau";
 };
 
 export const getPackageSelectionReason = (record: ChinaWarehousePackage) => {
@@ -132,6 +139,10 @@ export const getPackageSelectionReason = (record: ChinaWarehousePackage) => {
 
   if (record.isImportedToVietnam) {
     return "Kiện đã nhập kho Việt Nam.";
+  }
+
+  if (record.confirmedItemCount <= 0) {
+    return "Can xac nhan item trong kien truoc khi them vao lo.";
   }
 
   return "";
@@ -149,11 +160,11 @@ export const getAvailableBatchOptions = (
 
 export const getBatchDisplayName = (batch: ChinaWarehouseBatchRecord) => {
   const statusMap: Record<ChinaWarehouseBatchRecord["status"], string> = {
-    pending: "Chờ xuất kho",
+    pending: "Cho xuat kho",
     exporting: "Đang vận chuyển",
-    arrived_vn: "Đã về kho Việt Nam",
-    completed: "Hoàn tất",
-    cancelled: "Đã hủy",
+    arrived_vn: "Da ve kho Viet Nam",
+    completed: "Hoan tat",
+    cancelled: "Da huy",
   };
 
   return `${batch.batch_code} - ${statusMap[batch.status]}`;
@@ -191,11 +202,20 @@ export const mapApiRecordToPackage = (record: ChinaWarehouseApiRecord): ChinaWar
     ? dayjs(record.received_at).format("YYYY-MM-DD")
     : dayjs(record.created_at ?? undefined).format("YYYY-MM-DD"),
   weight: typeof record.weight === "number" ? record.weight : 0,
+  actualLength: typeof record.actual_length === "number" ? record.actual_length : undefined,
+  actualWidth: typeof record.actual_width === "number" ? record.actual_width : undefined,
+  actualHeight: typeof record.actual_height === "number" ? record.actual_height : undefined,
   volume: typeof record.volume === "number" ? record.volume : undefined,
+  volumetricWeight: typeof record.volumetric_weight === "number" ? record.volumetric_weight : undefined,
+  chargeableWeight: typeof record.chargeable_weight === "number" ? record.chargeable_weight : undefined,
+  packageCondition: record.package_condition ?? undefined,
   declaredValue: typeof record.declared_value === "number" ? record.declared_value : undefined,
   carrier: record.carrier ?? undefined,
   customerName: record.order?.customer?.name || undefined,
   invoiceCode: record.order?.order_code || undefined,
+  orderItems: record.order?.items ?? [],
+  packageItems: record.package_items ?? [],
+  confirmedItemCount: record.package_items?.length ?? 0,
   batchCode: record.current_batch_package?.batch?.batch_code || undefined,
   batchId: record.current_batch_package?.batch?.id || undefined,
   batchStatus: record.current_batch_package?.batch?.status || undefined,
@@ -212,7 +232,11 @@ export const mapFormValuesToCreateInput = (
   receiver_name: values.receiverName.trim(),
   tracking_number: values.trackingCode.trim().toUpperCase(),
   weight: Number(values.weight),
+  actual_length: values.actualLength ?? null,
+  actual_width: values.actualWidth ?? null,
+  actual_height: values.actualHeight ?? null,
   note: values.note?.trim() || null,
+  package_condition: values.packageCondition?.trim() || "normal",
   status: values.status,
   received_at: values.receivedDate
     ? values.receivedDate.format("YYYY-MM-DD HH:mm:ss")
@@ -227,7 +251,11 @@ export const mapFormValuesToUpdateInput = (
   receiver_name: values.receiverName.trim(),
   tracking_number: values.trackingCode.trim().toUpperCase(),
   weight: Number(values.weight),
+  actual_length: values.actualLength ?? null,
+  actual_width: values.actualWidth ?? null,
+  actual_height: values.actualHeight ?? null,
   note: values.note?.trim() || null,
+  package_condition: values.packageCondition?.trim() || "normal",
   status: values.status,
   received_at: values.receivedDate
     ? values.receivedDate.format("YYYY-MM-DD HH:mm:ss")

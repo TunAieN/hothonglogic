@@ -9,9 +9,15 @@ export const CN_PACKAGE_FIELDS = {
     declared_value
     carrier
     weight
+    actual_length
+    actual_width
+    actual_height
     volume
+    volumetric_weight
+    chargeable_weight
     note
     status
+    package_condition
     created_by
     received_at
     created_at
@@ -32,6 +38,17 @@ export const CN_PACKAGE_FIELDS = {
         phone
         email
         address
+      }
+      items {
+        id
+        product_name
+        price_cny
+        quantity
+        seller
+        shop_id
+        shop_name
+        size
+        color
       }
     }
     order_tracking {
@@ -67,6 +84,23 @@ export const CN_PACKAGE_FIELDS = {
           code
           name
         }
+      }
+    }
+    package_items {
+      id
+      cn_package_id
+      order_item_id
+      quantity
+      order_item {
+        id
+        product_name
+        price_cny
+        quantity
+        seller
+        shop_id
+        shop_name
+        size
+        color
       }
     }
   `,
@@ -80,9 +114,15 @@ export const CN_PACKAGE_FIELDS = {
     declared_value
     carrier
     weight
+    actual_length
+    actual_width
+    actual_height
     volume
+    volumetric_weight
+    chargeable_weight
     note
     status
+    package_condition
     created_by
     received_at
     created_at
@@ -103,6 +143,17 @@ export const CN_PACKAGE_FIELDS = {
         phone
         email
         address
+      }
+      items {
+        id
+        product_name
+        price_cny
+        quantity
+        seller
+        shop_id
+        shop_name
+        size
+        color
       }
     }
     order_tracking {
@@ -138,6 +189,23 @@ export const CN_PACKAGE_FIELDS = {
           code
           name
         }
+      }
+    }
+    package_items {
+      id
+      cn_package_id
+      order_item_id
+      quantity
+      order_item {
+        id
+        product_name
+        price_cny
+        quantity
+        seller
+        shop_id
+        shop_name
+        size
+        color
       }
     }
   `,
@@ -151,9 +219,15 @@ export const CN_PACKAGE_FIELDS = {
     declared_value
     carrier
     weight
+    actual_length
+    actual_width
+    actual_height
     volume
+    volumetric_weight
+    chargeable_weight
     note
     status
+    package_condition
     created_by
     received_at
     created_at
@@ -174,6 +248,17 @@ export const CN_PACKAGE_FIELDS = {
         phone
         email
         address
+      }
+      items {
+        id
+        product_name
+        price_cny
+        quantity
+        seller
+        shop_id
+        shop_name
+        size
+        color
       }
     }
     order_tracking {
@@ -209,6 +294,23 @@ export const CN_PACKAGE_FIELDS = {
           code
           name
         }
+      }
+    }
+    package_items {
+      id
+      cn_package_id
+      order_item_id
+      quantity
+      order_item {
+        id
+        product_name
+        price_cny
+        quantity
+        seller
+        shop_id
+        shop_name
+        size
+        color
       }
     }
   `,

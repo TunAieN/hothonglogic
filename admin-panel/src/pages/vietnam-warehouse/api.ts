@@ -282,9 +282,9 @@ const buildProcessingStatusLabel = (status?: VietnamWarehouseReceiptStatus) => {
     case "matched":
       return "Da khop, cho xac nhan";
     case "checking":
-      return "Dang kiem";
+      return "Đang kiểm";
     default:
-      return "Dang kiem";
+      return "Đang kiểm";
   }
 };
 
@@ -309,7 +309,7 @@ const buildVolumetricWeight = (
 const mapBatch = (batch: RawCnBatch, receipt?: RawReceipt | null): VietnamWarehouseBatch => ({
   id: String(batch.id),
   batchCode: batch.batch_code,
-  destinationWarehouseName: batch.destination_warehouse_name ?? "Kho Viet Nam",
+  destinationWarehouseName: batch.destination_warehouse_name ?? "Kho Việt Nam",
   totalPackages: batch.total_packages ?? 0,
   totalWeight: Number(receipt?.actual_batch_weight ?? batch.total_weight ?? 0),
   status: normalizeStatus(receipt?.status ?? batch.status),
@@ -451,7 +451,7 @@ export const startVietnamWarehouseReceipt = async (values: BatchInfoFormValues) 
       actual_width: values.width,
       actual_height: values.height,
       actual_volume: Number(((values.length * values.width * values.height) / 1000000).toFixed(3)),
-      wooden_fee: values.packagingType === "Dong go" ? values.packagingWeight : 0,
+      wooden_fee: values.packagingType === "Đóng gỗ" ? values.packagingWeight : 0,
       other_fee: 0,
       note: values.packagingType,
     },
@@ -631,7 +631,7 @@ const mapOverviewBatchToTableData = (batch: RawOverviewBatch): VietnamWarehouseT
       receivedDate: receipt.confirmed_at ?? batch.arrived_at ?? new Date().toISOString(),
       handlerName,
       batchCode: batch.batch_code,
-      warehouseName: batch.destination_warehouse_name ?? "Kho Viet Nam",
+      warehouseName: batch.destination_warehouse_name ?? "Kho Việt Nam",
       totalPackages: receipt.total_expected_packages ?? expectedPackages.length,
       receivedCount: receipt.total_received_packages ?? receivedPackages.length,
       missingCount: receipt.total_missing_packages ?? 0,

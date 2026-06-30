@@ -3,8 +3,10 @@ import type {
   CnBatch,
   CnBatchStatus,
   CnPackage,
+  CnPackageItem,
   CnPackageCreateInput,
   CnPackageUpdateInput,
+  OrderItem,
 } from "../../types";
 
 export type PackageMatchStatus = "matched" | "unmatched";
@@ -20,11 +22,20 @@ export type ChinaWarehousePackage = {
   trackingCode: string;
   receivedDate: string;
   weight: number;
+  actualLength?: number;
+  actualWidth?: number;
+  actualHeight?: number;
   volume?: number;
+  volumetricWeight?: number;
+  chargeableWeight?: number;
+  packageCondition?: string;
   declaredValue?: number;
   carrier?: string;
   customerName?: string;
   invoiceCode?: string;
+  orderItems: OrderItem[];
+  packageItems: CnPackageItem[];
+  confirmedItemCount: number;
   batchCode?: string;
   batchId?: string;
   batchStatus?: CnBatchStatus;
@@ -38,6 +49,10 @@ export type PackageFormValues = {
   receiverName: string;
   warehouseName: string;
   weight: number;
+  actualLength?: number;
+  actualWidth?: number;
+  actualHeight?: number;
+  packageCondition?: string;
   receivedDate: Dayjs;
   status: PackageMatchStatus;
   note?: string;

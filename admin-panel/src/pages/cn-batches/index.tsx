@@ -18,7 +18,6 @@ import {
   Row,
   Select,
   Space,
-  Spin,
   Statistic,
   Table,
   Tooltip,
@@ -54,8 +53,25 @@ import {
   mapEditFormValuesToInput,
 } from "./helpers";
 import type { BatchApiRecord, BatchEditFormValues, BatchFilters, BatchPackageRow, BatchViewModel } from "./types";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
 
 const { Text, Title } = Typography;
+const CnBatchStatsSkeleton = () => (
+  <Row gutter={[12, 12]}>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={92} valueWidth={42} />
+    </Col>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={112} valueWidth={42} />
+    </Col>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={128} valueWidth={42} />
+    </Col>
+    <Col xs={12} md={6}>
+      <SkeletonStatCard labelWidth={72} valueWidth={42} />
+    </Col>
+  </Row>
+);
 
 const CREATE_VIETNAM_INBOUND_TASK_MUTATION = `
   mutation CreateVietnamInboundTask($input: CreateVietnamInboundTaskInput!) {
@@ -146,7 +162,7 @@ const AlertBanner = ({ color, label }: { color: string; label: string }) => (
 const exportBatchesToCsv = (rows: BatchViewModel[]) => {
   const headers = [
     "Ma lo hang",
-    "Tong so kien",
+    "Tổng số kiện",
     "Khoi luong",
     "The tich",
     "Kho nhan",
@@ -561,19 +577,13 @@ export const CnBatchesPage = () => {
     },
   ];
 
+  const isInitialLoading = batchListQuery.isLoading && !batchListResponse;
+  const isRefreshing = Boolean(batchListQuery.isFetching && !isInitialLoading);
   const pageError = batchListQuery.isError
     ? batchListQuery.error instanceof Error
       ? batchListQuery.error.message
       : "Không thể tải dữ liệu lô hàng."
     : null;
-
-  if (batchListQuery.isLoading) {
-    return (
-      <div style={{ minHeight: 360, display: "grid", placeItems: "center" }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -592,28 +602,32 @@ export const CnBatchesPage = () => {
             </Space>
           </Col>
           <Col xs={24} xl={14}>
-            <Row gutter={[12, 12]}>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Tổng lô hàng" value={stats.total} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Đang vận chuyển" value={stats.exporting} valueStyle={{ color: "#1677ff" }} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Đã về kho Việt Nam" value={stats.arrivedVn} valueStyle={{ color: "#0958d9" }} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Hoàn tất" value={stats.completed} valueStyle={{ color: "#389e0d" }} />
-                </Card>
-              </Col>
-            </Row>
+            {isInitialLoading ? (
+              <CnBatchStatsSkeleton />
+            ) : (
+              <Row gutter={[12, 12]}>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Tổng lô hàng" value={stats.total} />
+                  </Card>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Đang vận chuyển" value={stats.exporting} valueStyle={{ color: "#1677ff" }} />
+                  </Card>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Đã về kho Việt Nam" value={stats.arrivedVn} valueStyle={{ color: "#0958d9" }} />
+                  </Card>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Card size="small">
+                    <Statistic title="Hoàn tất" value={stats.completed} valueStyle={{ color: "#389e0d" }} />
+                  </Card>
+                </Col>
+              </Row>
+            )}
           </Col>
         </Row>
       </Card>
@@ -701,23 +715,29 @@ export const CnBatchesPage = () => {
       </Card>
 
       <Card>
-        {filteredBatches.length ? (
-          <Table<BatchViewModel>
-            rowKey="id"
-            columns={columns}
-            dataSource={filteredBatches}
-            scroll={{ x: 1320 }}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys, rows) => {
-                setSelectedRowKeys(keys);
-                setSelectedRows(rows);
-              },
-            }}
-          />
+        {isInitialLoading ? (
+          <AdminTableSkeleton columns={columns} scroll={{ x: 1320 }} rowSelection rowCount={10} />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có lô hàng nào phù hợp điều kiện tìm kiếm." />
+          <LoadingOverlay spinning={isRefreshing}>
+            {filteredBatches.length ? (
+              <Table<BatchViewModel>
+                rowKey="id"
+                columns={columns}
+                dataSource={filteredBatches}
+                scroll={{ x: 1320 }}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: (keys, rows) => {
+                    setSelectedRowKeys(keys);
+                    setSelectedRows(rows);
+                  },
+                }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có lô hàng nào phù hợp điều kiện tìm kiếm." />
+            )}
+          </LoadingOverlay>
         )}
       </Card>
 
@@ -1039,3 +1059,4 @@ export const CnBatchesPage = () => {
     </Space>
   );
 };
+

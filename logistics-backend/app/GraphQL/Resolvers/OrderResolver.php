@@ -493,10 +493,6 @@ class OrderResolver
             })
             ->values();
 
-        if ($selectedItems->isEmpty()) {
-            throw new HttpException(422, 'Each tracking must contain at least one order item.');
-        }
-
         $trackingNumber = $this->normalizeOptionalString($trackingInput['tracking_number'] ?? null);
 
         if ($trackingNumber === null) {

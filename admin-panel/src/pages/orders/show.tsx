@@ -1,11 +1,9 @@
 ﻿import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { useEffect } from "react";
 import { DeleteButton, NumberField, Show } from "@refinedev/antd";
 import { useShow, useUpdate } from "@refinedev/core";
 import {
   Alert,
-  Checkbox,
   Breadcrumb,
   Button,
   Card,
@@ -61,11 +59,6 @@ type StatusMeta = {
   label: string;
 };
 
-type TrackingDraftItem = {
-  order_item_id: string;
-  quantity: number;
-};
-
 type TrackingDraft = {
   local_id: string;
   id?: string;
@@ -73,20 +66,6 @@ type TrackingDraft = {
   carrier?: string | null;
   dispatched_at?: string | null;
   note?: string | null;
-  tracking_items: TrackingDraftItem[];
-};
-
-type ItemAssignmentMeta = {
-  assigned: number;
-  remaining: number;
-  status: "unassigned" | "partial" | "complete";
-};
-
-type TrackingProductRow = {
-  key: string;
-  index: number;
-  item: IOrderItem;
-  assignment: ItemAssignmentMeta;
 };
 
 const orderJourneySteps = [
@@ -160,13 +139,6 @@ const summaryBlockStyle: CSSProperties = {
     gap: 12,
 };
 
-const clampTwoLinesStyle: CSSProperties = {
-  display: "-webkit-box",
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: "vertical",
-  overflow: "hidden",
-  lineHeight: 1.45,
-};
 const currencyOptions = { style: "currency", currency: "USD" } as const;
 
 const statusMetaMap: Record<string, StatusMeta> = {
@@ -208,69 +180,12 @@ const buildTrackingDrafts = (trackings: NonNullable<IOrder["order_trackings"]>):
     carrier: tracking.carrier ?? undefined,
     dispatched_at: tracking.dispatched_at ?? null,
     note: tracking.note ?? undefined,
-    tracking_items: (tracking.tracking_items ?? []).map((item) => ({
-      order_item_id: item.order_item_id,
-      quantity: item.quantity,
-    })),
   }));
 
 const getVariantLabel = (item: Pick<IOrderItem, "size" | "color">) =>
   [item.color, item.size].filter(Boolean).join(" / ") || "-";
 
-const getTrackingAssignedByItemId = (trackings: TrackingDraft[]) => {
-  const assignedByItemId = new Map<string, number>();
-
-  trackings.forEach((tracking) => {
-    tracking.tracking_items.forEach((trackingItem) => {
-      assignedByItemId.set(
-        trackingItem.order_item_id,
-        (assignedByItemId.get(trackingItem.order_item_id) ?? 0) + trackingItem.quantity,
-      );
-    });
-  });
-
-  return assignedByItemId;
-};
-
-const getItemAssignmentMeta = (items: IOrderItem[], trackings: TrackingDraft[]) => {
-  const assignedByItemId = getTrackingAssignedByItemId(trackings);
-  const assignmentMap = new Map<string, ItemAssignmentMeta>();
-
-  items.forEach((item) => {
-    const assigned = assignedByItemId.get(item.id) ?? 0;
-    const remaining = Math.max(item.quantity - assigned, 0);
-    const status =
-      assigned <= 0 ? "unassigned" : remaining <= 0 ? "complete" : "partial";
-
-    assignmentMap.set(item.id, { assigned, remaining, status });
-  });
-
-  return assignmentMap;
-};
-
-const getTrackingShopSummary = (tracking: TrackingDraft, items: IOrderItem[]) => {
-  const itemMap = new Map(items.map((item) => [item.id, item]));
-  const shops = Array.from(
-    new Set(
-      tracking.tracking_items
-        .map((trackingItem) => {
-          const item = itemMap.get(trackingItem.order_item_id);
-          return item?.shop_name ?? item?.seller ?? null;
-        })
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-
-  if (shops.length === 0) {
-    return "-";
-  }
-
-  if (shops.length === 1) {
-    return shops[0];
-  }
-
-  return "Nhiều shop";
-};
+const getTrackingShopSummary = () => "Xác nhận tại kho TQ";
 
 const surfaceCardStyle: CSSProperties = {
   borderRadius: 28,
@@ -347,10 +262,15 @@ const formatDateOnly = (value?: string | null) => {
   return date.toLocaleDateString("vi-VN");
 };
 
-const validateTrackingDrafts = (items: IOrderItem[], trackings: TrackingDraft[]) => {
+const formatGraphqlDateTime = (value?: string | null) =>
+  value ? dayjs(value).startOf("day").format("YYYY-MM-DD HH:mm:ss") : null;
+
+const validateTrackingDrafts = (trackings: TrackingDraft[]) => {
   const trackingNumbers = new Set<string>();
-  const assignedByItemId = new Map<string, number>();
-  const itemMap = new Map(items.map((item) => [item.id, item]));
+
+  if (trackings.length === 0) {
+    return "Đơn hàng chưa có mã vận đơn nào được khai báo.";
+  }
 
   for (const [index, tracking] of trackings.entries()) {
     const trackingNumber = tracking.tracking_number.trim().toUpperCase();
@@ -364,31 +284,6 @@ const validateTrackingDrafts = (items: IOrderItem[], trackings: TrackingDraft[])
     }
 
     trackingNumbers.add(trackingNumber);
-
-    if (tracking.tracking_items.length === 0) {
-      return `Mã vận đơn #${index + 1} chưa có sản phẩm nào được chọn.`;
-    }
-
-    for (const trackingItem of tracking.tracking_items) {
-      if (trackingItem.quantity <= 0) {
-        return `Số lượng trong mã vận đơn #${index + 1} phải lớn hơn 0.`;
-      }
-
-      const orderItem = itemMap.get(trackingItem.order_item_id);
-
-      if (!orderItem) {
-        return "Có sản phẩm không còn hợp lệ trong đơn hàng.";
-      }
-
-      const nextAssigned =
-        (assignedByItemId.get(trackingItem.order_item_id) ?? 0) + trackingItem.quantity;
-
-      if (nextAssigned > orderItem.quantity) {
-        return `Số lượng đã gán vượt quá số lượng đặt của sản phẩm "${orderItem.product_name}".`;
-      }
-
-      assignedByItemId.set(trackingItem.order_item_id, nextAssigned);
-    }
   }
 
   return null;
@@ -524,160 +419,38 @@ export const OrderShow = () => {
   );
   const currentStepIndex = getJourneyStepIndex(record?.status);
   const statusMeta = getStatusMeta(record?.status);
-  const trackingAssignmentMap = useMemo(
-    () => getItemAssignmentMeta(items, trackingDrafts),
-    [items, trackingDrafts],
-  );
-  const assignedSkuCount = useMemo(
+  const declaredTrackingCount = useMemo(
     () =>
-      items.filter((item) => (trackingAssignmentMap.get(item.id)?.assigned ?? 0) > 0).length,
-    [items, trackingAssignmentMap],
+      trackingDrafts.filter((tracking) => tracking.tracking_number.trim().length > 0).length,
+    [trackingDrafts],
   );
-  const remainingSkuCount = useMemo(
-    () =>
-      items.filter((item) => (trackingAssignmentMap.get(item.id)?.remaining ?? item.quantity) > 0)
-        .length,
-    [items, trackingAssignmentMap],
-  );
-  const isTrackingAssignmentComplete = useMemo(
-    () => items.length > 0 && items.every((item) => (trackingAssignmentMap.get(item.id)?.remaining ?? item.quantity) === 0),
-    [items, trackingAssignmentMap],
-  );
-  const trackingProductRows = useMemo(
-    () =>
-      items.map((item, index) => {
-        const assignment = trackingAssignmentMap.get(item.id) ?? {
-          assigned: 0,
-          remaining: item.quantity,
-          status: "unassigned" as const,
-        };
+  const confirmedItemQuantityById = useMemo(() => {
+    const quantityMap = new Map<string, number>();
 
-        return {
-          key: item.id,
-          index: index + 1,
-          item,
-          assignment,
-        };
-      }),
-    [items, trackingAssignmentMap],
-  );
-  const trackingProductColumns: ColumnsType<TrackingProductRow> = [
-    {
-      title: "#",
-      dataIndex: "index",
-      width: 48,
-      align: "center",
-    },
-    {
-      title: "Sản phẩm",
-      key: "product",
-      width: 280,
-      render: (_, row) => (
-        <Space align="start" size={12} style={{ minWidth: 0 }}>
-          <ProductThumb item={row.item} />
-          <Space
-            direction="vertical"
-            size={2}
-            style={{ minWidth: 0, width: "100%" }}
-          >
-            <Text strong style={clampTwoLinesStyle}>
-              {row.item.product_name}
-            </Text>
-            <Text type="secondary" style={clampTwoLinesStyle}>
-              {row.item.note || row.item.seller || "-"}
-            </Text>
-          </Space>
-        </Space>
-      ),
-    },
-    {
-      title: "Shop",
-      key: "shop",
-      width: 160,
-      render: (_, row) => (
-        <Text style={clampTwoLinesStyle}>
-          {row.item.shop_name ?? row.item.seller ?? "-"}
-        </Text>
-      ),
-    },
-    {
-      title: "Phân loại",
-      key: "variant",
-      width: 120,
-      render: (_, row) => (
-        <Text style={clampTwoLinesStyle}>{getVariantLabel(row.item)}</Text>
-      ),
-    },
-    {
-      title: "SL đặt",
-      key: "ordered",
-      dataIndex: ["item", "quantity"],
-      width: 72,
-      align: "center",
-    },
-    {
-      title: "Đã gán",
-      key: "assigned",
-      width: 80,
-      align: "center",
-      render: (_, row) => {
-        const tone =
-          row.assignment.status === "complete"
-            ? "#16a34a"
-            : row.assignment.status === "partial"
-              ? "#f97316"
-              : "#64748b";
-
-        return (
-          <Text style={{ color: tone, fontWeight: 700 }}>
-            {row.assignment.assigned}
-          </Text>
+    cnPackages.forEach((pkg) => {
+      (pkg.package_items ?? []).forEach((packageItem) => {
+        quantityMap.set(
+          packageItem.order_item_id,
+          (quantityMap.get(packageItem.order_item_id) ?? 0) + Number(packageItem.quantity ?? 0),
         );
-      },
-    },
-    {
-      title: "Còn lại",
-      key: "remaining",
-      width: 80,
-      align: "center",
-      render: (_, row) => {
-        const tone =
-          row.assignment.status === "complete"
-            ? "#16a34a"
-            : row.assignment.status === "partial"
-              ? "#f97316"
-              : "#64748b";
+      });
+    });
 
-        return (
-          <Text style={{ color: tone, fontWeight: 700 }}>
-            {row.assignment.remaining}
-          </Text>
+    if (quantityMap.size > 0) {
+      return quantityMap;
+    }
+
+    orderTrackings.forEach((tracking) => {
+      (tracking.tracking_items ?? []).forEach((trackingItem) => {
+        quantityMap.set(
+          trackingItem.order_item_id,
+          (quantityMap.get(trackingItem.order_item_id) ?? 0) + Number(trackingItem.quantity ?? 0),
         );
-      },
-    },
-    {
-      title: "Trạng thái",
-      key: "status",
-      width: 120,
-      render: (_, row) => (
-        <Tag
-          color={
-            row.assignment.status === "complete"
-              ? "green"
-              : row.assignment.status === "partial"
-                ? "orange"
-                : "default"
-          }
-        >
-          {row.assignment.status === "complete"
-            ? "Đã gán đủ"
-            : row.assignment.status === "partial"
-              ? "Chưa gán đủ"
-              : "Chưa gán"}
-        </Tag>
-      ),
-    },
-  ];
+      });
+    });
+
+    return quantityMap;
+  }, [cnPackages, orderTrackings]);
   const allTrackingCodes = useMemo(() => {
     const trackingMap = new Map<
       string,
@@ -715,7 +488,7 @@ export const OrderShow = () => {
       );
 
       const itemLabels = (tracking.tracking_items ?? []).map((trackingItem) => {
-        const itemName = trackingItem.order_item?.product_name ?? "Sáº£n pháº©m";
+        const itemName = trackingItem.order_item?.product_name ?? "Sản phẩm";
         return `${itemName} x${trackingItem.quantity ?? 0}`;
       });
 
@@ -741,7 +514,7 @@ export const OrderShow = () => {
       const key = trackingNumber.toUpperCase();
       const existing = trackingMap.get(key);
       const packageItems = (pkg.package_items ?? []).map((packageItem) => {
-        const itemName = packageItem.order_item?.product_name ?? "Sáº£n pháº©m";
+        const itemName = packageItem.order_item?.product_name ?? "Sản phẩm";
         return `${itemName} x${packageItem.quantity ?? 0}`;
       });
       const packageShops = Array.from(
@@ -779,11 +552,8 @@ export const OrderShow = () => {
   const productSummaryRows = useMemo(
     () =>
       items.map((item, index) => {
-        const assignment = trackingAssignmentMap.get(item.id) ?? {
-          assigned: 0,
-          remaining: item.quantity,
-          status: "unassigned" as const,
-        };
+        const assignedQuantity = confirmedItemQuantityById.get(item.id) ?? 0;
+        const remainingQuantity = Math.max(item.quantity - assignedQuantity, 0);
 
         return {
           key: item.id,
@@ -793,13 +563,17 @@ export const OrderShow = () => {
           shop: item.shop_name ?? item.seller ?? "-",
           variant: getVariantLabel(item),
           orderedQuantity: item.quantity,
-          assignedQuantity: assignment.assigned,
-          remainingQuantity: assignment.remaining,
+          assignedQuantity,
+          remainingQuantity,
           unitPrice: item.price_cny,
           subtotal: item.price_cny * item.quantity,
         };
       }),
-    [items, trackingAssignmentMap],
+    [confirmedItemQuantityById, items],
+  );
+  const remainingSkuCount = useMemo(
+    () => productSummaryRows.filter((row) => row.remainingQuantity > 0).length,
+    [productSummaryRows],
   );
   const trackingSummaryRows = useMemo(
     () =>
@@ -1036,14 +810,6 @@ export const OrderShow = () => {
     },
   ];
 
-  useEffect(() => {
-    if (!isTrackingManagerOpen) {
-      return;
-    }
-
-    setTrackingDrafts(buildTrackingDrafts(orderTrackings));
-  }, [isTrackingManagerOpen, orderTrackings]);
-
   const itemsSubtotal = useMemo(
     () => items.reduce((sum, item) => sum + item.price_cny * item.quantity, 0),
     [items],
@@ -1143,30 +909,15 @@ export const OrderShow = () => {
             carrier: tracking.carrier,
             dispatched_at: tracking.dispatched_at,
             note: tracking.note,
-            tracking_items: (tracking.tracking_items ?? []).map((item) => ({
-              order_item_id: item.order_item_id,
-              quantity: item.quantity,
-            })),
           };
-
-          const declaredValue = trackingDraft.tracking_items.reduce((sum, trackingItem) => {
-            const item = items.find((orderItem) => orderItem.id === trackingItem.order_item_id);
-            return sum + (item?.price_cny ?? 0) * trackingItem.quantity;
-          }, 0);
 
           return {
             id: trackingDraft.id,
             tracking_number: trackingDraft.tracking_number.trim().toUpperCase(),
             carrier: trackingDraft.carrier ?? null,
-            dispatched_at: trackingDraft.dispatched_at
-              ? dayjs(trackingDraft.dispatched_at).startOf("day").toISOString()
-              : null,
+            dispatched_at: formatGraphqlDateTime(trackingDraft.dispatched_at),
             note: trackingDraft.note?.trim() || null,
-            declared_value: declaredValue,
-            tracking_items: trackingDraft.tracking_items.map((trackingItem) => ({
-              order_item_id: trackingItem.order_item_id,
-              quantity: trackingItem.quantity,
-            })),
+            declared_value: 0,
           };
         })
       : undefined;
@@ -1199,22 +950,6 @@ export const OrderShow = () => {
     );
   };
 
-  const getTrackingItemQuantity = (tracking: TrackingDraft, orderItemId: string) =>
-    tracking.tracking_items.find((item) => item.order_item_id === orderItemId)?.quantity ?? 0;
-
-  const getMaxAssignableQuantity = (trackingIndex: number, orderItemId: string) => {
-    const orderedQuantity = items.find((item) => item.id === orderItemId)?.quantity ?? 0;
-    const assignedInOtherTrackings = trackingDrafts.reduce((sum, tracking, index) => {
-      if (index === trackingIndex) {
-        return sum;
-      }
-
-      return sum + getTrackingItemQuantity(tracking, orderItemId);
-    }, 0);
-
-    return Math.max(orderedQuantity - assignedInOtherTrackings, 0);
-  };
-
   const addTrackingDraft = () => {
     setTrackingDrafts((current) => [
       ...current,
@@ -1224,7 +959,6 @@ export const OrderShow = () => {
         carrier: "YTO Express",
         dispatched_at: null,
         note: "",
-        tracking_items: [],
       },
     ]);
   };
@@ -1235,7 +969,7 @@ export const OrderShow = () => {
 
   const updateTrackingDraft = (
     trackingIndex: number,
-    field: keyof Omit<TrackingDraft, "local_id" | "id" | "tracking_items">,
+    field: keyof Omit<TrackingDraft, "local_id" | "id">,
     value: string | null | undefined,
   ) => {
     setTrackingDrafts((current) =>
@@ -1245,70 +979,13 @@ export const OrderShow = () => {
     );
   };
 
-  const toggleTrackingItem = (trackingIndex: number, orderItemId: string, checked: boolean) => {
-    setTrackingDrafts((current) =>
-      current.map((tracking, index) => {
-        if (index !== trackingIndex) {
-          return tracking;
-        }
-
-        if (checked) {
-          if (tracking.tracking_items.some((item) => item.order_item_id === orderItemId)) {
-            return tracking;
-          }
-
-          const nextQuantity = Math.max(Math.min(getMaxAssignableQuantity(trackingIndex, orderItemId), 1), 1);
-
-          return {
-            ...tracking,
-            tracking_items: [
-              ...tracking.tracking_items,
-              { order_item_id: orderItemId, quantity: nextQuantity },
-            ],
-          };
-        }
-
-        return {
-          ...tracking,
-          tracking_items: tracking.tracking_items.filter((item) => item.order_item_id !== orderItemId),
-        };
-      }),
-    );
-  };
-
-  const updateTrackingItemQuantity = (
-    trackingIndex: number,
-    orderItemId: string,
-    quantity: number | null,
-  ) => {
-    const maxAssignable = getMaxAssignableQuantity(trackingIndex, orderItemId);
-    const normalizedQuantity = Math.max(1, Math.min(Number(quantity ?? 1), maxAssignable || 1));
-
-    setTrackingDrafts((current) =>
-      current.map((tracking, index) => {
-        if (index !== trackingIndex) {
-          return tracking;
-        }
-
-        return {
-          ...tracking,
-          tracking_items: tracking.tracking_items.map((item) =>
-            item.order_item_id === orderItemId
-              ? { ...item, quantity: normalizedQuantity }
-              : item,
-          ),
-        };
-      }),
-    );
-  };
-
   const openTrackingManager = () => {
     setTrackingDrafts(buildTrackingDrafts(orderTrackings));
     setIsTrackingManagerOpen(true);
   };
 
   const handleSaveAllTrackings = () => {
-    const validationMessage = validateTrackingDrafts(items, trackingDrafts);
+    const validationMessage = validateTrackingDrafts(trackingDrafts);
 
     if (validationMessage) {
       messageApi.error(validationMessage);
@@ -1322,17 +999,10 @@ export const OrderShow = () => {
   };
 
   const handleMoveToWaitingCnWarehouse = () => {
-    const validationMessage = validateTrackingDrafts(items, trackingDrafts);
+    const validationMessage = validateTrackingDrafts(trackingDrafts);
 
     if (validationMessage) {
       messageApi.error(validationMessage);
-      return;
-    }
-
-    if (!isTrackingAssignmentComplete) {
-      messageApi.error(
-        "Vui lòng gán đủ mã vận đơn cho tất cả sản phẩm trước khi chuyển sang trạng thái Chờ kho Trung Quốc nhận hàng.",
-      );
       return;
     }
 
@@ -1677,11 +1347,11 @@ export const OrderShow = () => {
                         </Col>
                       </Row>
 
-                      {items.length > 0 && !isTrackingAssignmentComplete ? (
+                      {items.length > 0 && remainingSkuCount > 0 ? (
                         <Alert
-                          type="warning"
+                          type="info"
                           showIcon
-                          title={`Đã gán ${assignedSkuCount}/${items.length} sản phẩm. Còn ${remainingSkuCount} sản phẩm chưa có mã vận đơn.`}
+                          title={`Kho TQ chua xac nhan ${remainingSkuCount}/${items.length} san pham trong tracking.`}
                         />
                       ) : null}
 
@@ -2126,7 +1796,7 @@ export const OrderShow = () => {
                 <Button
                   type="primary"
                   ghost
-                  disabled={!isTrackingAssignmentComplete}
+                  disabled={declaredTrackingCount === 0}
                   loading={isUpdatingStatus}
                   onClick={handleMoveToWaitingCnWarehouse}
                 >
@@ -2167,13 +1837,13 @@ export const OrderShow = () => {
               </Col>
               <Col xs={12} md={4}>
                 <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
-                  <Text type="secondary">Đã gán mã vận đơn</Text>
-                  <Title level={2} style={{ margin: 0, color: "#16a34a" }}>{assignedSkuCount}</Title>
+                  <Text type="secondary">Da khai bao tracking</Text>
+                  <Title level={2} style={{ margin: 0, color: "#16a34a" }}>{declaredTrackingCount}</Title>
                 </Space>
               </Col>
               <Col xs={12} md={4}>
                 <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
-                  <Text type="secondary">Còn chưa gán</Text>
+                  <Text type="secondary">Cho kho TQ xac nhan item</Text>
                   <Title level={2} style={{ margin: 0, color: "#f97316" }}>{remainingSkuCount}</Title>
                 </Space>
               </Col>
@@ -2181,8 +1851,8 @@ export const OrderShow = () => {
                 <Alert
                   type="info"
                   showIcon
-                  title="Lưu ý"
-                  description="Tổng số lượng đã gán cho mỗi sản phẩm không được vượt quá số lượng đã đặt."
+                  title="Luu y"
+                  description="Buoc nay chi khai bao ma van don thuoc don hang. Item ben trong se duoc kho Trung Quoc xac nhan sau."
                 />
               </Col>
             </Row>
@@ -2190,23 +1860,36 @@ export const OrderShow = () => {
 
           <Row gutter={[16, 16]} align="top">
             <Col xs={24} xl={10}>
-              <Card title="1. Danh sách sản phẩm trong đơn" size="small">
+              <Card title="1. San pham trong don" size="small">
                 {items.length === 0 ? (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đơn hàng chưa có sản phẩm." />
                 ) : (
                   <Space orientation="vertical" size={12} style={{ width: "100%" }}>
-                    <Space size={20} wrap>
-                      <Tag color="green">Đã gán đủ</Tag>
-                      <Tag color="orange">Chưa gán đủ</Tag>
-                      <Tag>Chưa gán</Tag>
-                    </Space>
-                    <Table<TrackingProductRow>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="Danh sach san pham cua don duoc giu de kho TQ doi chieu sau khi nhan hang."
+                    />
+                    <Table
                       size="small"
                       pagination={false}
                       rowKey="key"
-                      scroll={{ x: 860 }}
-                      dataSource={trackingProductRows}
-                      columns={trackingProductColumns}
+                      scroll={{ x: 720 }}
+                      dataSource={items.map((item, index) => ({
+                        key: item.id,
+                        index: index + 1,
+                        productName: item.product_name,
+                        shop: item.shop_name ?? item.seller ?? "-",
+                        variant: getVariantLabel(item),
+                        quantity: item.quantity,
+                      }))}
+                      columns={[
+                        { title: "#", dataIndex: "index", width: 48, align: "center" as const },
+                        { title: "San pham", dataIndex: "productName", key: "productName" },
+                        { title: "Shop", dataIndex: "shop", key: "shop", width: 160 },
+                        { title: "Phan loai", dataIndex: "variant", key: "variant", width: 140 },
+                        { title: "SL dat", dataIndex: "quantity", key: "quantity", width: 80, align: "center" as const },
+                      ]}
                     />
                   </Space>
                 )}
@@ -2277,7 +1960,7 @@ export const OrderShow = () => {
                             </Col>
                             <Col xs={24} md={7}>
                               <Text>Shop / người bán</Text>
-                              <Input value={getTrackingShopSummary(tracking, items)} disabled />
+                              <Input value={getTrackingShopSummary()} disabled />
                             </Col>
                             <Col xs={24} md={7}>
                               <Text>Ngày phát hàng</Text>
@@ -2290,7 +1973,7 @@ export const OrderShow = () => {
                                   updateTrackingDraft(
                                     trackingIndex,
                                     "dispatched_at",
-                                    value ? value.startOf("day").toISOString() : null,
+                                    value ? value.startOf("day").format("YYYY-MM-DD HH:mm:ss") : null,
                                   )
                                 }
                               />
@@ -2310,59 +1993,11 @@ export const OrderShow = () => {
                           </Row>
 
                           <Space orientation="vertical" size={10} style={{ width: "100%" }}>
-                            <Text strong>Sản phẩm trong mã vận đơn này *</Text>
-                            <div style={{ display: "grid", gridTemplateColumns: "56px 1.6fr 1fr 80px 130px", gap: 12, fontWeight: 700, fontSize: 12 }}>
-                              <div>Chọn</div>
-                              <div>Sản phẩm</div>
-                              <div>Phân loại</div>
-                              <div>SL đặt</div>
-                              <div>Số lượng trong mã này</div>
-                            </div>
-                            {items.map((item) => {
-                              const selectedQuantity = getTrackingItemQuantity(tracking, item.id);
-                              const isChecked = selectedQuantity > 0;
-                              const maxAssignable = getMaxAssignableQuantity(trackingIndex, item.id);
-                              return (
-                                <div
-                                  key={`${tracking.local_id}-${item.id}`}
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "56px 1.6fr 1fr 80px 130px",
-                                    gap: 12,
-                                    alignItems: "center",
-                                    padding: "10px 12px",
-                                    border: "1px solid #e5e7eb",
-                                    borderRadius: 12,
-                                  }}
-                                >
-                                  <Checkbox
-                                    checked={isChecked}
-                                    disabled={!isTrackingEditable || maxAssignable <= 0}
-                                    onChange={(event) =>
-                                      toggleTrackingItem(trackingIndex, item.id, event.target.checked)
-                                    }
-                                  />
-                                  <Space align="start">
-                                    <ProductThumb item={item} />
-                                    <Space orientation="vertical" size={2}>
-                                      <Text strong>{item.product_name}</Text>
-                                      <Text type="secondary">{item.shop_name ?? item.seller ?? "-"}</Text>
-                                    </Space>
-                                  </Space>
-                                  <Text>{getVariantLabel(item)}</Text>
-                                  <Text>{item.quantity}</Text>
-                                  <InputNumber
-                                    min={1}
-                                    max={Math.max(maxAssignable, 1)}
-                                    value={selectedQuantity || null}
-                                    disabled={!isTrackingEditable || !isChecked}
-                                    onChange={(value) =>
-                                      updateTrackingItemQuantity(trackingIndex, item.id, value)
-                                    }
-                                  />
-                                </div>
-                              );
-                            })}
+                            <Alert
+                              type="info"
+                              showIcon
+                              message="Item trong tracking này chưa được xác định ở bước khai báo. Kho Trung Quốc sẽ xác nhận sau khi nhận hàng thực tế."
+                            />
                           </Space>
                         </Space>
                       </Card>
@@ -2373,12 +2008,12 @@ export const OrderShow = () => {
             </Col>
           </Row>
 
-          {!isTrackingAssignmentComplete && isTrackingEditable ? (
+          {isTrackingEditable ? (
             <Alert
-              type="warning"
+              type="info"
               showIcon
-              title="Chưa thể chuyển sang chờ kho TQ nhận hàng"
-              description="Vui lòng gán đủ mã vận đơn cho tất cả sản phẩm trước khi chuyển sang trạng thái Chờ kho Trung Quốc nhận hàng."
+              title="Buoc xac nhan item duoc thuc hien tai kho TQ"
+              description="Tai day chi luu danh sach tracking cua don. Sau khi hang ve kho Trung Quoc, nhan vien se doi chieu va xac nhan item trong tung tracking."
             />
           ) : null}
 

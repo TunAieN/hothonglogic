@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useCreate, useDelete, useList, useUpdate } from "@refinedev/core";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import {
@@ -36,18 +37,31 @@ import {
   UnlockOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import type { Department, Employee, EmployeeRole, EmployeeStatus } from "../../types/employee";
+import type { Department, EmployeeCreateInput, EmployeeRecord, EmployeeRole, EmployeeStatus, EmployeeUpdateInput } from "../../types/employee";
+import type { Role } from "../../types/common";
+import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
 import "./employees.css";
 
 const DATE_FORMAT = "DD/MM/YYYY";
+const API_DATE_FORMAT = "YYYY-MM-DD";
 const DEFAULT_PAGE_SIZE = 5;
+
+const ROLES_QUERY = `
+  query Roles {
+    roles {
+      id
+      name
+      permissions
+    }
+  }
+`;
 
 type EmployeeFormValues = {
   fullName: string;
   email: string;
   phone: string;
   department: Department;
-  role: EmployeeRole;
+  role: string;
   status: EmployeeStatus;
   temporaryPassword?: string;
   note?: string;
@@ -56,7 +70,7 @@ type EmployeeFormValues = {
 type FilterState = {
   search: string;
   department?: Department;
-  role?: EmployeeRole;
+  roleId?: string;
   status?: EmployeeStatus;
   createdFrom: Dayjs | null;
   createdTo: Dayjs | null;
@@ -71,13 +85,22 @@ const departmentOptions: Array<{ label: string; value: Department }> = [
   { label: "Quản trị", value: "administration" },
 ];
 
-const roleOptions: Array<{ label: string; value: EmployeeRole }> = [
-  { label: "Quản trị viên", value: "admin" },
-  { label: "Nhân viên", value: "staff" },
-  { label: "Kế toán", value: "accountant" },
-  { label: "CSKH", value: "customer_service" },
-  { label: "Nhân viên kho", value: "warehouse_staff" },
-];
+const ROLE_DISPLAY_LABELS: Record<EmployeeRole, string> = {
+  admin: "Quản trị viên",
+  staff: "Nhân viên",
+  accountant: "Kế toán",
+  customer_service: "CSKH",
+  warehouse_staff: "Nhân viên kho",
+};
+
+const ROLE_NAME_TRANSLATIONS: Record<string, string> = {
+  admin: "Quản trị viên",
+  administrator: "Quản trị viên",
+  "customer service": "CSKH",
+  accountant: "Kế toán",
+  "delivery staff": "Nhân viên kho",
+  "warehouse staff": "Nhân viên kho",
+};
 
 const statusOptions: Array<{ label: string; value: EmployeeStatus }> = [
   { label: "Đang làm việc", value: "active" },
@@ -85,172 +108,15 @@ const statusOptions: Array<{ label: string; value: EmployeeStatus }> = [
   { label: "Nghỉ việc", value: "inactive" },
 ];
 
-const departmentLabels = departmentOptions.reduce<Record<Department, string>>((acc, option) => {
-  acc[option.value] = option.label;
-  return acc;
-}, {} as Record<Department, string>);
-
-const roleLabels = roleOptions.reduce<Record<EmployeeRole, string>>((acc, option) => {
-  acc[option.value] = option.label;
-  return acc;
-}, {} as Record<EmployeeRole, string>);
-
 const statusLabels = statusOptions.reduce<Record<EmployeeStatus, string>>((acc, option) => {
   acc[option.value] = option.label;
   return acc;
 }, {} as Record<EmployeeStatus, string>);
 
-const initialEmployees: Employee[] = [
-  {
-    id: "1",
-    code: "NV001",
-    fullName: "Nguyễn Văn An",
-    email: "nguyenvanan@gmail.com",
-    phone: "0987 654 321",
-    department: "sales",
-    role: "admin",
-    status: "active",
-    createdAt: "01/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=12",
-  },
-  {
-    id: "2",
-    code: "NV002",
-    fullName: "Trần Thị Bình",
-    email: "tranthibinh@gmail.com",
-    phone: "0976 543 210",
-    department: "customer_service",
-    role: "staff",
-    status: "active",
-    createdAt: "05/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=32",
-  },
-  {
-    id: "3",
-    code: "NV003",
-    fullName: "Lê Minh Cường",
-    email: "leminhcuong@gmail.com",
-    phone: "0965 432 109",
-    department: "china_warehouse",
-    role: "warehouse_staff",
-    status: "active",
-    createdAt: "10/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=15",
-  },
-  {
-    id: "4",
-    code: "NV004",
-    fullName: "Phạm Thu Hà",
-    email: "phamthuha@gmail.com",
-    phone: "0932 111 222",
-    department: "accounting",
-    role: "accountant",
-    status: "locked",
-    createdAt: "12/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=24",
-  },
-  {
-    id: "5",
-    code: "NV005",
-    fullName: "Hoàng Quốc Duy",
-    email: "hoangquocduy@gmail.com",
-    phone: "0944 333 444",
-    department: "vietnam_warehouse",
-    role: "warehouse_staff",
-    status: "inactive",
-    createdAt: "20/04/2024",
-    avatar: "https://i.pravatar.cc/100?img=18",
-  },
-  {
-    id: "6",
-    code: "NV006",
-    fullName: "Ngô Mỹ Linh",
-    email: "ngomylinh@gmail.com",
-    phone: "0911 222 678",
-    department: "administration",
-    role: "staff",
-    status: "active",
-    createdAt: "25/04/2024",
-    avatar: "https://i.pravatar.cc/100?img=47",
-  },
-  {
-    id: "7",
-    code: "NV007",
-    fullName: "Vũ Thanh Nam",
-    email: "vuthanhnam@gmail.com",
-    phone: "0935 888 116",
-    department: "sales",
-    role: "staff",
-    status: "active",
-    createdAt: "28/04/2024",
-    avatar: "https://i.pravatar.cc/100?img=58",
-  },
-  {
-    id: "8",
-    code: "NV008",
-    fullName: "Bùi Hồng Phúc",
-    email: "buihongphuc@gmail.com",
-    phone: "0979 234 567",
-    department: "customer_service",
-    role: "customer_service",
-    status: "active",
-    createdAt: "30/04/2024",
-    avatar: "https://i.pravatar.cc/100?img=53",
-  },
-  {
-    id: "9",
-    code: "NV009",
-    fullName: "Đặng Khánh Vy",
-    email: "dangkhanhvy@gmail.com",
-    phone: "0909 123 456",
-    department: "accounting",
-    role: "accountant",
-    status: "active",
-    createdAt: "02/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=5",
-  },
-  {
-    id: "10",
-    code: "NV010",
-    fullName: "Trịnh Gia Huy",
-    email: "trinhgiahuy@gmail.com",
-    phone: "0968 456 789",
-    department: "china_warehouse",
-    role: "warehouse_staff",
-    status: "locked",
-    createdAt: "03/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=66",
-  },
-  {
-    id: "11",
-    code: "NV011",
-    fullName: "Lý Thảo Nguyên",
-    email: "lythaonguyen@gmail.com",
-    phone: "0986 000 111",
-    department: "vietnam_warehouse",
-    role: "warehouse_staff",
-    status: "active",
-    createdAt: "08/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=9",
-  },
-  {
-    id: "12",
-    code: "NV012",
-    fullName: "Phan Tuấn Kiệt",
-    email: "phantuankiet@gmail.com",
-    phone: "0922 555 666",
-    department: "sales",
-    role: "admin",
-    status: "active",
-    createdAt: "09/05/2024",
-    avatar: "https://i.pravatar.cc/100?img=68",
-  },
-];
-
 const emptyFilters: FilterState = {
   search: "",
   department: undefined,
-  role: undefined,
+  roleId: undefined,
   status: undefined,
   createdFrom: null,
   createdTo: null,
@@ -278,60 +144,273 @@ const getStatusTagColor = (status: EmployeeStatus) => {
   }
 };
 
-const getNextEmployeeCode = (employees: Employee[]) => {
-  const maxCode = employees.reduce((max, employee) => {
-    const number = Number(employee.code.replace("NV", ""));
-    return Number.isNaN(number) ? max : Math.max(max, number);
-  }, 0);
+const normalizeRoleName = (roleName?: string | null) => roleName?.trim().toLowerCase() ?? "";
 
-  return `NV${String(maxCode + 1).padStart(3, "0")}`;
+const getRoleDisplayLabel = (roleName?: string | null) => {
+  const normalizedRoleName = normalizeRoleName(roleName);
+
+  return ROLE_NAME_TRANSLATIONS[normalizedRoleName] ?? roleName ?? "-";
+};
+
+const getRoleDepartmentWarning = (
+  department: Department | undefined,
+  roleId: string | number | undefined,
+  roleById: Map<string, Role>,
+) => {
+  if (!department || !roleId) {
+    return null;
+  }
+
+  const role = roleById.get(String(roleId));
+  const roleKey = normalizeEmployeeRole(role?.name);
+
+  if (department === "accounting" && roleKey !== "accountant") {
+    return "Phòng ban Kế toán thường nên đi với vai trò Kế toán.";
+  }
+
+  if ((department === "china_warehouse" || department === "vietnam_warehouse") && roleKey !== "warehouse_staff") {
+    return "Phòng ban kho thường nên đi với vai trò Nhân viên kho.";
+  }
+
+  if (department === "customer_service" && roleKey !== "customer_service") {
+    return "Phòng ban CSKH thường nên đi với vai trò CSKH.";
+  }
+
+  if (department === "administration" && roleKey !== "admin") {
+    return "Phòng ban Quản trị thường nên đi với vai trò Quản trị viên.";
+  }
+
+  return null;
+};
+
+
+type EmployeeListRow = {
+  id: string;
+  code: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  department: Department;
+  role: EmployeeRole;
+  roleId?: string | number | null;
+  roleName: string;
+  status: EmployeeStatus;
+  createdAt: string;
+  note?: string;
+  temporaryPassword?: string;
+  avatar?: string;
+};
+
+const normalizeEmployeeStatus = (status?: string | null): EmployeeStatus => {
+  if (status === "inactive") {
+    return "inactive";
+  }
+
+  if (status === "locked") {
+    return "locked";
+  }
+
+  return "active";
+};
+
+const normalizeEmployeeRole = (roleName?: string | null): EmployeeRole => {
+  const normalizedRoleName = roleName?.trim().toLowerCase();
+
+  switch (normalizedRoleName) {
+    case "admin":
+    case "administrator":
+    case "quan tri vien":
+      return "admin";
+    case "accountant":
+    case "ke toan":
+      return "accountant";
+    case "customer service":
+    case "cskh":
+    case "cham soc khach hang":
+      return "customer_service";
+    case "delivery staff":
+    case "warehouse staff":
+    case "nhan vien kho":
+      return "warehouse_staff";
+    default:
+      return "staff";
+  }
+};
+
+const mapEmployeeRecordToRow = (record: EmployeeRecord): EmployeeListRow => {
+  const roleName = record.role?.name ?? "-";
+  const createdAt = record.created_at ? dayjs(record.created_at).format(DATE_FORMAT) : "-";
+  const numericId = Number(record.id);
+  const code = Number.isFinite(numericId) ? `NV${String(numericId).padStart(3, "0")}` : `NV${record.id}`;
+
+  return {
+    id: record.id,
+    code,
+    fullName: record.name,
+    email: record.email,
+    phone: record.phone ?? "-",
+    department: "administration",
+    role: normalizeEmployeeRole(roleName),
+    roleId: record.role_id,
+    roleName,
+    status: normalizeEmployeeStatus(record.status),
+    createdAt,
+    note: record.address ?? undefined,
+    avatar: `https://i.pravatar.cc/100?u=${encodeURIComponent(record.email)}`,
+  };
+};
+
+const mapFormValuesToCreateInput = (values: EmployeeFormValues): EmployeeCreateInput => ({
+  name: values.fullName.trim(),
+  email: values.email.trim(),
+  password: values.temporaryPassword?.trim() ?? "",
+  role_id: String(values.role),
+  phone: values.phone?.trim() || null,
+  address: values.note?.trim() || null,
+  status: values.status === "inactive" ? "inactive" : "active",
+});
+
+const mapFormValuesToUpdateInput = (values: EmployeeFormValues): EmployeeUpdateInput => {
+  const password = values.temporaryPassword?.trim();
+
+  return {
+    name: values.fullName.trim(),
+    email: values.email.trim(),
+    ...(password ? { password } : {}),
+    role_id: String(values.role),
+    phone: values.phone?.trim() || null,
+    address: values.note?.trim() || null,
+    status: values.status === "inactive" ? "inactive" : "active",
+  };
 };
 
 export const EmployeesPage = () => {
   const [form] = Form.useForm<EmployeeFormValues>();
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<EmployeeListRow | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+  const [rolesLoadError, setRolesLoadError] = useState<string | null>(null);
+  const { mutateAsync: createEmployee } = useCreate<EmployeeRecord>();
+  const { mutateAsync: updateEmployee } = useUpdate<EmployeeRecord>();
+  const { mutateAsync: deleteEmployee } = useDelete<EmployeeRecord>();
+  const [isSavingEmployee, setIsSavingEmployee] = useState(false);
+  const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
 
-  const filteredEmployees = employees.filter((employee) => {
-    const normalizedSearch = filters.search.trim().toLowerCase();
-    const employeeDate = dayjs(employee.createdAt, DATE_FORMAT);
 
-    const matchesSearch =
-      normalizedSearch.length === 0 ||
-      employee.fullName.toLowerCase().includes(normalizedSearch) ||
-      employee.email.toLowerCase().includes(normalizedSearch) ||
-      employee.phone.toLowerCase().includes(normalizedSearch) ||
-      employee.code.toLowerCase().includes(normalizedSearch);
+  useEffect(() => {
+    let isMounted = true;
 
-    const matchesDepartment = !filters.department || employee.department === filters.department;
-    const matchesRole = !filters.role || employee.role === filters.role;
-    const matchesStatus = !filters.status || employee.status === filters.status;
-    const matchesFrom =
-      !filters.createdFrom ||
-      employeeDate.isSame(filters.createdFrom, "day") ||
-      employeeDate.isAfter(filters.createdFrom, "day");
-    const matchesTo =
-      !filters.createdTo ||
-      employeeDate.isSame(filters.createdTo, "day") ||
-      employeeDate.isBefore(filters.createdTo, "day");
+    const loadRoles = async () => {
+      setIsLoadingRoles(true);
+      setRolesLoadError(null);
 
-    return matchesSearch && matchesDepartment && matchesRole && matchesStatus && matchesFrom && matchesTo;
+      try {
+        syncGraphqlAuthToken();
+        const response = await client.request<{ roles: Role[] }>(
+          ROLES_QUERY,
+          {},
+          getGraphqlAuthHeaders(),
+        );
+
+        if (isMounted) {
+          setRoles(response.roles ?? []);
+        }
+      } catch (error) {
+        console.error("Failed to load employee roles", error);
+        if (isMounted) {
+          setRoles([]);
+          setRolesLoadError("Không tải được danh sách vai trò nhân viên.");
+        }
+        message.error("Không tải được danh sách vai trò nhân viên.");
+      } finally {
+        if (isMounted) {
+          setIsLoadingRoles(false);
+        }
+      }
+    };
+
+    void loadRoles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const roleSelectOptions = useMemo(
+    () => roles.map((role) => ({ label: getRoleDisplayLabel(role.name), value: String(role.id) })),
+    [roles],
+  );
+  const roleById = useMemo(
+    () => new Map(roles.map((role) => [String(role.id), role])),
+    [roles],
+  );
+  const validRoleIds = useMemo(
+    () => new Set(roles.map((role) => String(role.id))),
+    [roles],
+  );
+  const hasRoleOptions = roleSelectOptions.length > 0;
+
+  const apiFilters = useMemo(() => {
+    const nextFilters = [];
+    const search = filters.search.trim();
+
+    if (search) {
+      nextFilters.push({ field: "search", operator: "contains" as const, value: search });
+    }
+
+    if (filters.status) {
+      nextFilters.push({ field: "status", operator: "eq" as const, value: filters.status });
+    }
+
+    if (filters.roleId) {
+      nextFilters.push({ field: "role_id", operator: "eq" as const, value: filters.roleId });
+    }
+
+    if (filters.createdFrom) {
+      nextFilters.push({
+        field: "created_from",
+        operator: "gte" as const,
+        value: filters.createdFrom.startOf("day").format(API_DATE_FORMAT),
+      });
+    }
+
+    if (filters.createdTo) {
+      nextFilters.push({
+        field: "created_to",
+        operator: "lte" as const,
+        value: filters.createdTo.endOf("day").format(API_DATE_FORMAT),
+      });
+    }
+
+    return nextFilters;
+  }, [filters.createdFrom, filters.createdTo, filters.roleId, filters.search, filters.status]);
+
+  const { result: employeesResult, query: employeesQuery } = useList<EmployeeRecord>({
+    resource: "employees",
+    pagination: { currentPage, pageSize },
+    filters: apiFilters,
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const employees = useMemo(
+    () => (employeesResult.data ?? []).map(mapEmployeeRecordToRow),
+    [employeesResult.data],
+  );
+  const totalEmployees = employeesResult.total ?? employees.length;
+
+  const totalPages = Math.max(1, Math.ceil(totalEmployees / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
-  const paginatedEmployees = filteredEmployees.slice(startIndex, startIndex + pageSize);
+  const paginatedEmployees = employees;
 
   const statItems = [
     {
       key: "all",
       label: "Tổng nhân viên",
-      value: employees.length,
+      value: totalEmployees,
       description: "Tất cả nhân viên",
       icon: <TeamOutlined />,
       iconStyle: { color: "#2563eb", background: "#eaf2ff" },
@@ -339,7 +418,7 @@ export const EmployeesPage = () => {
     {
       key: "active",
       label: "Đang làm việc",
-      value: employees.filter((employee) => employee.status === "active").length,
+      value: employees.filter((employee: EmployeeListRow) => employee.status === "active").length,
       description: "Nhân viên hoạt động",
       icon: <CheckCircleOutlined />,
       iconStyle: { color: "#16a34a", background: "#eaf8ef" },
@@ -347,7 +426,7 @@ export const EmployeesPage = () => {
     {
       key: "locked",
       label: "Tạm khóa",
-      value: employees.filter((employee) => employee.status === "locked").length,
+      value: employees.filter((employee: EmployeeListRow) => employee.status === "locked").length,
       description: "Tạm khóa tài khoản",
       icon: <LockOutlined />,
       iconStyle: { color: "#f59e0b", background: "#fff4de" },
@@ -355,7 +434,7 @@ export const EmployeesPage = () => {
     {
       key: "inactive",
       label: "Nghỉ việc",
-      value: employees.filter((employee) => employee.status === "inactive").length,
+      value: employees.filter((employee: EmployeeListRow) => employee.status === "inactive").length,
       description: "Đã nghỉ việc",
       icon: <StopOutlined />,
       iconStyle: { color: "#64748b", background: "#eef2f7" },
@@ -375,14 +454,14 @@ export const EmployeesPage = () => {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (employee: Employee) => {
+  const openEditModal = (employee: EmployeeListRow) => {
     setEditingEmployee(employee);
     form.setFieldsValue({
       fullName: employee.fullName,
       email: employee.email,
       phone: employee.phone,
       department: employee.department,
-      role: employee.role,
+      role: employee.roleId ? String(employee.roleId) : employee.role,
       status: employee.status,
       temporaryPassword: employee.temporaryPassword,
       note: employee.note,
@@ -395,59 +474,78 @@ export const EmployeesPage = () => {
     setCurrentPage(1);
   };
 
-  const handleDelete = (employeeId: string) => {
-    setEmployees((current) => current.filter((employee) => employee.id !== employeeId));
-    message.success("Đã xóa nhân viên khỏi danh sách mock.");
+  const handleDelete = async (employeeId: string) => {
+    setDeletingEmployeeId(employeeId);
+
+    try {
+      await deleteEmployee({
+        resource: "employees",
+        id: employeeId,
+        successNotification: false,
+        errorNotification: false,
+      });
+
+      message.success("Đã chuyển nhân viên sang trạng thái nghỉ việc.");
+      await employeesQuery.refetch();
+    } finally {
+      setDeletingEmployeeId(null);
+    }
   };
 
-  const handleToggleLock = (employeeId: string) => {
-    setEmployees((current) =>
-      current.map((employee) =>
-        employee.id === employeeId
-          ? {
-              ...employee,
-              status: employee.status === "locked" ? "active" : "locked",
-            }
-          : employee,
-      ),
-    );
-    message.success("Đã cập nhật trạng thái tài khoản.");
+  const handleToggleLock = (_employeeId: string) => {
+    message.info("Chức năng khóa tài khoản sẽ được xử lý ở bước sau.");
   };
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
 
-    if (editingEmployee) {
-      setEmployees((current) =>
-        current.map((employee) =>
-          employee.id === editingEmployee.id
-            ? {
-                ...employee,
-                ...values,
-              }
-            : employee,
-        ),
-      );
-      console.log("Update employee", editingEmployee.id, values);
-      message.success("Đã cập nhật nhân viên.");
-    } else {
-      const newEmployee: Employee = {
-        id: `${Date.now()}`,
-        code: getNextEmployeeCode(employees),
-        createdAt: dayjs().format(DATE_FORMAT),
-        avatar: `https://i.pravatar.cc/100?u=${encodeURIComponent(values.email)}`,
-        ...values,
-      };
-
-      setEmployees((current) => [newEmployee, ...current]);
-      console.log("Create employee", newEmployee);
-      message.success("Đã thêm nhân viên mới.");
+    if (isLoadingRoles) {
+      message.error("Danh sách vai trò đang tải, vui lòng thử lại.");
+      return;
     }
 
-    resetModal();
+    if (rolesLoadError || !hasRoleOptions) {
+      message.error(rolesLoadError ?? "Chưa có vai trò nhân viên trong hệ thống.");
+      return;
+    }
+
+    if (!validRoleIds.has(String(values.role))) {
+      message.error("Vai trò đã chọn không hợp lệ, vui lòng chọn lại.");
+      return;
+    }
+
+    setIsSavingEmployee(true);
+
+    try {
+      if (editingEmployee) {
+        await updateEmployee({
+          resource: "employees",
+          id: editingEmployee.id,
+          values: mapFormValuesToUpdateInput(values),
+          successNotification: false,
+          errorNotification: false,
+        });
+
+        message.success("Đã cập nhật nhân viên.");
+      } else {
+        await createEmployee({
+          resource: "employees",
+          values: mapFormValuesToCreateInput(values),
+          successNotification: false,
+          errorNotification: false,
+        });
+
+        message.success("Đã thêm nhân viên mới.");
+      }
+
+      resetModal();
+      await employeesQuery.refetch();
+    } finally {
+      setIsSavingEmployee(false);
+    }
   };
 
-  const columns: TableColumnsType<Employee> = [
+  const columns: TableColumnsType<EmployeeListRow> = [
     {
       title: "Mã NV",
       dataIndex: "code",
@@ -481,7 +579,7 @@ export const EmployeesPage = () => {
       title: "Phòng ban",
       key: "department",
       width: 150,
-      render: (_, employee) => departmentLabels[employee.department],
+      render: () => "-",
     },
     {
       title: "Vai trò",
@@ -491,7 +589,7 @@ export const EmployeesPage = () => {
         const colorStyle = getRoleTagColor(employee.role);
         return (
           <Tag className="employees-page__role-tag" style={colorStyle}>
-            {roleLabels[employee.role]}
+            {getRoleDisplayLabel(employee.roleName) || ROLE_DISPLAY_LABELS[employee.role]}
           </Tag>
         );
       },
@@ -557,10 +655,15 @@ export const EmployeesPage = () => {
               okText="Xóa"
               cancelText="Hủy"
               okButtonProps={{ danger: true }}
-              onConfirm={() => handleDelete(employee.id)}
+              onConfirm={() => void handleDelete(employee.id)}
             >
               <Tooltip title="Xóa nhân viên">
-                <Button danger className="employees-page__action-button" icon={<DeleteOutlined />} />
+                <Button
+                  danger
+                  loading={deletingEmployeeId === employee.id}
+                  className="employees-page__action-button"
+                  icon={<DeleteOutlined />}
+                />
               </Tooltip>
             </Popconfirm>
           </Space>
@@ -569,8 +672,8 @@ export const EmployeesPage = () => {
     },
   ];
 
-  const startItem = filteredEmployees.length === 0 ? 0 : startIndex + 1;
-  const endItem = Math.min(safeCurrentPage * pageSize, filteredEmployees.length);
+  const startItem = totalEmployees === 0 ? 0 : startIndex + 1;
+  const endItem = Math.min(safeCurrentPage * pageSize, totalEmployees);
 
   return (
     <div className="employees-page">
@@ -654,12 +757,14 @@ export const EmployeesPage = () => {
             <Select
               allowClear
               placeholder="Tất cả vai trò"
-              value={filters.role}
-              options={roleOptions}
+              value={filters.roleId}
+              options={roleSelectOptions}
+              loading={isLoadingRoles}
+              notFoundContent={rolesLoadError ? "Không tải được vai trò" : "Không có vai trò"}
               className="employees-page__filter-select"
               onChange={(value) => {
                 setCurrentPage(1);
-                setFilters((current) => ({ ...current, role: value }));
+                setFilters((current) => ({ ...current, roleId: value }));
               }}
             />
           </Col>
@@ -727,19 +832,20 @@ export const EmployeesPage = () => {
           rowKey="id"
           columns={columns}
           dataSource={paginatedEmployees}
+          loading={employeesQuery.isLoading || employeesQuery.isFetching}
           pagination={false}
           scroll={{ x: 1200 }}
         />
 
         <div className="employees-page__footer">
           <span>
-            Hiển thị {startItem} đến {endItem} trong tổng số {filteredEmployees.length} nhân viên
+            Hiển thị {startItem} đến {endItem} trong tổng số {totalEmployees} nhân viên
           </span>
 
           <Pagination
             current={safeCurrentPage}
             pageSize={pageSize}
-            total={filteredEmployees.length}
+            total={totalEmployees}
             showSizeChanger
             pageSizeOptions={[5, 10, 20]}
             className="employees-page__pagination"
@@ -755,6 +861,8 @@ export const EmployeesPage = () => {
         open={isModalOpen}
         onCancel={resetModal}
         onOk={() => void handleSubmit()}
+        confirmLoading={isSavingEmployee}
+        okButtonProps={{ disabled: isLoadingRoles || Boolean(rolesLoadError) || !hasRoleOptions }}
         okText={editingEmployee ? "Lưu thay đổi" : "Lưu nhân viên"}
         cancelText="Hủy"
         title={editingEmployee ? "Cập nhật nhân viên" : "Thêm nhân viên"}
@@ -803,12 +911,43 @@ export const EmployeesPage = () => {
               <Form.Item
                 label="Vai trò"
                 name="role"
-                rules={[{ required: true, message: "Vui lòng chọn vai trò." }]}
+                rules={[
+                  { required: true, message: "Vui lòng chọn vai trò." },
+                  {
+                    validator: (_, value) => {
+                      if (!value || validRoleIds.has(String(value))) {
+                        return Promise.resolve();
+                      }
+
+                      return Promise.reject(new Error("Vai trò đã chọn không tồn tại trong hệ thống."));
+                    },
+                  },
+                ]}
               >
-                <Select placeholder="Chọn vai trò" options={roleOptions} />
+                <Select
+                  placeholder="Chọn vai trò"
+                  options={roleSelectOptions}
+                  loading={isLoadingRoles}
+                  disabled={isLoadingRoles || Boolean(rolesLoadError) || !hasRoleOptions}
+                  notFoundContent={rolesLoadError ? "Không tải được vai trò" : "Không có vai trò"}
+                />
               </Form.Item>
             </Col>
           </Row>
+
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.department !== current.department || previous.role !== current.role}>
+            {({ getFieldValue }) => {
+              const department = getFieldValue("department") as Department | undefined;
+              const role = getFieldValue("role") as string | undefined;
+              const warning = getRoleDepartmentWarning(department, role, roleById);
+
+              return warning ? (
+                <Typography.Text type="warning" className="employees-page__field-label">
+                  {warning}
+                </Typography.Text>
+              ) : null;
+            }}
+          </Form.Item>
 
           <Row gutter={12}>
             <Col span={12}>
@@ -822,7 +961,21 @@ export const EmployeesPage = () => {
             </Col>
 
             <Col span={12}>
-              <Form.Item label="Mật khẩu tạm thời" name="temporaryPassword">
+              <Form.Item
+                label="Mật khẩu tạm thời"
+                name="temporaryPassword"
+                rules={[
+                  {
+                    validator: (_, value) => {
+                      if (editingEmployee || String(value ?? "").trim().length >= 6) {
+                        return Promise.resolve();
+                      }
+
+                      return Promise.reject(new Error("Vui lòng nhập mật khẩu tạm ít nhất 6 ký tự."));
+                    },
+                  },
+                ]}
+              >
                 <Input.Password placeholder="Nhập mật khẩu tạm" />
               </Form.Item>
             </Col>
