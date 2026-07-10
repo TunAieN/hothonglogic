@@ -36,9 +36,17 @@ class Customer extends Model
     {
         return $this->hasMany(Order::class);
     }
-      public function scopeWithOrdersCount($query)
+    public function paymentVouchers()
+    {
+        return $this->hasMany(PaymentVoucher::class);
+    }
+
+    public function balanceLedgers()
+    {
+        return $this->hasMany(CustomerBalanceLedger::class);
+    }
+    public function scopeWithOrdersCount($query)
     {
         return $query->withCount('orders');
     }
 }
-    
