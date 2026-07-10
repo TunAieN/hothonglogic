@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { DeleteButton, NumberField, Show } from "@refinedev/antd";
 import { useShow, useUpdate } from "@refinedev/core";
@@ -28,6 +28,8 @@ import {
 } from "antd";
 import type { ImageProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { fetchDefaultPaymentAccount } from "../payment-vouchers/api";
+import type { PaymentAccount } from "../payment-vouchers/types";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -399,8 +401,18 @@ export const OrderShow = () => {
   );
   const [depositPercentage, setDepositPercentage] = useState(70);
   const [trackingDrafts, setTrackingDrafts] = useState<TrackingDraft[]>([]);
+  const [defaultPaymentAccount, setDefaultPaymentAccount] = useState<PaymentAccount | null>(null);
   const navigateScreens = useBreakpoint();
   const record = data?.data;
+  useEffect(() => {
+    if (!isDepositModalOpen) {
+      return;
+    }
+
+    void fetchDefaultPaymentAccount()
+      .then(setDefaultPaymentAccount)
+      .catch(() => message.error("Không tải được tài khoản nhận tiền mặc định."));
+  }, [isDepositModalOpen]);
   const cnPackages = useMemo(
     () => record?.cn_packages ?? [],
     [record?.cn_packages],
@@ -1755,13 +1767,13 @@ export const OrderShow = () => {
           <div style={bankInfoStyle}>
             <Text strong>Hướng dẫn thanh toán</Text>
             <div>
-              <Text>Ngân hàng: Vietcombank</Text>
+              <Text>Ngân hàng: {defaultPaymentAccount?.bank_name ?? "-"}</Text>
             </div>
             <div>
-              <Text>STK: 1234 5678 9999</Text>
+              <Text>STK: {defaultPaymentAccount?.account_number ?? "-"}</Text>
             </div>
             <div>
-              <Text>Chủ TK: CONG TY TNHH LOGISTICS</Text>
+              <Text>Chủ TK: {defaultPaymentAccount?.account_holder ?? "-"}</Text>
             </div>
             <div>
               <Text>

@@ -7,6 +7,7 @@ import {
   AppstoreOutlined,
   BankOutlined,
   CreditCardOutlined,
+  DollarCircleOutlined,
   HomeOutlined,
   InboxOutlined,
   RightOutlined,
@@ -39,7 +40,8 @@ const menuItems = [
   { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển" },
   { key: "/china-warehouse", icon: <BankOutlined />, label: "Kho hàng Trung Quốc" },
   { key: "/vietnam-warehouse", icon: <ApartmentOutlined />, label: "Kho hàng Việt Nam" },
-  { key: "/analytics", icon: <CreditCardOutlined />, label: "Thanh toán / Công nợ" },
+  { key: "/payment-vouchers", icon: <CreditCardOutlined />, label: "Thanh toán" },
+  { key: "/shipping-rates", icon: <DollarCircleOutlined />, label: "Bảng giá cước" },
   { key: "/employees", icon: <TeamOutlined />, label: "Nhân viên" },
   {
     key: "/routes",

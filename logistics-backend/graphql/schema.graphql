@@ -1,12 +1,18 @@
 scalar DateTime @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
 
+# =========================
+# Root Query
+# =========================
+
 type Query {
-  # Users
+  # =========================
+  # Auth / Users / Roles
+  # =========================
+
   user(
     id: ID @eq @rules(apply: ["prohibits:email", "required_without:email"])
     email: String @eq @rules(apply: ["prohibits:id", "required_without:id", "email"])
   ): User @find
-
   users(
     name: String @where(operator: "like")
   ): [User!]! @paginate(defaultCount: 10)
@@ -23,21 +29,38 @@ type Query {
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\AuthResolver@me")
 
+  # =========================
   # Customers
+  # =========================
+
   customers(filter: CustomerFilterInput): [Customer!]!
     @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\CustomerResolver@list")
   customer(id: ID!): Customer
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@show")
+
+  # =========================
   # Orders
+  # =========================
+
   orders(filter: OrderFilterInput): [Order!]!
     @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\OrderResolver@list")
   order(id: ID! @eq): Order @find
+
+  # =========================
+  # China Warehouse
+  # =========================
+
   cnPackages: [CnPackage!]!
     @guard(with: ["api"])
     @paginate(defaultCount: 50, builder: "App\\GraphQL\\Resolvers\\CnPackageResolver@list")
   cnPackage(id: ID!): CnPackage
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@show")
+
+  # =========================
+  # China Batches
+  # =========================
+
   cnBatches: [CnBatch!]!
     @guard(with: ["api"])
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\CnBatchResolver@list")
@@ -47,10 +70,453 @@ type Query {
   cnBatchByCode(batch_code: String!): CnBatch
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@cnBatchByCode")
+
+  # =========================
+  # Vietnam Warehouse
+  # =========================
+
   vietnamWarehouseReceipt(batch_code: String!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@vietnamWarehouseReceipt")
+
+  # =========================
+  # Payment Vouchers
+  # =========================
+
+  eligiblePaymentPackages(filter: EligiblePaymentPackageFilterInput): [VnPackage!]!
+    @guard(with: ["api"])
+    @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@eligiblePackages")
+  previewPaymentVoucher(input: PreviewPaymentVoucherInput!): PaymentVoucherPreview!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@preview")
+  defaultPaymentAccount: PaymentAccount
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@defaultPaymentAccount")
+  paymentVouchers(filter: PaymentVoucherFilterInput): [PaymentVoucher!]!
+    @guard(with: ["api"])
+    @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@list")
+  paymentVoucher(id: ID!): PaymentVoucher
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@show")
+  paymentVoucherTransactions(payment_voucher_id: ID!): [PaymentTransaction!]!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@transactions")
+  paymentVoucherInvoice(payment_voucher_id: ID!): Invoice
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@invoice")
+  paymentVoucherAuditLogs(payment_voucher_id: ID!): [AuditLog!]!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@auditLogs")
+
+  shippingRates(filter: ShippingRateFilterInput): [ShippingRate!]!
+    @guard(with: ["api"])
+    @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\ShippingRateResolver@list")
+  shippingRate(id: ID!): ShippingRate
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@show")
+  activeShippingRate(input: ActiveShippingRateInput): ShippingRate
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@active")
+  calculateShippingFee(input: CalculateShippingFeeInput!): ShippingFeeCalculation!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@calculate")
 }
+
+# =========================
+# Root Mutation
+# =========================
+
+type Mutation {
+  # =========================
+  # Auth
+  # =========================
+
+  login(
+    email: String!
+    password: String!
+  ): AuthPayload
+    @field(resolver: "App\\GraphQL\\Resolvers\\LoginResolver@login")
+
+  # =========================
+  # Customers
+  # =========================
+
+  createCustomer(input: CreateCustomerInput! @spread): Customer
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@create")
+  updateCustomer(id: ID!, input: UpdateCustomerInput! @spread): Customer
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@update")
+  deleteCustomer(id: ID!): Customer
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@delete")
+
+  # =========================
+  # Employees
+  # =========================
+
+  createEmployee(input: CreateEmployeeInput! @spread): User
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@create")
+  updateEmployee(id: ID!, input: UpdateEmployeeInput! @spread): User
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@update")
+  deleteEmployee(id: ID!): User
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@delete")
+
+  # =========================
+  # Orders
+  # =========================
+
+  createOrder(input: CreateOrderInput!): Order
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@create")
+  updateOrder(id: ID!, input: UpdateOrderInput!): Order
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@update")
+  deleteOrder(id: ID!): Order
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@delete")
+  mockReceiveAtGuangzhouWarehouse(package_id: ID!): MockReceivePackagePayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@mockReceiveAtGuangzhouWarehouse")
+  createPackagesByShop(order_id: ID!): Order!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@createPackagesByShop")
+
+  # =========================
+  # China Warehouse
+  # =========================
+
+  createCnPackage(input: CreateCnPackageInput!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@create")
+  updateCnPackage(id: ID!, input: UpdateCnPackageInput!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@update")
+  confirmCnPackageItems(package_id: ID!, items: [OrderPackageItemInput!]!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@confirmItems")
+  deleteCnPackage(id: ID!): CnPackage
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@delete")
+
+  # =========================
+  # China Batches
+  # =========================
+
+  addPackagesToCnBatch(input: AddPackagesToCnBatchInput!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@addPackages")
+  updateCnBatch(id: ID!, input: UpdateCnBatchInput!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@update")
+  deleteCnBatch(id: ID!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@delete")
+  createVietnamInboundTask(input: CreateVietnamInboundTaskInput!): VietnamInboundTaskPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@createVietnamInboundTask")
+
+  # =========================
+  # Vietnam Warehouse
+  # =========================
+
+  startVietnamWarehouseReceipt(input: StartVietnamWarehouseReceiptInput!): VnBatchReceipt!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@startVietnamWarehouseReceipt")
+  scanVietnamPackage(input: ScanVietnamPackageInput!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@scanVietnamPackage")
+  removeVietnamPackage(id: ID!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@removeVietnamPackage")
+  moveVietnamWarehouseReceiptToErrorQueue(receipt_id: ID!): VnBatchReceipt!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@moveVietnamWarehouseReceiptToErrorQueue")
+  confirmVietnamWarehouseReceipt(receipt_id: ID!): VnBatchReceipt!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@confirmVietnamWarehouseReceipt")
+
+  # =========================
+  # Payment Vouchers
+  # =========================
+
+  createPaymentVoucher(input: CreatePaymentVoucherInput!): PaymentVoucher!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@create")
+  cancelPaymentVoucher(id: ID!, reason: String!): PaymentVoucher!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@cancel")
+  confirmPaymentTransaction(payment_voucher_id: ID!, input: ConfirmPaymentTransactionInput!): PaymentVoucher!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@confirmTransaction")
+  issuePaymentVoucherInvoice(payment_voucher_id: ID!): Invoice!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@issueInvoice")
+  createShippingRate(input: ShippingRateInput!): ShippingRate!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@create")
+  updateShippingRate(id: ID!, input: ShippingRateInput!): ShippingRate!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@update")
+  deactivateShippingRate(id: ID!): ShippingRate!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@deactivate")
+  createShippingRateDetail(shipping_rate_id: ID!, input: ShippingRateDetailInput!): ShippingRateDetail!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@createDetail")
+  updateShippingRateDetail(id: ID!, input: ShippingRateDetailInput!): ShippingRateDetail!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@updateDetail")
+  deleteShippingRateDetail(id: ID!): Boolean!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@deleteDetail")
+}
+
+# =========================
+# Auth / Users / Roles / Employees
+# =========================
+
+type AuthPayload {
+  access_token: String!
+  token_type: String!
+  user: User!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  role_id: ID
+  role: Role @belongsTo
+  phone: String
+  address: String
+  status: String
+  email_verified_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+}
+
+type Role {
+  id: ID!
+  name: String!
+  permissions: [String!]
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+input EmployeeFilterInput {
+  search: String
+  role_id: ID
+  status: String
+  created_from: DateTime
+  created_to: DateTime
+}
+
+input CreateEmployeeInput {
+  name: String!
+  email: String!
+  password: String!
+  role_id: ID!
+  phone: String
+  address: String
+  status: String
+}
+
+input UpdateEmployeeInput {
+  name: String!
+  email: String!
+  password: String
+  role_id: ID!
+  phone: String
+  address: String
+  status: String!
+}
+
+# =========================
+# Customers
+# =========================
+
+type Customer {
+  id: ID!
+  code: String!
+  name: String!
+  vip_group: String
+  phone: String!
+  email: String
+  province: String
+  district: String
+  ward: String
+  address: String
+  note: String
+  status: String
+  created_at: DateTime
+  orders: [Order!]!
+  orders_count: Int!
+}
+
+input CustomerFilterInput {
+  search: String
+  status: String
+  vip_group: String
+  province: String
+  phone: String
+  created_from: DateTime
+  created_to: DateTime
+}
+
+input CreateCustomerInput {
+  name: String!
+  vip_group: String
+  phone: String!
+  email: String
+  province: String
+  district: String
+  ward: String
+  address: String
+  note: String
+}
+
+input UpdateCustomerInput {
+  code: String!
+  name: String!
+  vip_group: String
+  phone: String!
+  email: String
+  province: String
+  district: String
+  ward: String
+  address: String
+  note: String
+  status: String
+}
+
+# =========================
+# Orders
+# =========================
+
+type Order {
+    id: ID!
+    order_code: String!
+    customer_id: ID!
+    status: String!
+    total_amount: Float!
+    note: String
+    creator: User!
+    created_at: DateTime!
+    customer: Customer!
+    items: [OrderItem!]!
+    order_trackings: [OrderTracking!]! @hasMany(relation: "orderTrackings")
+    cn_packages: [CnPackage!]! @hasMany(relation: "cnPackages")
+}
+
+type OrderItem {
+    id: ID!
+    product_name: String!
+    product_link: String
+    price_cny: Float!
+    quantity: Int!
+    note: String
+    product_image: String
+    seller: String
+    shop_id: String
+    shop_name: String
+    size: String
+    color: String
+}
+
+type MockReceivePackagePayload {
+  order: Order!
+  package: CnPackage!
+}
+
+input OrderFilterInput {
+    search: String
+    customer_id: ID
+    created_by: ID
+    order_code: String
+    status: String
+    created_from: DateTime
+    created_to: DateTime
+}
+
+input OrderItemInput {
+    product_name: String!
+    product_link: String
+    price_cny: Float!
+    quantity: Int!
+    note: String
+    product_image: String
+    seller: String
+    shop_id: String
+    shop_name: String
+    size: String
+    color: String
+}
+
+input CreateOrderInput {
+    customer_id: ID!
+    note: String
+    items: [OrderItemInput!]!
+}
+
+input UpdateOrderInput {
+    customer_id: ID
+    account_manager_id: ID
+    status: String
+    note: String
+    total_amount: Float
+    items: [OrderItemInput!]
+    packages: [OrderPackageInput!]
+}
+
+input OrderPackageInput {
+    id: ID
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    dispatched_at: DateTime
+    note: String
+    package_items: [OrderPackageItemInput!]
+    tracking_items: [OrderPackageItemInput!]
+}
+
+input OrderPackageItemInput {
+    order_item_id: ID!
+    quantity: Int!
+}
+
+# =========================
+# Order Tracking
+# =========================
+
+type OrderTracking {
+  id: ID!
+  order_id: ID!
+  tracking_number: String!
+  carrier: String
+  declared_value: Float
+  dispatched_at: DateTime
+  note: String
+  status: String!
+  created_at: DateTime!
+  updated_at: DateTime!
+  order: Order! @belongsTo
+  tracking_items: [OrderTrackingItem!]! @hasMany(relation: "trackingItems")
+  packages: [CnPackage!]! @hasMany
+}
+
+type OrderTrackingItem {
+  id: ID!
+  order_tracking_id: ID!
+  order_item_id: ID!
+  quantity: Int!
+  order_tracking: OrderTracking! @belongsTo(relation: "orderTracking")
+  order_item: OrderItem! @belongsTo(relation: "orderItem")
+}
+
+# =========================
+# China Warehouse
+# =========================
 
 type CnWarehouse {
   id: ID!
@@ -99,30 +565,51 @@ type CnPackageItem {
   order_item: OrderItem! @belongsTo(relation: "orderItem")
 }
 
-type OrderTracking {
-  id: ID!
-  order_id: ID!
-  tracking_number: String!
-  carrier: String
-  declared_value: Float
-  dispatched_at: DateTime
-  note: String
-  status: String!
-  created_at: DateTime!
-  updated_at: DateTime!
-  order: Order! @belongsTo
-  tracking_items: [OrderTrackingItem!]! @hasMany(relation: "trackingItems")
-  packages: [CnPackage!]! @hasMany
+input CreateCnPackageInput {
+    warehouse_id: ID
+    warehouse_code: String
+    warehouse_name: String!
+    receiver_name: String
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    volume: Float
+    volumetric_weight: Float
+    chargeable_weight: Float
+    note: String
+    status: String!
+    package_condition: String
+    received_at: DateTime
 }
 
-type OrderTrackingItem {
-  id: ID!
-  order_tracking_id: ID!
-  order_item_id: ID!
-  quantity: Int!
-  order_tracking: OrderTracking! @belongsTo(relation: "orderTracking")
-  order_item: OrderItem! @belongsTo(relation: "orderItem")
+input UpdateCnPackageInput {
+    warehouse_id: ID
+    warehouse_code: String
+    warehouse_name: String
+    receiver_name: String
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    volume: Float
+    volumetric_weight: Float
+    chargeable_weight: Float
+    note: String
+    status: String
+    package_condition: String
+    received_at: DateTime
 }
+
+# =========================
+# China Batches
+# =========================
 
 type CnBatch {
   id: ID!
@@ -155,6 +642,29 @@ type CnBatchPackage {
   package: CnPackage! @belongsTo(relation: "package")
 }
 
+input AddPackagesToCnBatchInput {
+    cn_batch_id: ID
+    cn_package_ids: [ID!]!
+    destination_warehouse_name: String
+    shipping_type: String
+    expected_arrival_at: DateTime
+    note: String
+}
+
+input UpdateCnBatchInput {
+    destination_warehouse_name: String
+    shipping_type: String
+    departed_at: DateTime
+    expected_arrival_at: DateTime
+    arrived_at: DateTime
+    note: String
+    status: String
+}
+
+input CreateVietnamInboundTaskInput {
+    cn_batch_ids: [ID!]!
+}
+
 type VietnamInboundTaskPayload {
   batch_ids: [ID!]!
   total_batches: Int!
@@ -162,6 +672,10 @@ type VietnamInboundTaskPayload {
   total_weight: Float!
   batches: [CnBatch!]!
 }
+
+# =========================
+# Vietnam Warehouse
+# =========================
 
 type VnWarehouse {
   id: ID!
@@ -220,6 +734,10 @@ type VnPackage {
   order_code_snapshot: String
   customer_name_snapshot: String
   inspection_status: String!
+  payment_status: String
+  payment_voucher_id: ID
+  payment_locked_at: DateTime
+  delivery_status: String
   note: String
   handled_by: ID
   scanned_at: DateTime
@@ -248,334 +766,6 @@ type VietnamWarehouseReceiptPayload {
   expectedPackages: [CnPackage!]!
   receivedPackages: [VnPackage!]!
   summary: VietnamReceiptSummary!
-}
-
-type User {
-  id: ID!
-  name: String!
-  email: String!
-  role_id: ID
-  role: Role @belongsTo
-  phone: String
-  address: String
-  status: String
-  email_verified_at: DateTime
-  created_at: DateTime!
-  updated_at: DateTime!
-}
-
-type Role {
-  id: ID!
-  name: String!
-  permissions: [String!]
-  created_at: DateTime
-  updated_at: DateTime
-}
-
-# Customers
-
-type Customer {
-  id: ID!
-  code: String!
-  name: String!
-  vip_group: String
-  phone: String!
-  email: String
-  province: String
-  district: String
-  ward: String
-  address: String
-  note: String
-  status: String
-  created_at: DateTime
-  orders: [Order!]!
-  orders_count: Int!
-}
-
-input CreateCustomerInput {
-  name: String!
-  vip_group: String
-  phone: String!
-  email: String
-  province: String
-  district: String
-  ward: String
-  address: String
-  note: String
-}
-
-input UpdateCustomerInput {
-  code: String!
-  name: String!
-  vip_group: String
-  phone: String!
-  email: String
-  province: String
-  district: String
-  ward: String
-  address: String
-  note: String
-  status: String
-}
-
-input CustomerFilterInput {
-  search: String
-  status: String
-  vip_group: String
-  province: String
-  phone: String
-  created_from: DateTime
-  created_to: DateTime
-}
-
-
-input EmployeeFilterInput {
-  search: String
-  role_id: ID
-  status: String
-  created_from: DateTime
-  created_to: DateTime
-}
-
-input CreateEmployeeInput {
-  name: String!
-  email: String!
-  password: String!
-  role_id: ID!
-  phone: String
-  address: String
-  status: String
-}
-
-input UpdateEmployeeInput {
-  name: String!
-  email: String!
-  password: String
-  role_id: ID!
-  phone: String
-  address: String
-  status: String!
-}
-
-type AuthPayload {
-  access_token: String!
-  token_type: String!
-  user: User!
-}
-
-type MockReceivePackagePayload {
-  order: Order!
-  package: CnPackage!
-}
-
-type Mutation {
-  # Customer
-  createCustomer(input: CreateCustomerInput! @spread): Customer
-    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@create")
-
-  updateCustomer(id: ID!, input: UpdateCustomerInput! @spread): Customer
-    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@update")
-
-  deleteCustomer(id: ID!): Customer
-    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@delete")
-
-  
-  # Employee
-  createEmployee(input: CreateEmployeeInput! @spread): User
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@create")
-
-  updateEmployee(id: ID!, input: UpdateEmployeeInput! @spread): User
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@update")
-
-  deleteEmployee(id: ID!): User
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@delete")
-
-  # Auth
-  login(
-    email: String!
-    password: String!
-  ): AuthPayload
-    @field(resolver: "App\\GraphQL\\Resolvers\\LoginResolver@login")
-
-  # Order
-  createOrder(input: CreateOrderInput!): Order
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@create")
-  updateOrder(id: ID!, input: UpdateOrderInput!): Order
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@update")
-  deleteOrder(id: ID!): Order
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@delete")
-  mockReceiveAtGuangzhouWarehouse(package_id: ID!): MockReceivePackagePayload!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@mockReceiveAtGuangzhouWarehouse")
-  createPackagesByShop(order_id: ID!): Order!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@createPackagesByShop")
-  createCnPackage(input: CreateCnPackageInput!): CnPackage
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@create")
-  updateCnPackage(id: ID!, input: UpdateCnPackageInput!): CnPackage
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@update")
-  confirmCnPackageItems(package_id: ID!, items: [OrderPackageItemInput!]!): CnPackage
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@confirmItems")
-  deleteCnPackage(id: ID!): CnPackage
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@delete")
-  addPackagesToCnBatch(input: AddPackagesToCnBatchInput!): CnBatch!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@addPackages")
-  updateCnBatch(id: ID!, input: UpdateCnBatchInput!): CnBatch!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@update")
-  deleteCnBatch(id: ID!): CnBatch!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@delete")
-  createVietnamInboundTask(input: CreateVietnamInboundTaskInput!): VietnamInboundTaskPayload!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@createVietnamInboundTask")
-  startVietnamWarehouseReceipt(input: StartVietnamWarehouseReceiptInput!): VnBatchReceipt!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@startVietnamWarehouseReceipt")
-  scanVietnamPackage(input: ScanVietnamPackageInput!): VietnamWarehouseReceiptPayload!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@scanVietnamPackage")
-  removeVietnamPackage(id: ID!): VietnamWarehouseReceiptPayload!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@removeVietnamPackage")
-  moveVietnamWarehouseReceiptToErrorQueue(receipt_id: ID!): VnBatchReceipt!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@moveVietnamWarehouseReceiptToErrorQueue")
-  confirmVietnamWarehouseReceipt(receipt_id: ID!): VnBatchReceipt!
-    @guard(with: ["api"])
-    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@confirmVietnamWarehouseReceipt")
-}
-# Orders
-input OrderItemInput {
-    product_name: String!
-    product_link: String
-    price_cny: Float!
-    quantity: Int!
-    note: String
-    product_image: String
-    seller: String
-    shop_id: String
-    shop_name: String
-    size: String
-    color: String
-}
-
-input CreateOrderInput {
-    customer_id: ID!
-    note: String
-    items: [OrderItemInput!]!
-}
-
-input UpdateOrderInput {
-    customer_id: ID
-    account_manager_id: ID
-    status: String
-    note: String
-    total_amount: Float
-    items: [OrderItemInput!]
-    packages: [OrderPackageInput!]
-}
-
-input OrderFilterInput {
-    search: String
-    customer_id: ID
-    created_by: ID
-    order_code: String
-    status: String
-    created_from: DateTime
-    created_to: DateTime
-}
-
-input OrderPackageItemInput {
-    order_item_id: ID!
-    quantity: Int!
-}
-
-input OrderPackageInput {
-    id: ID
-    tracking_number: String
-    declared_value: Float
-    carrier: String
-    dispatched_at: DateTime
-    note: String
-    package_items: [OrderPackageItemInput!]
-    tracking_items: [OrderPackageItemInput!]
-}
-
-input CreateCnPackageInput {
-    warehouse_id: ID
-    warehouse_code: String
-    warehouse_name: String!
-    receiver_name: String
-    tracking_number: String
-    declared_value: Float
-    carrier: String
-    weight: Float
-    actual_length: Float
-    actual_width: Float
-    actual_height: Float
-    volume: Float
-    volumetric_weight: Float
-    chargeable_weight: Float
-    note: String
-    status: String!
-    package_condition: String
-    received_at: DateTime
-}
-
-input UpdateCnPackageInput {
-    warehouse_id: ID
-    warehouse_code: String
-    warehouse_name: String
-    receiver_name: String
-    tracking_number: String
-    declared_value: Float
-    carrier: String
-    weight: Float
-    actual_length: Float
-    actual_width: Float
-    actual_height: Float
-    volume: Float
-    volumetric_weight: Float
-    chargeable_weight: Float
-    note: String
-    status: String
-    package_condition: String
-    received_at: DateTime
-}
-
-input AddPackagesToCnBatchInput {
-    cn_batch_id: ID
-    cn_package_ids: [ID!]!
-    destination_warehouse_name: String
-    shipping_type: String
-    expected_arrival_at: DateTime
-    note: String
-}
-
-input UpdateCnBatchInput {
-    destination_warehouse_name: String
-    shipping_type: String
-    departed_at: DateTime
-    expected_arrival_at: DateTime
-    arrived_at: DateTime
-    note: String
-    status: String
-}
-
-input CreateVietnamInboundTaskInput {
-    cn_batch_ids: [ID!]!
 }
 
 input StartVietnamWarehouseReceiptInput {
@@ -609,32 +799,329 @@ input ScanVietnamPackageInput {
     inspection_status: String
 }
 
-type OrderItem {
-    id: ID!
-    product_name: String!
-    product_link: String
-    price_cny: Float!
-    quantity: Int!
-    note: String
-    product_image: String
-    seller: String
-    shop_id: String
-    shop_name: String
-    size: String
-    color: String
+# =========================
+# Shipping Rates
+# =========================
+
+type ShippingRate {
+  id: ID!
+  name: String!
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+  valid_from: DateTime
+  valid_to: DateTime
+  effective_from: DateTime
+  effective_to: DateTime
+  status: String!
+  note: String
+  created_by: ID
+  created_at: DateTime
+  updated_at: DateTime
+  details: [ShippingRateDetail!]! @hasMany(relation: "details")
 }
 
-type Order {
-    id: ID!
-    order_code: String!
-    customer_id: ID!
-    status: String!
-    total_amount: Float!
-    note: String
-    creator: User!
-    created_at: DateTime!
-    customer: Customer!
-    items: [OrderItem!]!
-    order_trackings: [OrderTracking!]! @hasMany(relation: "orderTrackings")
-    cn_packages: [CnPackage!]! @hasMany(relation: "cnPackages")
+type ShippingRateDetail {
+  id: ID!
+  rate_id: ID!
+  shipping_rate_id: ID
+  weight_from: Float
+  weight_to: Float
+  min_weight: Float
+  max_weight: Float
+  price_per_kg: Float
+  price: Float
+  price_type: String!
+  description: String
+  sort_order: Int
+}
+
+type ShippingFeeCalculation {
+  rate: ShippingRate!
+  detail: ShippingRateDetail!
+  unit_price: Float!
+  price_type: String!
+  shipping_fee: Float!
+  rate_description: String
+}
+
+input ShippingRateFilterInput {
+  status: String
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+}
+
+input ActiveShippingRateInput {
+  date: DateTime
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+}
+
+input CalculateShippingFeeInput {
+  weight: Float!
+  date: DateTime
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+}
+
+input ShippingRateInput {
+  name: String!
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+  effective_from: DateTime!
+  effective_to: DateTime
+  status: String
+  note: String
+  details: [ShippingRateDetailInput!]
+}
+
+input ShippingRateDetailInput {
+  min_weight: Float!
+  max_weight: Float
+  price: Float!
+  price_type: String!
+  description: String
+  sort_order: Int
+}
+# =========================
+# Payment Vouchers
+# =========================
+
+type PaymentAccount {
+  id: ID!
+  bank_name: String!
+  bank_code: String
+  account_number: String!
+  account_holder: String!
+  branch_name: String
+  is_default: Boolean!
+  is_active: Boolean!
+  note: String
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+type PaymentVoucher {
+  id: ID!
+  voucher_code: String!
+  request_uuid: String
+  customer_id: ID!
+  vn_warehouse_id: ID
+  created_by: ID
+  receiver_type: String
+  delivery_address: String
+  payment_method_expected: String
+  payment_account_id: ID
+  bank_name_snapshot: String
+  bank_code_snapshot: String
+  bank_account_number_snapshot: String
+  bank_account_holder_snapshot: String
+  bank_branch_name_snapshot: String
+  transfer_content: String
+  status: String!
+  shipping_fee_total: Float!
+  domestic_shipping_fee: Float!
+  surcharge_total: Float!
+  total_amount: Float!
+  deposit_applied: Float!
+  customer_credit_applied: Float!
+  paid_amount: Float!
+  remaining_amount: Float!
+  note: String
+  cancelled_reason: String
+  cancelled_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  customer: Customer! @belongsTo
+  warehouse: VnWarehouse @belongsTo(relation: "warehouse")
+  creator: User @belongsTo(relation: "creator")
+  paymentAccount: PaymentAccount @belongsTo(relation: "paymentAccount")
+  packages: [PaymentVoucherPackage!]! @hasMany
+  surcharges: [PaymentVoucherSurcharge!]! @hasMany
+  transactions: [PaymentTransaction!]! @hasMany
+  invoice: Invoice @hasOne
+}
+
+type PaymentVoucherPackage {
+  id: ID!
+  payment_voucher_id: ID!
+  vn_package_id: ID!
+  order_id: ID
+  actual_weight: Float!
+  volumetric_weight: Float!
+  chargeable_weight: Float!
+  price_per_kg: Float!
+  shipping_rate_id: ID
+  shipping_rate_detail_id: ID
+  unit_price: Float
+  price_type: String
+  rate_description: String
+  shipping_fee: Float!
+  domestic_shipping_fee: Float!
+  surcharge_amount: Float!
+  total_amount: Float!
+  vnPackage: VnPackage! @belongsTo(relation: "vnPackage")
+  order: Order @belongsTo
+}
+
+type PaymentVoucherSurcharge {
+  id: ID!
+  payment_voucher_id: ID!
+  payment_voucher_package_id: ID
+  vn_package_id: ID
+  surcharge_type: String!
+  amount: Float!
+  note: String
+  created_by: ID
+  created_at: DateTime!
+}
+
+type PaymentTransaction {
+  id: ID!
+  transaction_code: String!
+  payment_voucher_id: ID!
+  amount: Float!
+  payment_method: String!
+  bank_name: String
+  bank_transaction_code: String
+  received_at: DateTime!
+  confirmed_by: ID
+  status: String!
+  note: String
+  proof_image_path: String
+  created_at: DateTime!
+}
+
+type PaymentVoucherPreview {
+  customer: Customer!
+  packages: [PaymentVoucherPreviewPackage!]!
+  shipping_fee_total: Float!
+  domestic_shipping_fee: Float!
+  surcharge_total: Float!
+  deposit_applied: Float!
+  customer_credit_available: Float!
+  customer_credit_applied: Float!
+  total_amount: Float!
+  remaining_amount: Float!
+  payment_account: PaymentAccount
+  transfer_content: String
+}
+
+type PaymentVoucherPreviewPackage {
+  id: ID!
+  tracking_number: String
+  order_id: ID
+  order_code: String
+  customer_name: String
+  actual_weight: Float!
+  volumetric_weight: Float!
+  chargeable_weight: Float!
+  price_per_kg: Float!
+  shipping_rate_id: ID
+  shipping_rate_detail_id: ID
+  unit_price: Float
+  price_type: String
+  rate_description: String
+  shipping_fee: Float!
+  domestic_shipping_fee: Float!
+  surcharge_amount: Float!
+  total_amount: Float!
+}
+
+input EligiblePaymentPackageFilterInput {
+  search: String
+  customer_id: ID
+}
+
+input PaymentVoucherFilterInput {
+  customer_id: ID
+  voucher_code: String
+  status: String
+  created_by: ID
+  created_from: DateTime
+  created_to: DateTime
+}
+
+input PaymentVoucherSurchargeInput {
+  vn_package_id: ID
+  surcharge_type: String!
+  amount: Float!
+  note: String
+}
+
+input PreviewPaymentVoucherInput {
+  package_ids: [ID!]!
+  surcharges: [PaymentVoucherSurchargeInput!]
+}
+
+input CreatePaymentVoucherInput {
+  package_ids: [ID!]!
+  request_uuid: String
+  vn_warehouse_id: ID
+  receiver_type: String
+  delivery_address: String
+  payment_method_expected: String
+  note: String
+  surcharges: [PaymentVoucherSurchargeInput!]
+}
+
+input ConfirmPaymentTransactionInput {
+  amount: Float!
+  payment_method: String!
+  bank_name: String
+  bank_transaction_code: String
+  received_at: String
+  note: String
+  proof_image_path: String
+}
+
+# =========================
+# Invoice
+# =========================
+
+type Invoice {
+  id: ID!
+  payment_voucher_id: ID
+  invoice_code: String!
+  customer_id: ID!
+  issued_by: ID
+  issued_at: DateTime
+  total_amount: Float!
+  paid_amount: Float!
+  status: String!
+  note: String
+  items: [InvoiceItem!]! @hasMany
+}
+
+type InvoiceItem {
+  id: ID!
+  invoice_id: ID!
+  payment_voucher_package_id: ID
+  item_type: String!
+  description: String!
+  quantity: Float!
+  unit_price: Float!
+  amount: Float!
+  metadata: String
+}
+
+# =========================
+# Audit Log
+# =========================
+
+type AuditLog {
+  id: ID!
+  user_id: ID
+  action: String!
+  entity_type: String!
+  entity_id: ID
+  before_data: String
+  after_data: String
+  ip: String
+  user_agent: String
+  created_at: DateTime!
 }

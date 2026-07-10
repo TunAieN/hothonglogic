@@ -38,6 +38,10 @@ class VnPackage extends Model
         'order_code_snapshot',
         'customer_name_snapshot',
         'inspection_status',
+        'payment_status',
+        'payment_voucher_id',
+        'payment_locked_at',
+        'delivery_status',
         'note',
         'handled_by',
         'scanned_at',
@@ -55,6 +59,7 @@ class VnPackage extends Model
         'other_fee' => 'float',
         'scanned_at' => 'datetime',
         'received_at' => 'datetime',
+        'payment_locked_at' => 'datetime',
     ];
 
     public function receipt()
@@ -72,6 +77,10 @@ class VnPackage extends Model
         return $this->belongsTo(CnPackage::class, 'cn_package_id');
     }
 
+    public function paymentVoucher()
+    {
+        return $this->belongsTo(PaymentVoucher::class, 'payment_voucher_id');
+    }
     public function handler()
     {
         return $this->belongsTo(User::class, 'handled_by');

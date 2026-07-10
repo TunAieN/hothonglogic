@@ -56,6 +56,15 @@ const DashboardPage = lazy(() =>
 const EmployeesPage = lazy(() =>
   import("./pages/employees").then((module) => ({ default: module.EmployeesPage })),
 );
+const PaymentVouchersPage = lazy(() =>
+  import("./pages/payment-vouchers").then((module) => ({ default: module.PaymentVouchersPage })),
+);
+const PaymentVoucherShow = lazy(() =>
+  import("./pages/payment-vouchers/show").then((module) => ({ default: module.PaymentVoucherShow })),
+);
+const ShippingRatesPage = lazy(() =>
+  import("./pages/shipping-rates").then((module) => ({ default: module.ShippingRatesPage })),
+);
 
 const RouteFallback = RouteLoadingFallback;
 
@@ -114,6 +123,15 @@ function App() {
             list: "/vietnam-warehouse",
           },
           {
+            name: "paymentVouchers",
+            list: "/payment-vouchers",
+            show: "/payment-vouchers/:id",
+          },
+          {
+            name: "shippingRates",
+            list: "/shipping-rates",
+          },
+          {
             name: "employees",
             list: "/employees",
           },
@@ -162,6 +180,9 @@ function App() {
               <Route path="/cn-batches" element={<CnBatchesPage />} />
               <Route path="/china-warehouse" element={<ChinaWarehousePage />} />
               <Route path="/vietnam-warehouse" element={<VietnamWarehousePage />} />
+              <Route path="/payment-vouchers" element={<PaymentVouchersPage />} />
+              <Route path="/payment-vouchers/:id" element={<PaymentVoucherShow />} />
+              <Route path="/shipping-rates" element={<ShippingRatesPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
 
               <Route path="/fleet" element={<Navigate to="/employees" replace />} />
