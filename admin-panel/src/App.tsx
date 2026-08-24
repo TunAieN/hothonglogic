@@ -65,6 +65,21 @@ const PaymentVoucherShow = lazy(() =>
 const ShippingRatesPage = lazy(() =>
   import("./pages/shipping-rates").then((module) => ({ default: module.ShippingRatesPage })),
 );
+const ExchangeRatesPage = lazy(() =>
+  import("./pages/exchange-rates").then((module) => ({ default: module.ExchangeRatesPage })),
+);
+const InvoiceListPage = lazy(() =>
+  import("./pages/invoices").then((module) => ({ default: module.InvoiceListPage })),
+);
+const InvoiceCreatePage = lazy(() =>
+  import("./pages/invoices/create").then((module) => ({ default: module.InvoiceCreatePage })),
+);
+const InvoiceDetailPage = lazy(() =>
+  import("./pages/invoices/show").then((module) => ({ default: module.InvoiceDetailPage })),
+);
+const RevenueReportPage = lazy(() =>
+  import("./pages/revenue-report").then((module) => ({ default: module.RevenueReportPage })),
+);
 
 const RouteFallback = RouteLoadingFallback;
 
@@ -128,8 +143,22 @@ function App() {
             show: "/payment-vouchers/:id",
           },
           {
+            name: "invoices",
+            list: "/invoices",
+            create: "/invoices/create",
+            show: "/invoices/:id",
+          },
+          {
+            name: "revenueReport",
+            list: "/revenue-report",
+          },
+          {
             name: "shippingRates",
             list: "/shipping-rates",
+          },
+          {
+            name: "exchangeRates",
+            list: "/exchange-rates",
           },
           {
             name: "employees",
@@ -182,7 +211,12 @@ function App() {
               <Route path="/vietnam-warehouse" element={<VietnamWarehousePage />} />
               <Route path="/payment-vouchers" element={<PaymentVouchersPage />} />
               <Route path="/payment-vouchers/:id" element={<PaymentVoucherShow />} />
+              <Route path="/invoices" element={<InvoiceListPage />} />
+              <Route path="/invoices/create" element={<InvoiceCreatePage />} />
+              <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+              <Route path="/revenue-report" element={<RevenueReportPage />} />
               <Route path="/shipping-rates" element={<ShippingRatesPage />} />
+              <Route path="/exchange-rates" element={<ExchangeRatesPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
 
               <Route path="/fleet" element={<Navigate to="/employees" replace />} />

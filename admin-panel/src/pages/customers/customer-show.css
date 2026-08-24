@@ -1,0 +1,409 @@
+.customer-detail-page {
+    width: 100%;
+    max-width: 1680px;
+    margin: 0 auto;
+    color: #111827;
+}
+
+.customer-detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.customer-detail-title.ant-typography {
+    margin: 8px 0 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.customer-detail-actions {
+    justify-content: flex-end;
+}
+
+.customer-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(250px, 0.85fr) minmax(600px, 2.3fr) minmax(290px, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.customer-detail-left,
+.customer-detail-main,
+.customer-detail-right {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.customer-profile-card,
+.customer-value-card,
+.customer-metric-card,
+.customer-history-card,
+.customer-section-card,
+.customer-side-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+
+.customer-profile-card__hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 24px 18px 18px;
+    background: linear-gradient(180deg, #dbeafe 0%, #eff6ff 54%, #ffffff 100%);
+}
+
+.customer-profile-card__hero::before {
+    content: "";
+    position: absolute;
+    top: 34px;
+    left: -20%;
+    width: 140%;
+    height: 76px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.46);
+}
+
+.customer-profile-card__avatar,
+.customer-profile-card__name,
+.customer-profile-card__badges {
+    position: relative;
+    z-index: 1;
+}
+
+.customer-profile-card__avatar {
+    background: #93c5fd;
+    border: 4px solid #ffffff;
+    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.18);
+}
+
+.customer-profile-card__name.ant-typography {
+    margin: 4px 0 0;
+    font-size: 19px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.customer-profile-card__details {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+}
+
+.customer-info-row {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.customer-info-row__icon {
+    color: #64748b;
+    line-height: 1.6;
+}
+
+.customer-info-row__body,
+.customer-info-row__value {
+    min-width: 0;
+}
+
+.customer-info-row__value {
+    overflow-wrap: anywhere;
+    color: #111827;
+    font-weight: 500;
+    line-height: 1.55;
+}
+
+.customer-muted {
+    color: #6b7280 !important;
+}
+
+.customer-small-text {
+    font-size: 12px;
+}
+
+.customer-value-card .ant-card-body,
+.customer-side-card .ant-card-body,
+.customer-section-card .ant-card-body,
+.customer-history-card .ant-card-body,
+.customer-metric-card .ant-card-body {
+    padding: 18px;
+}
+
+.customer-card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #0f172a;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.customer-card-title .anticon {
+    color: #1677ff;
+}
+
+.customer-card-title--blue,
+.customer-card-title--blue .anticon {
+    color: #1d4ed8;
+}
+
+.customer-card-title--orange,
+.customer-card-title--orange .anticon {
+    color: #d97706;
+}
+
+.customer-card-title--purple,
+.customer-card-title--purple .anticon {
+    color: #7c3aed;
+}
+
+.customer-value-card__amount {
+    margin-top: 14px;
+    color: #0f172a;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.customer-divider {
+    height: 1px;
+    margin: 14px 0;
+    background: #e5e7eb;
+}
+
+.customer-simple-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 7px 0;
+}
+
+.customer-simple-row__value {
+    min-width: 0;
+    color: #111827;
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.customer-simple-row__value--success {
+    color: #16a34a;
+}
+
+.customer-simple-row__value--danger {
+    color: #ef4444;
+}
+
+.customer-simple-row__value--primary {
+    color: #1677ff;
+}
+
+.customer-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.customer-metric-card__content {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.customer-metric-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+    font-size: 20px;
+}
+
+.customer-metric-card--blue .customer-metric-card__icon {
+    color: #1677ff;
+    background: #eff6ff;
+}
+
+.customer-metric-card--green .customer-metric-card__icon {
+    color: #16a34a;
+    background: #f0fdf4;
+}
+
+.customer-metric-card--purple .customer-metric-card__icon {
+    color: #7c3aed;
+    background: #f5f3ff;
+}
+
+.customer-metric-card__value {
+    margin: 8px 0 4px;
+    color: #0f172a;
+    font-size: 25px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.customer-history-card .ant-tabs-nav {
+    margin-bottom: 12px;
+}
+
+.customer-history-card .ant-table-thead > tr > th,
+.customer-section-card .ant-table-thead > tr > th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+}
+
+.customer-history-card .ant-table-tbody > tr:hover > td {
+    background: #f8fbff;
+}
+
+.customer-table-footer {
+    margin-top: 14px;
+    text-align: center;
+}
+
+.customer-main-split {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.customer-coverage-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid #dbeafe;
+    border-radius: 10px;
+    background: #f8fbff;
+}
+
+.customer-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.customer-timeline__item {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.customer-timeline__dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: #1677ff;
+    background: #eff6ff;
+}
+
+.customer-additional-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.customer-tabs .ant-tabs-tab {
+    font-weight: 500;
+}
+
+.customer-tabs--compact .ant-tabs-nav {
+    margin-bottom: 10px;
+}
+
+.customer-note-box {
+    max-height: 154px;
+    overflow: auto;
+    padding: 14px;
+    border: 1px solid #fde68a;
+    border-radius: 10px;
+    background: #fffbeb;
+    color: #475569;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.customer-side-card .ant-empty,
+.customer-section-card .ant-empty {
+    margin: 8px 0;
+}
+
+@media (max-width: 1399px) {
+    .customer-detail-grid {
+        grid-template-columns: minmax(250px, 0.85fr) minmax(0, 2fr);
+    }
+
+    .customer-detail-right {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1023px) {
+    .customer-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .customer-detail-left,
+    .customer-detail-main,
+    .customer-detail-right {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .customer-metrics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767px) {
+    .customer-detail-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .customer-detail-actions {
+        width: 100%;
+    }
+
+    .customer-detail-actions .ant-btn {
+        flex: 1 1 auto;
+    }
+
+    .customer-detail-title.ant-typography {
+        font-size: 24px;
+    }
+
+    .customer-metrics-grid,
+    .customer-main-split,
+    .customer-additional-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .customer-value-card .ant-card-body,
+    .customer-side-card .ant-card-body,
+    .customer-section-card .ant-card-body,
+    .customer-history-card .ant-card-body,
+    .customer-metric-card .ant-card-body {
+        padding: 16px;
+    }
+}

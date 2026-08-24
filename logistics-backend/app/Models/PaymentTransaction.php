@@ -32,4 +32,9 @@ class PaymentTransaction extends Model
     {
         return $this->belongsTo(PaymentVoucher::class, 'payment_voucher_id');
     }
+
+    public function invoice()
+    {
+        return $this->hasOne(Invoice::class);
+    }
 }

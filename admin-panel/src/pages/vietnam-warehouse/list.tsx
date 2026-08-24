@@ -5,12 +5,9 @@ import {
   Badge,
   Button,
   Card,
-  Col,
   Form,
-  Row,
   Space,
   Spin,
-  Statistic,
   Table,
   Tabs,
   Tag,
@@ -32,6 +29,7 @@ import { BatchReceiveCard } from "./components/BatchReceiveCard";
 import { BatchInfoModal } from "./components/BatchInfoModal";
 import { ReceiveBatchModal } from "./components/ReceiveBatchModal";
 import { VietnamWarehouseFilters } from "./components/VietnamWarehouseFilters";
+import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
 import {
   confirmVietnamWarehouseReceipt,
   fetchVietnamWarehouseOverview,
@@ -55,7 +53,7 @@ import type {
   VietnamWarehouseTableItem,
 } from "./types";
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 const EMPTY_BATCH: VietnamWarehouseBatch = {
   id: "",
@@ -503,56 +501,17 @@ export const VietnamWarehousePage = () => {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <Card>
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col xs={24} xl={10}>
-            <Space direction="vertical" size={4}>
-              <Title level={2} style={{ margin: 0 }}>
-                Kho hang Viet Nam
-              </Title>
-              <Text type="secondary">
-                Tiep nhan lo hang tu kho Trung Quoc, nhap kho Viet Nam va doi soat kien hang theo ma lo.
-              </Text>
-            </Space>
-          </Col>
-          <Col xs={24} xl={14}>
-            <Row gutter={[12, 12]}>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic title="Tổng lô" value={stats.totalBatches} prefix={<InboxOutlined />} />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic
-                    title="Da nhap kho"
-                    value={stats.importedBatches}
-                    prefix={<CheckCircleOutlined style={{ color: "#52c41a" }} />}
-                  />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic
-                    title="Cho doi soat"
-                    value={stats.pendingCheckBatches}
-                    prefix={<ClockCircleOutlined style={{ color: "#fa8c16" }} />}
-                  />
-                </Card>
-              </Col>
-              <Col xs={12} md={6}>
-                <Card size="small">
-                  <Statistic
-                    title="Loi chenh lech"
-                    value={stats.discrepancyBatches}
-                    prefix={<ExclamationCircleOutlined style={{ color: "#ff4d4f" }} />}
-                  />
-                </Card>
-              </Col>
-            </Row>
-          </Col>
-        </Row>
-      </Card>
+      <PageHeader
+        title="Kho hàng Việt Nam"
+        description="Tiếp nhận lô hàng từ kho Trung Quốc, nhập kho Việt Nam và đối soát kiện hàng theo mã lô."
+      />
+
+      <StatsGrid columns={4}>
+        <StatCard label="Tổng lô" value={stats.totalBatches} unit="lô" icon={<InboxOutlined />} tone="blue" />
+        <StatCard label="Đã nhập kho" value={stats.importedBatches} unit="lô" icon={<CheckCircleOutlined />} tone="green" />
+        <StatCard label="Chờ đối soát" value={stats.pendingCheckBatches} unit="lô" icon={<ClockCircleOutlined />} tone="orange" />
+        <StatCard label="Lỗi chênh lệch" value={stats.discrepancyBatches} unit="lô" icon={<ExclamationCircleOutlined />} tone="red" />
+      </StatsGrid>
 
       <VietnamWarehouseFilters
         form={filterForm}

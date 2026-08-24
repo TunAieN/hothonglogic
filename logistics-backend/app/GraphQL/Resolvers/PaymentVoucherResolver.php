@@ -83,6 +83,11 @@ class PaymentVoucherResolver
         return $this->service->create($args['input'] ?? []);
     }
 
+    public function createDeposit($_, array $args)
+    {
+        return $this->service->createDepositVoucher($args['order_id'], $args['deposit_percent'] ?? null);
+    }
+
     public function confirmTransaction($_, array $args)
     {
         return $this->service->confirmTransaction($args['payment_voucher_id'], $args['input'] ?? []);

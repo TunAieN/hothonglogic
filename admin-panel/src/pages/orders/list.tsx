@@ -4,7 +4,6 @@ import {
     DeleteButton,
     EditButton,
     List,
-    NumberField,
     ShowButton,
     useTable,
 } from "@refinedev/antd";
@@ -22,13 +21,13 @@ import {
     Row,
     Select,
     Space,
-    Statistic,
     Table,
     Tag,
     Tooltip,
     Typography,
 } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
+import { formatCny, formatVnd, resolveLegacyCnyTotal } from "../../utils/currency";
 import {
     CarOutlined,
     CheckCircleOutlined,
@@ -43,7 +42,7 @@ import { dataProvider } from "../../providers/dataProvider";
 import { getTtlCache, setTtlCache } from "../../utils/ttlCache";
 import type { OrderUpdateInput } from "../../types";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-
+import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../components/admin-page-summary";
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -177,6 +176,7 @@ const buildSelectOptions = (
 };
 
 export const OrderList = () => {
+    console.log("OrderPage render");
     const { message } = App.useApp();
     const [filterForm] = Form.useForm<OrderFilterValues>();
     const [rejectForm] = Form.useForm<RejectOrderFormValues>();
@@ -494,7 +494,7 @@ export const OrderList = () => {
                         icon={<UserOutlined />}
                         alt={record.customer?.name}
                     />
-                    <Space orientation="vertical" size={0}>
+                    <Space direction="vertical" size={0}>
                         <Text strong>{record.customer?.name ?? "-"}</Text>
                         <Text type="secondary">{record.customer?.email ?? "-"}</Text>
                     </Space>
@@ -511,19 +511,20 @@ export const OrderList = () => {
             },
         },
         {
-            title: "Total",
-            dataIndex: "total_amount",
-            key: "total_amount",
+            title: "Tổng tiền hàng",
+            key: "product_total",
             align: "right",
-            render: (value?: IOrder["total_amount"]) =>
-                typeof value === "number" ? (
-                    <NumberField
-                        value={value}
-                        options={{ style: "currency", currency: "USD" }}
-                    />
-                ) : (
-                    <Text type="secondary">-</Text>
-                ),
+            render: (_, record) => record.exchange_rate_locked_at ? (
+                <Space direction="vertical" size={0} align="end">
+                    <Text strong>{formatVnd(record.product_total_vnd)}</Text>
+                    <Text type="secondary">{formatCny(record.product_total_cny)}</Text>
+                </Space>
+            ) : (
+                <Space direction="vertical" size={0} align="end">
+                    <Text>{formatCny(resolveLegacyCnyTotal(record))}</Text>
+                    <Text type="secondary">Chưa chốt tỷ giá</Text>
+                </Space>
+            ),
         },
         {
             title: "Status",
@@ -587,47 +588,28 @@ export const OrderList = () => {
     ];
 
     return (
-        <List
-            title="Orders"
-            headerButtons={() => (
-                <Button icon={<ReloadOutlined />} onClick={handleFilterReset}>
-                    Reset Filters
-                </Button>
-            )}
-        >
-            <Space orientation="vertical" size="large" style={{ width: "100%" }}>
+        <List title={false} headerButtons={() => null}>
+            <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                <PageHeader
+                    title="Orders"
+                    description="Manage your national logistics order pipeline and track purchasing progress."
+                    actions={
+                        <PageHeaderActions>
+                            <Button icon={<ReloadOutlined />} onClick={handleFilterReset}>
+                                Reset Filters
+                            </Button>
+                        </PageHeaderActions>
+                    }
+                />
+
                 {isInitialLoading ? (
                     <OrderListStatsSkeleton />
                 ) : (
-                    <Row gutter={[16, 16]}>
-                        <Col xs={24} md={8}>
-                            <Card>
-                                <Statistic
-                                    title="Total Orders"
-                                    value={totalOrders}
-                                    prefix={<ShoppingOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} md={8}>
-                            <Card>
-                                <Statistic
-                                    title="Pending Orders"
-                                    value={pendingOrders}
-                                    prefix={<CarOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} md={8}>
-                            <Card>
-                                <Statistic
-                                    title="Purchasing Orders"
-                                    value={approvedOrders}
-                                    prefix={<CheckCircleOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                    </Row>
+                    <StatsGrid columns={3}>
+                        <StatCard label="Total Orders" value={totalOrders} icon={<ShoppingOutlined />} tone="blue" />
+                        <StatCard label="Pending Orders" value={pendingOrders} icon={<CarOutlined />} tone="orange" />
+                        <StatCard label="Purchasing Orders" value={approvedOrders} icon={<CheckCircleOutlined />} tone="green" />
+                    </StatsGrid>
                 )}
 
                 <Card size="small" styles={{ body: filterCardBodyStyle }}>
@@ -778,7 +760,7 @@ export const OrderList = () => {
                 destroyOnHidden
                 forceRender
             >
-                <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
+                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
                     <Text>Bạn có chắc chắn muốn từ chối đơn hàng này không?</Text>
                     <Form<RejectOrderFormValues> form={rejectForm} layout="vertical">
                         <Form.Item

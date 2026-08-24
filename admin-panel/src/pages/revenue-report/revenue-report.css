@@ -1,0 +1,427 @@
+.revenue-report {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.revenue-report__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.revenue-report__header h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  line-height: 1.25;
+}
+
+.revenue-report__header-actions,
+.revenue-report__filter-card .ant-card-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.revenue-report__filter-card {
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.04);
+}
+
+.revenue-report__filter-card .ant-select,
+.revenue-report__filter-card .ant-picker {
+  min-width: 190px;
+}
+
+.revenue-report__kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.revenue-report__kpi-card {
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.045);
+}
+
+.revenue-report__kpi-card .ant-card-body {
+  min-height: 146px;
+  padding: 18px;
+}
+
+.revenue-report__kpi-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.revenue-report__kpi-top .ant-typography {
+  color: #53627a;
+  font-size: 13px;
+}
+
+.revenue-report__kpi-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 18px;
+}
+
+.revenue-report__kpi-card strong {
+  display: block;
+  margin-top: 10px;
+  color: #111827;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.revenue-report__metric-change {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.revenue-report__metric-change--up {
+  color: #16a34a;
+}
+
+.revenue-report__metric-change--down {
+  color: #dc2626;
+}
+
+.revenue-report__metric-change--neutral {
+  color: #7a879b;
+}
+
+.revenue-report__kpi-card small {
+  display: block;
+  min-height: 18px;
+  margin-top: 3px;
+  color: #7a879b;
+}
+
+.revenue-report__sparkline {
+  width: 100%;
+  height: 34px;
+  margin-top: 8px;
+}
+
+.revenue-report__chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.42fr) minmax(360px, 0.78fr);
+  gap: 16px;
+}
+
+.revenue-report__bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.55fr);
+  gap: 16px;
+}
+
+.revenue-report .ant-card {
+  border-radius: 8px;
+  border-color: #e8edf5;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.04);
+}
+
+.revenue-report .ant-card-head {
+  min-height: 52px;
+  border-bottom-color: #edf1f7;
+}
+
+.revenue-report__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #53627a;
+  font-size: 12px;
+}
+
+.revenue-report__legend i,
+.revenue-report__legend b {
+  width: 24px;
+  height: 2px;
+  background: #1677ff;
+}
+
+.revenue-report__legend b {
+  border-top: 2px dashed #8dbbff;
+  background: transparent;
+}
+
+.revenue-report__line-chart,
+.revenue-report__chart-skeleton {
+  width: 100%;
+  height: 342px;
+}
+
+.revenue-report__grid-line {
+  stroke: #e8edf5;
+  stroke-width: 1;
+}
+
+.revenue-report__axis-label {
+  fill: #6b7890;
+  font-size: 12px;
+}
+
+.revenue-report__area-path {
+  fill: #1677ff;
+  opacity: 0.08;
+}
+
+.revenue-report__current-path {
+  fill: none;
+  stroke: #1677ff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.revenue-report__previous-path {
+  fill: none;
+  stroke: #8dbbff;
+  stroke-width: 2.2;
+  stroke-dasharray: 6 5;
+  stroke-linecap: round;
+}
+
+.revenue-report__current-dot {
+  fill: #fff;
+  stroke: #1677ff;
+  stroke-width: 3;
+}
+
+.revenue-report__donut-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  align-items: center;
+  gap: 22px;
+  min-height: 308px;
+}
+
+.revenue-report__donut {
+  position: relative;
+  width: 190px;
+  height: 190px;
+}
+
+.revenue-report__donut svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.revenue-report__donut-bg,
+.revenue-report__donut-slice {
+  fill: none;
+  stroke-width: 18;
+}
+
+.revenue-report__donut-bg {
+  stroke: #eef2f7;
+}
+
+.revenue-report__donut-slice {
+  cursor: pointer;
+  transition: stroke-width 0.2s ease;
+}
+
+.revenue-report__donut-slice:hover {
+  stroke-width: 21;
+}
+
+.revenue-report__donut-center {
+  position: absolute;
+  inset: 38px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+.revenue-report__donut-center strong {
+  color: #111827;
+  font-size: 15px;
+}
+
+.revenue-report__donut-center span {
+  color: #6b7890;
+  font-size: 12px;
+}
+
+.revenue-report__donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.revenue-report__donut-legend button {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 54px 112px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.revenue-report__donut-legend span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.revenue-report__donut-legend em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.revenue-report__donut-legend strong,
+.revenue-report__donut-legend small {
+  text-align: right;
+}
+
+.revenue-report__service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 250px;
+}
+
+.revenue-report__service-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 8px;
+}
+
+.revenue-report__service-row div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.revenue-report__service-row strong {
+  color: #111827;
+}
+
+.revenue-report__service-row span,
+.revenue-report__service-row em {
+  color: #53627a;
+  font-style: normal;
+}
+
+.revenue-report__service-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f7;
+}
+
+.revenue-report__service-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.revenue-report__notes,
+.revenue-report__error {
+  border-radius: 8px;
+}
+
+.revenue-report__drilldown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.revenue-report__drilldown-summary,
+.revenue-report__drilldown-item {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenue-report__drilldown-summary {
+  grid-template-columns: 1fr auto;
+  background: #f7fbff;
+}
+
+.revenue-report__drilldown-item strong {
+  color: #111827;
+}
+
+.revenue-report__drilldown-item span,
+.revenue-report__drilldown-item em {
+  color: #53627a;
+  font-style: normal;
+}
+
+.revenue-report__drilldown-item b {
+  color: #1677ff;
+}
+
+@media (max-width: 1280px) {
+  .revenue-report__kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .revenue-report__chart-grid,
+  .revenue-report__bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .revenue-report__header {
+    flex-direction: column;
+  }
+
+  .revenue-report__header-actions,
+  .revenue-report__header-actions .ant-btn {
+    width: 100%;
+  }
+
+  .revenue-report__filter-card .ant-select,
+  .revenue-report__filter-card .ant-picker,
+  .revenue-report__filter-card .ant-btn {
+    width: 100%;
+  }
+
+  .revenue-report__kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .revenue-report__donut-layout {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .revenue-report__donut-legend {
+    width: 100%;
+  }
+
+  .revenue-report__donut-legend button {
+    grid-template-columns: 10px minmax(0, 1fr) 48px;
+  }
+
+  .revenue-report__donut-legend small {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
+}

@@ -25,6 +25,7 @@ import { ShippingInfoSection } from "./components/ShippingInfoSection";
 import { NotesSection } from "./components/NotesSection";
 import { AttachmentsSection } from "./components/AttachmentsSection";
 import { OrderSummaryPanel } from "./components/OrderSummaryPanel";
+import { resolveLegacyCnyTotal } from "../../utils/currency";
 import {
   PACKAGING_TYPE_OPTIONS,
   SHIPPING_COMPANY_OPTIONS,
@@ -1106,7 +1107,7 @@ export const OrderEdit = () => {
                           orderReference={order?.order_code ?? `#${id}`}
                           saveLabel={canEditTracking ? "Cập nhật mã vận đơn" : "Cập nhật đơn hàng"}
                           statusLabel={getDisplayStatusLabel(order?.status)}
-                          totalAmount={order?.total_amount ?? 0}
+                          totalAmount={resolveLegacyCnyTotal(order)}
                         />
                       </Space>
                     </Col>

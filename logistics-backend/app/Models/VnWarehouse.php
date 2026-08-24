@@ -16,4 +16,5 @@ class VnWarehouse extends Model
     {
         return $this->hasMany(VnBatchReceipt::class, 'vn_warehouse_id');
     }
+    
 }

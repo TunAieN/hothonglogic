@@ -4,6 +4,19 @@ export const ORDER_FIELDS = {
     order_code
     status
     total_amount
+    exchange_rate
+    product_total_cny
+    product_total_vnd
+    currency
+    exchange_rate_locked_at
+    deposit_percent
+    deposit_amount_vnd
+    deposit_paid_amount_vnd
+    deposit_remaining_amount_vnd
+    deposit_status
+    deposit_transfer_content
+    deposit_requested_at
+    deposit_paid_at
     note
     created_at
     creator {
@@ -22,6 +35,61 @@ export const ORDER_FIELDS = {
     customer_id
     status
     total_amount
+    exchange_rate
+    product_total_cny
+    product_total_vnd
+    currency
+    exchange_rate_locked_at
+    deposit_percent
+    deposit_amount_vnd
+    deposit_paid_amount_vnd
+    deposit_remaining_amount_vnd
+    deposit_status
+    deposit_transfer_content
+    deposit_requested_at
+    deposit_paid_at
+    depositVoucher {
+      id
+      voucher_code
+      voucher_type
+      status
+      currency
+      base_amount_cny
+      exchange_rate
+      base_amount_vnd
+      deposit_percent
+      total_amount
+      paid_amount
+      remaining_amount
+      bank_name_snapshot
+      bank_account_number_snapshot
+      bank_account_holder_snapshot
+      bank_branch_name_snapshot
+      transfer_content
+      created_at
+      transactions {
+        id
+        transaction_code
+        amount
+        payment_method
+        bank_name
+        bank_transaction_code
+        received_at
+        confirmed_by
+        status
+        note
+        created_at
+      }
+      invoice {
+        id
+        invoice_code
+        invoice_type
+        status
+        total_amount
+        paid_amount
+        issued_at
+      }
+    }
     note
     created_at
     creator {
@@ -53,7 +121,11 @@ export const ORDER_FIELDS = {
           product_name
           product_image
           price_cny
+          exchange_rate
+          unit_price_vnd
           quantity
+          subtotal_cny
+          subtotal_vnd
           seller
           shop_id
           shop_name
@@ -117,7 +189,11 @@ export const ORDER_FIELDS = {
           id
           product_name
           price_cny
+          exchange_rate
+          unit_price_vnd
           quantity
+          subtotal_cny
+          subtotal_vnd
           seller
           shop_id
           shop_name
@@ -129,7 +205,11 @@ export const ORDER_FIELDS = {
       product_name
       product_link
       price_cny
+      exchange_rate
+      unit_price_vnd
       quantity
+      subtotal_cny
+      subtotal_vnd
       note
       product_image
       seller
@@ -145,6 +225,61 @@ export const ORDER_FIELDS = {
     customer_id
     status
     total_amount
+    exchange_rate
+    product_total_cny
+    product_total_vnd
+    currency
+    exchange_rate_locked_at
+    deposit_percent
+    deposit_amount_vnd
+    deposit_paid_amount_vnd
+    deposit_remaining_amount_vnd
+    deposit_status
+    deposit_transfer_content
+    deposit_requested_at
+    deposit_paid_at
+    depositVoucher {
+      id
+      voucher_code
+      voucher_type
+      status
+      currency
+      base_amount_cny
+      exchange_rate
+      base_amount_vnd
+      deposit_percent
+      total_amount
+      paid_amount
+      remaining_amount
+      bank_name_snapshot
+      bank_account_number_snapshot
+      bank_account_holder_snapshot
+      bank_branch_name_snapshot
+      transfer_content
+      created_at
+      transactions {
+        id
+        transaction_code
+        amount
+        payment_method
+        bank_name
+        bank_transaction_code
+        received_at
+        confirmed_by
+        status
+        note
+        created_at
+      }
+      invoice {
+        id
+        invoice_code
+        invoice_type
+        status
+        total_amount
+        paid_amount
+        issued_at
+      }
+    }
     note
     created_at
     creator {
@@ -214,7 +349,11 @@ export const ORDER_FIELDS = {
           id
           product_name
           price_cny
+          exchange_rate
+          unit_price_vnd
           quantity
+          subtotal_cny
+          subtotal_vnd
           seller
           shop_id
           shop_name
@@ -226,7 +365,11 @@ export const ORDER_FIELDS = {
       product_name
       product_link
       price_cny
+      exchange_rate
+      unit_price_vnd
       quantity
+      subtotal_cny
+      subtotal_vnd
       note
       product_image
       seller

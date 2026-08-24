@@ -11,6 +11,8 @@ use App\Models\PaymentTransaction;
 use App\Models\PaymentVoucher;
 use App\Models\PaymentVoucherPackage;
 use App\Models\PaymentVoucherSurcharge;
+use App\Models\Order;
+use App\Services\OrderPricingService;
 use App\Models\VnPackage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +90,218 @@ class PaymentVoucherService
             'payment_account' => $this->defaultPaymentAccount(),
             'transfer_content' => 'TT <ma phieu thanh toan>',
         ];
+    }
+
+    public function createDepositVoucher(
+        int|string $orderId,
+        mixed $depositPercent = null,
+        bool $enforcePermission = true,
+    ): PaymentVoucher
+    {
+        if ($enforcePermission) {
+            $this->ensurePermission('payment_vouchers.create');
+        }
+
+        return DB::transaction(function () use ($orderId, $depositPercent) {
+            $order = Order::query()->with(['items', 'customer'])->lockForUpdate()->findOrFail($orderId);
+            if (! in_array((string) $order->status, ['pending', 'awaiting_deposit'], true)) {
+                throw new HttpException(422, 'Đơn hàng chưa ở trạng thái có thể tạo yêu cầu đặt cọc.');
+            }
+
+            $existing = PaymentVoucher::query()
+                ->where('voucher_type', 'deposit')
+                ->where('order_id', $order->id)
+                ->whereIn('status', [
+                    PaymentVoucher::STATUS_WAITING_PAYMENT,
+                    PaymentVoucher::STATUS_PARTIAL_PAID,
+                    PaymentVoucher::STATUS_PAID,
+                ])
+                ->whereNull('cancelled_at')
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+            if ($existing) {
+                $this->syncOrderDepositSnapshot($order, $existing);
+                return $existing->fresh($this->voucherRelations());
+            }
+
+            $percent = round((float) ($depositPercent ?? 70), 2);
+            if ($percent <= 0 || $percent > 100) {
+                throw new HttpException(422, 'Tỷ lệ đặt cọc phải lớn hơn 0 và không vượt quá 100%.');
+            }
+
+            /** @var OrderPricingService $pricing */
+            $pricing = app(OrderPricingService::class);
+            $lockedOrder = $order->exchange_rate_locked_at ? $order->fresh('items') : $pricing->lockExchangeRateForOrder($order);
+            $baseAmountCny = (string) $lockedOrder->product_total_cny;
+            $baseAmountVnd = (int) $lockedOrder->product_total_vnd;
+            if ($baseAmountVnd <= 0 || ! $lockedOrder->exchange_rate_locked_at) {
+                throw new HttpException(422, 'Chưa thể tạo yêu cầu đặt cọc vì chưa xác định được số tiền VND.');
+            }
+
+            $depositAmount = (int) round($baseAmountVnd * $percent / 100);
+            if ($depositAmount <= 0) {
+                throw new HttpException(422, 'Số tiền đặt cọc phải lớn hơn 0.');
+            }
+
+            $paymentAccount = $this->defaultPaymentAccount();
+            if (! $paymentAccount) {
+                throw new HttpException(422, 'Chưa cấu hình tài khoản nhận tiền mặc định.');
+            }
+
+            $voucherCode = $this->nextCode('DC', 'payment_vouchers', 'voucher_code');
+            $voucher = PaymentVoucher::query()->create([
+                'voucher_code' => $voucherCode,
+                'voucher_type' => 'deposit',
+                'order_id' => $lockedOrder->id,
+                'customer_id' => $lockedOrder->customer_id,
+                'created_by' => Auth::id(),
+                'receiver_type' => 'deposit',
+                'payment_method_expected' => 'bank_transfer',
+                'payment_account_id' => $paymentAccount->id,
+                'bank_name_snapshot' => $paymentAccount->bank_name,
+                'bank_code_snapshot' => $paymentAccount->bank_code,
+                'bank_account_number_snapshot' => $paymentAccount->account_number,
+                'bank_account_holder_snapshot' => $paymentAccount->account_holder,
+                'bank_branch_name_snapshot' => $paymentAccount->branch_name,
+                'base_amount_cny' => $baseAmountCny,
+                'exchange_rate' => $lockedOrder->exchange_rate,
+                'base_amount_vnd' => $baseAmountVnd,
+                'deposit_percent' => $percent,
+                'currency' => 'VND',
+                'transfer_content' => 'COC ' . $lockedOrder->order_code,
+                'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
+                'shipping_fee_total' => 0,
+                'domestic_shipping_fee' => 0,
+                'surcharge_total' => 0,
+                'total_amount' => $depositAmount,
+                'deposit_applied' => 0,
+                'customer_credit_applied' => 0,
+                'paid_amount' => 0,
+                'remaining_amount' => $depositAmount,
+                'note' => 'Deposit for order ' . $lockedOrder->order_code,
+            ]);
+
+            $this->syncOrderDepositSnapshot($lockedOrder, $voucher);
+
+            $this->audit('create_deposit_payment_voucher', $voucher, null, $voucher->toArray());
+            return $voucher->fresh($this->voucherRelations());
+        });
+    }
+
+    public function confirmDepositPayment(int|string $orderId, array $input): Order
+    {
+        $this->ensurePermission('payment_transactions.confirm');
+
+        return DB::transaction(function () use ($orderId, $input) {
+            $order = Order::query()->with(['depositVoucher'])->lockForUpdate()->findOrFail($orderId);
+            $voucher = PaymentVoucher::query()
+                ->where('voucher_type', 'deposit')
+                ->where('order_id', $order->id)
+                ->whereNull('cancelled_at')
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+
+            // Retried/double-clicked confirmations are idempotent. The row lock makes a
+            // concurrent request wait until the first confirmation commits.
+            if ((string) $order->status === 'deposited' && $voucher?->status === PaymentVoucher::STATUS_PAID) {
+                $confirmedTransaction = $voucher->transactions()
+                    ->where('status', PaymentTransaction::STATUS_CONFIRMED)
+                    ->lockForUpdate()
+                    ->latest('id')
+                    ->first();
+                if ($confirmedTransaction) {
+                    $this->issueInvoice($voucher->id, $confirmedTransaction, false);
+                }
+
+                return $order->fresh();
+            }
+            if ((string) $order->status !== 'awaiting_deposit') {
+                throw new HttpException(422, 'Đơn hàng không ở trạng thái chờ đặt cọc.');
+            }
+
+            if (! $voucher) {
+                // Repair legacy/interrupted two-step flows where the order snapshot was
+                // committed but the deposit voucher was never created.
+                $voucher = $this->createDepositVoucher($order->id, $order->deposit_percent, false);
+            }
+            if ($voucher->expires_at && $voucher->expires_at->isPast()) {
+                throw new HttpException(422, 'Phiếu đặt cọc đã hết hạn.');
+            }
+            if ($voucher->status === PaymentVoucher::STATUS_PAID) {
+                throw new HttpException(422, 'Phiếu đặt cọc đã được thanh toán.');
+            }
+            if ($voucher->status !== PaymentVoucher::STATUS_WAITING_PAYMENT) {
+                throw new HttpException(422, 'Phiếu đặt cọc không ở trạng thái chờ thanh toán.');
+            }
+            if ($voucher->transactions()->where('status', PaymentTransaction::STATUS_CONFIRMED)->lockForUpdate()->exists()) {
+                throw new HttpException(422, 'Phiếu đặt cọc đã có giao dịch thanh toán thành công.');
+            }
+
+            $amount = (int) round((float) ($input['amount_vnd'] ?? $input['amount'] ?? 0));
+            $remaining = (int) round((float) $voucher->remaining_amount);
+            if ($amount <= 0) {
+                throw new HttpException(422, 'Số tiền thực nhận phải lớn hơn 0.');
+            }
+            if ($remaining <= 0) {
+                throw new HttpException(422, 'Phiếu đặt cọc không còn số tiền cần thanh toán.');
+            }
+            if ($amount !== $remaining) {
+                throw new HttpException(422, 'Số tiền thực nhận phải bằng toàn bộ số tiền đặt cọc còn phải thanh toán.');
+            }
+
+            $bankTransactionCode = trim((string) ($input['transaction_code'] ?? $input['bank_transaction_code'] ?? ''));
+            if ($bankTransactionCode === '') {
+                throw new HttpException(422, 'Vui lòng nhập mã giao dịch ngân hàng.');
+            }
+            if (PaymentTransaction::query()
+                ->where('bank_transaction_code', $bankTransactionCode)
+                ->where('status', PaymentTransaction::STATUS_CONFIRMED)
+                ->lockForUpdate()
+                ->exists()) {
+                throw new HttpException(422, 'Mã giao dịch ngân hàng đã tồn tại.');
+            }
+
+            $receivedAt = $this->parseReceivedAt($input['received_at'] ?? null);
+            $transaction = PaymentTransaction::query()->create([
+                'transaction_code' => $this->nextCode('GD', 'payment_transactions', 'transaction_code'),
+                'payment_voucher_id' => $voucher->id,
+                'amount' => $this->money($amount),
+                'payment_method' => $voucher->payment_method_expected ?: 'bank_transfer',
+                'bank_name' => $voucher->bank_name_snapshot,
+                'bank_transaction_code' => $bankTransactionCode,
+                'received_at' => $receivedAt,
+                'confirmed_by' => Auth::id(),
+                'status' => PaymentTransaction::STATUS_CONFIRMED,
+                'note' => $input['note'] ?? null,
+                'proof_image_path' => $input['proof_image_path'] ?? null,
+            ]);
+
+            $before = $voucher->toArray();
+            $voucher->update([
+                'paid_amount' => $this->money((float) $voucher->total_amount),
+                'remaining_amount' => 0,
+                'status' => PaymentVoucher::STATUS_PAID,
+            ]);
+
+            $order->forceFill([
+                'status' => 'deposited',
+                'deposit_paid_amount_vnd' => (int) round((float) $voucher->total_amount),
+                'deposit_remaining_amount_vnd' => 0,
+                'deposit_status' => PaymentVoucher::STATUS_PAID,
+                'deposit_paid_at' => $receivedAt,
+                'deposit_confirmed_by' => Auth::id(),
+                'deposit_manual_transaction_code' => $bankTransactionCode,
+                'deposit_note' => $input['note'] ?? $order->deposit_note,
+            ])->save();
+
+            $this->audit('confirm_deposit_payment', $transaction, null, $transaction->toArray());
+            $this->audit('update_deposit_payment_voucher', $voucher, $before, $voucher->fresh()->toArray());
+            $this->issueInvoice($voucher->id, $transaction, false);
+
+            return $order->fresh();
+        });
     }
 
     public function create(array $input): PaymentVoucher
@@ -207,6 +421,20 @@ class PaymentVoucherService
     {
         $this->ensurePermission('payment_transactions.confirm');
 
+        $depositVoucher = PaymentVoucher::query()->find($voucherId);
+        if ($depositVoucher?->voucher_type === 'deposit' && $depositVoucher->order_id) {
+            $order = $this->confirmDepositPayment($depositVoucher->order_id, [
+                'amount_vnd' => $input['amount'] ?? 0,
+                'transaction_code' => $input['bank_transaction_code'] ?? null,
+                'received_at' => $input['received_at'] ?? null,
+                'note' => $input['note'] ?? null,
+                'proof_image_path' => $input['proof_image_path'] ?? null,
+            ]);
+
+            return $order->depositVoucher?->fresh($this->voucherRelations())
+                ?? PaymentVoucher::query()->with($this->voucherRelations())->findOrFail($voucherId);
+        }
+
         return DB::transaction(function () use ($voucherId, $input) {
             $voucher = PaymentVoucher::query()->with($this->voucherRelations())->lockForUpdate()->find($voucherId);
             if (! $voucher) {
@@ -263,7 +491,12 @@ class PaymentVoucherService
             $this->audit('confirm_payment_transaction', $transaction, null, $transaction->toArray());
             $this->audit('update_payment_voucher', $voucher, $before, $voucher->fresh()->toArray());
 
-            if ($status === PaymentVoucher::STATUS_PAID) {
+            $freshVoucher = $voucher->fresh();
+            if ($freshVoucher?->voucher_type === 'deposit' && $freshVoucher->order_id) {
+                $this->syncOrderDepositSnapshot($freshVoucher->order()->lockForUpdate()->first(), $freshVoucher);
+            }
+
+            if ($status === PaymentVoucher::STATUS_PAID && $freshVoucher?->voucher_type !== 'deposit') {
                 $this->issueInvoice($voucher->id);
             }
 
@@ -310,9 +543,15 @@ class PaymentVoucherService
         });
     }
 
-    public function issueInvoice(int|string $voucherId): Invoice
+    public function issueInvoice(
+        int|string $voucherId,
+        ?PaymentTransaction $paymentTransaction = null,
+        bool $enforcePermission = true,
+    ): Invoice
     {
-        $this->ensurePermission('invoices.issue');
+        if ($enforcePermission) {
+            $this->ensurePermission('invoices.issue');
+        }
 
         $voucher = PaymentVoucher::query()->with($this->voucherRelations())->lockForUpdate()->find($voucherId);
         if (! $voucher) {
@@ -325,8 +564,19 @@ class PaymentVoucherService
             return $voucher->invoice->load('items');
         }
 
+        $isDeposit = $voucher->voucher_type === 'deposit';
+        if ($isDeposit && ! $paymentTransaction) {
+            $paymentTransaction = $voucher->transactions
+                ->where('status', PaymentTransaction::STATUS_CONFIRMED)
+                ->sortByDesc('id')
+                ->first();
+        }
+
         $invoice = Invoice::query()->create([
             'payment_voucher_id' => $voucher->id,
+            'invoice_type' => $isDeposit ? 'deposit' : 'shipping',
+            'order_id' => $voucher->order_id,
+            'payment_transaction_id' => $paymentTransaction?->id,
             'invoice_code' => $this->nextCode('HD', 'invoices', 'invoice_code'),
             'customer_id' => $voucher->customer_id,
             'created_by' => Auth::id() ?? $voucher->created_by,
@@ -337,10 +587,33 @@ class PaymentVoucherService
             'total_amount' => $voucher->total_amount,
             'paid_amount' => $voucher->paid_amount,
             'status' => 'issued',
-            'note' => 'Hóa đơn từ phiếu thanh toán ' . $voucher->voucher_code,
+            'note' => $isDeposit
+                ? 'Hóa đơn đặt cọc cho đơn hàng ' . ($voucher->order?->order_code ?? $voucher->order_id)
+                : 'Hóa đơn từ phiếu thanh toán ' . $voucher->voucher_code,
         ]);
 
-        foreach ($voucher->packages as $package) {
+        if ($isDeposit) {
+            InvoiceItem::query()->create([
+                'invoice_id' => $invoice->id,
+                'item_type' => 'deposit',
+                'description' => 'Tiền đặt cọc đơn hàng ' . ($voucher->order?->order_code ?? $voucher->order_id),
+                'quantity' => 1,
+                'unit_price' => $voucher->total_amount,
+                'amount' => $voucher->total_amount,
+                'metadata' => [
+                    'order_id' => $voucher->order_id,
+                    'order_code' => $voucher->order?->order_code,
+                    'order_value_vnd' => $voucher->base_amount_vnd,
+                    'deposit_percent' => $voucher->deposit_percent,
+                    'deposit_amount_vnd' => $voucher->total_amount,
+                    'received_amount_vnd' => $paymentTransaction?->amount ?? $voucher->paid_amount,
+                    'bank_transaction_code' => $paymentTransaction?->bank_transaction_code,
+                    'received_at' => $paymentTransaction?->received_at?->toISOString(),
+                ],
+            ]);
+        }
+
+        foreach ($isDeposit ? [] : $voucher->packages as $package) {
             InvoiceItem::query()->create([
                 'invoice_id' => $invoice->id,
                 'vn_package_id' => $package->vn_package_id,
@@ -373,13 +646,17 @@ class PaymentVoucherService
             }
         }
 
-        VnPackage::query()->where('payment_voucher_id', $voucher->id)->update([
-            'payment_status' => 'paid',
-            'delivery_status' => 'ready_for_delivery',
-        ]);
+        if (! $isDeposit) {
+            VnPackage::query()->where('payment_voucher_id', $voucher->id)->update([
+                'payment_status' => 'paid',
+                'delivery_status' => 'ready_for_delivery',
+            ]);
+        }
 
         $this->audit('issue_invoice', $invoice, null, $invoice->toArray());
-        $this->audit('package_status_changed', $voucher, null, ['delivery_status' => 'ready_for_delivery']);
+        if (! $isDeposit) {
+            $this->audit('package_status_changed', $voucher, null, ['delivery_status' => 'ready_for_delivery']);
+        }
         return $invoice->load('items');
     }
 
@@ -392,6 +669,29 @@ class PaymentVoucherService
             'remaining_amount' => $this->money($remaining),
             'status' => $remaining <= 0 ? PaymentVoucher::STATUS_PAID : ($paid > 0 ? PaymentVoucher::STATUS_PARTIAL_PAID : PaymentVoucher::STATUS_WAITING_PAYMENT),
         ]);
+    }
+
+    private function syncOrderDepositSnapshot(?Order $order, PaymentVoucher $voucher): void
+    {
+        if (! $order) {
+            return;
+        }
+
+        $isPaid = $voucher->status === PaymentVoucher::STATUS_PAID;
+        $paidAmount = (int) round((float) $voucher->paid_amount);
+        $remainingAmount = (int) round((float) $voucher->remaining_amount);
+
+        $order->forceFill([
+            'status' => $isPaid ? 'deposited' : 'awaiting_deposit',
+            'deposit_percent' => $voucher->deposit_percent,
+            'deposit_amount_vnd' => (int) round((float) $voucher->total_amount),
+            'deposit_paid_amount_vnd' => $paidAmount,
+            'deposit_remaining_amount_vnd' => $remainingAmount,
+            'deposit_status' => $voucher->status,
+            'deposit_transfer_content' => $voucher->transfer_content,
+            'deposit_requested_at' => $order->deposit_requested_at ?? $voucher->created_at ?? now(),
+            'deposit_paid_at' => $isPaid ? ($order->deposit_paid_at ?? $voucher->updated_at ?? now()) : $order->deposit_paid_at,
+        ])->save();
     }
 
     public function voucherRelations(): array

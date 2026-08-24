@@ -35,6 +35,19 @@ export const CUSTOMER_FIELDS = {
       order_code
       status
       total_amount
+      exchange_rate
+      product_total_cny
+      product_total_vnd
+      currency
+      exchange_rate_locked_at
+    deposit_percent
+    deposit_amount_vnd
+    deposit_paid_amount_vnd
+    deposit_remaining_amount_vnd
+    deposit_status
+    deposit_transfer_content
+    deposit_requested_at
+    deposit_paid_at
       created_at
     }
   `,
