@@ -28,6 +28,7 @@ import {
   message,
 } from "antd";
 import {
+  CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   FileSearchOutlined,
@@ -64,6 +65,7 @@ import {
 } from "./helpers";
 import { ConfirmPackageItemsModal } from "./components/ConfirmPackageItemsModal";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
+import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
 import type {
   ChinaWarehouseApiRecord,
   ChinaWarehouseBatchRecord,
@@ -73,7 +75,7 @@ import type {
   PackageFormValues,
 } from "./types";
 
-const { Text, Title, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { Dragger } = Upload;
 
 const filterCardBodyStyle = { padding: 20 };
@@ -703,50 +705,21 @@ export const ChinaWarehousePage = () => {
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       {pageError ? <Alert type="error" message={pageError} showIcon /> : null}
 
-      <Card>
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col xs={24} xl={10}>
-            <Space direction="vertical" size={4}>
-              <Title level={2} style={{ margin: 0 }}>
-                Kho hàng Trung Quốc
-              </Title>
-              <Text type="secondary">
-                Quản lý kiện hàng đã về kho Trung Quốc, đối chiếu mã vận đơn và gom
-                kiện vào lô vận chuyển về Việt Nam.
-              </Text>
-            </Space>
-          </Col>
-          <Col xs={24} xl={14}>
-            {isInitialLoading ? (
-              <ChinaWarehouseStatsSkeleton />
-            ) : (
-              <Row gutter={[12, 12]}>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Tổng kiện" value={stats.total} />
-                  </Card>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Đã khớp" value={stats.matched} valueStyle={{ color: "#389e0d" }} />
-                  </Card>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Chưa khớp" value={stats.unmatched} valueStyle={{ color: "#d46b08" }} />
-                  </Card>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Đã vào lô" value={stats.batched} valueStyle={{ color: "#1677ff" }} />
-                  </Card>
-                </Col>
-              </Row>
-            )}
-          </Col>
-        </Row>
-      </Card>
+      <PageHeader
+        title="Kho hàng Trung Quốc"
+        description="Quản lý kiện hàng đã về kho Trung Quốc, đối chiếu mã vận đơn và gom kiện vào lô vận chuyển về Việt Nam."
+      />
 
+      {isInitialLoading ? (
+        <ChinaWarehouseStatsSkeleton />
+      ) : (
+        <StatsGrid columns={4}>
+          <StatCard label="Tổng kiện" value={stats.total} unit="kiện" icon={<InboxOutlined />} tone="blue" />
+          <StatCard label="Đã khớp" value={stats.matched} unit="kiện" icon={<CheckCircleOutlined />} tone="green" />
+          <StatCard label="Chưa khớp" value={stats.unmatched} unit="kiện" icon={<FileSearchOutlined />} tone="orange" />
+          <StatCard label="Đã vào lô" value={stats.batched} unit="kiện" icon={<PlusCircleOutlined />} tone="purple" />
+        </StatsGrid>
+      )}
       <Card title="Bộ lọc tìm kiếm" styles={{ body: filterCardBodyStyle }}>
         <Form<ChinaWarehouseFilters> form={filterForm} layout="vertical" onFinish={handleSearch}>
           <Row gutter={[16, 0]}>
@@ -1109,11 +1082,11 @@ export const ChinaWarehousePage = () => {
             layout="vertical"
             initialValues={{ batchMode: "create", shippingType: "normal" }}
           >
-            <Form.Item label={"L\u1EF1a ch\u1ECDn"} name="batchMode">
+            <Form.Item label={"Lựa chọn"} name="batchMode">
               <Radio.Group
                 options={[
-                  { label: "T\u1EA1o l\u00F4 h\u00E0ng m\u1EDBi", value: "create" },
-                  { label: "Th\u00EAm v\u00E0o l\u00F4 h\u00E0ng c\u00F3 s\u1EB5n", value: "existing" },
+                  { label: "Tạo lô hàng mới", value: "create" },
+                  { label: "Thêm vào lô hàng có sẵn", value: "existing" },
                 ]}
               />
             </Form.Item>
@@ -1121,7 +1094,7 @@ export const ChinaWarehousePage = () => {
             {batchMode === "create" ? (
               <>
                 <div style={{ marginBottom: 16 }}>
-                  <Text strong>{"M\u00E3 l\u00F4 h\u00E0ng d\u1EF1 ki\u1EBFn"}</Text>
+                  <Text strong>{"Mã lô hàng dự kiến"}</Text>
                   <div style={{ marginTop: 8 }}>
                     <Tag color="blue">{predictedBatchCode}</Tag>
                   </div>
@@ -1129,43 +1102,43 @@ export const ChinaWarehousePage = () => {
 
                 <Row gutter={16}>
                   <Col xs={24} md={12}>
-                    <Form.Item label={"H\u00ECnh th\u1EE9c v\u1EADn chuy\u1EC3n"} name="shippingType">
+                    <Form.Item label={"Hình thức vận chuyển"} name="shippingType">
                       <Select
                         options={[
-                          { label: "Th\u01B0\u1EDDng", value: "normal" },
+                          { label: "Thường", value: "normal" },
                           { label: "Nhanh", value: "fast" },
                         ]}
                       />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
-                    <Form.Item label={"Ng\u00E0y d\u1EF1 ki\u1EBFn v\u1EC1 kho"} name="expectedArrivalAt">
+                    <Form.Item label={"Ngày dự kiến về kho"} name="expectedArrivalAt">
                       <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
                     </Form.Item>
                   </Col>
                 </Row>
 
-                <Form.Item label={"Kho \u0111\u00EDch"} name="destinationWarehouseName">
-                  <Input placeholder={"Nh\u1EADp t\u00EAn kho \u0111\u00EDch..."} />
+                <Form.Item label={"Kho đích"} name="destinationWarehouseName">
+                  <Input placeholder={"Nhập tên kho đích..."} />
                 </Form.Item>
 
-                <Form.Item label={"Ghi ch\u00FA"} name="note">
-                  <Input.TextArea rows={3} placeholder={"Nh\u1EADp ghi ch\u00FA n\u1EBFu c\u00F3..."} />
+                <Form.Item label={"Ghi chú"} name="note">
+                  <Input.TextArea rows={3} placeholder={"Nhập ghi chú nếu có..."} />
                 </Form.Item>
               </>
             ) : (
               <Form.Item
-                label={"L\u00F4 h\u00E0ng hi\u1EC7n c\u00F3"}
+                label={"Lô hàng hiện có"}
                 name="cnBatchId"
-                rules={[{ required: true, message: "Vui l\u00F2ng ch\u1ECDn l\u00F4 h\u00E0ng." }]}
+                rules={[{ required: true, message: "Vui lòng chọn lô hàng." }]}
               >
                 <Select
-                  placeholder={"Ch\u1ECDn l\u00F4 h\u00E0ng"}
+                  placeholder={"Chọn lô hàng"}
                   options={availableBatches.map((batch) => ({
                     label: getBatchDisplayName(batch),
                     value: batch.id,
                   }))}
-                  notFoundContent={"Kh\u00F4ng c\u00F3 l\u00F4 h\u00E0ng ph\u00F9 h\u1EE3p"}
+                  notFoundContent={"Không có lô hàng phù hợp"}
                 />
               </Form.Item>
             )}

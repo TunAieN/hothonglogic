@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadCustomers() {
     const customerSelect = document.getElementById('customerSelect');
 
-    const endpoint = settings.apiEndpoint; // ví dụ: http://localhost:8000/graphql
+    const endpoint = settings.apiEndpoint; //  http://localhost:8000/graphql
 
     const query = `
         query {

@@ -8,6 +8,9 @@ class Invoice extends Model
 {
     protected $fillable = [
         'payment_voucher_id',
+        'invoice_type',
+        'order_id',
+        'payment_transaction_id',
         'invoice_code',
         'customer_id',
         'created_by',
@@ -31,6 +34,36 @@ class Invoice extends Model
     public function voucher()
     {
         return $this->belongsTo(PaymentVoucher::class, 'payment_voucher_id');
+    }
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function paymentTransaction()
+    {
+        return $this->belongsTo(PaymentTransaction::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function confirmer()
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    public function issuer()
+    {
+        return $this->belongsTo(User::class, 'issued_by');
     }
 
     public function items()

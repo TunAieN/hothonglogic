@@ -4,6 +4,7 @@ export type PaymentCustomer = {
   name: string;
   phone?: string | null;
   address?: string | null;
+  email?: string | null;
 };
 
 export type EligiblePaymentPackage = {
@@ -24,6 +25,12 @@ export type EligiblePaymentPackage = {
     order?: {
       id: string;
       order_code: string;
+      total_amount?: number | null;
+      product_total_vnd?: number | null;
+      deposit_percent?: number | null;
+      deposit_amount_vnd?: number | null;
+      deposit_paid_amount_vnd?: number | null;
+      deposit_remaining_amount_vnd?: number | null;
       customer: PaymentCustomer;
     } | null;
   } | null;
@@ -31,6 +38,7 @@ export type EligiblePaymentPackage = {
     warehouse?: {
       id: string;
       name: string;
+      address?: string | null;
     } | null;
   } | null;
 };
@@ -112,9 +120,24 @@ export type Invoice = {
   items?: Array<{ id: string; item_type: string; description: string; quantity: number; unit_price: number; amount: number }>;
 };
 
+export type PaymentVoucherRelatedOrder = {
+  id: string;
+  order_code: string;
+  status: string;
+  total_amount?: number | null;
+  product_total_vnd?: number | null;
+  deposit_percent?: number | null;
+  deposit_amount_vnd?: number | null;
+  deposit_paid_amount_vnd?: number | null;
+  deposit_remaining_amount_vnd?: number | null;
+  created_at?: string | null;
+};
+
 export type PaymentVoucher = {
   id: string;
   voucher_code: string;
+  voucher_type: string;
+  order_id?: string | null;
   customer: PaymentCustomer;
   warehouse?: { id: string; name: string } | null;
   creator?: { id: string; name: string } | null;
@@ -129,6 +152,11 @@ export type PaymentVoucher = {
   bank_branch_name_snapshot?: string | null;
   transfer_content?: string | null;
   paymentAccount?: PaymentAccount | null;
+  base_amount_cny?: number | null;
+  exchange_rate?: number | null;
+  base_amount_vnd?: number | null;
+  deposit_percent?: number | null;
+  currency?: string | null;
   status: string;
   shipping_fee_total: number;
   domestic_shipping_fee: number;
@@ -160,5 +188,6 @@ export type PaymentVoucher = {
   surcharges: Array<{ id: string; surcharge_type: string; amount: number; note?: string | null }>;
   transactions: PaymentTransaction[];
   invoice?: Invoice | null;
+  order?: PaymentVoucherRelatedOrder | null;
 };
 

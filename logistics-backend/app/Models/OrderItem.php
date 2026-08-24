@@ -12,7 +12,11 @@ class OrderItem extends Model
         'product_name',
         'product_link',
         'price_cny',
+        'exchange_rate',
+        'unit_price_vnd',
         'quantity',
+        'subtotal_cny',
+        'subtotal_vnd',
         'note',
         'product_image',
         'seller',
@@ -20,6 +24,15 @@ class OrderItem extends Model
         'shop_name',
         'size',
         'color',
+    ];
+
+    protected $casts = [
+        'price_cny' => 'decimal:2',
+        'exchange_rate' => 'decimal:4',
+        'unit_price_vnd' => 'integer',
+        'quantity' => 'integer',
+        'subtotal_cny' => 'decimal:2',
+        'subtotal_vnd' => 'integer',
     ];
 
     public function order()

@@ -14,8 +14,8 @@ const PACKAGE_FIELDS = `
   payment_status
   delivery_status
   received_at
-  receipt { warehouse { id name } }
-  cn_package { order { id order_code customer { id code name phone address } } }
+  receipt { warehouse { id name address } }
+  cn_package { order { id order_code total_amount product_total_vnd deposit_percent deposit_amount_vnd deposit_paid_amount_vnd deposit_remaining_amount_vnd customer { id code name phone address } } }
 `;
 
 const PAYMENT_ACCOUNT_FIELDS = `
@@ -32,6 +32,8 @@ const PAYMENT_ACCOUNT_FIELDS = `
 const VOUCHER_FIELDS = `
   id
   voucher_code
+  voucher_type
+  order_id
   receiver_type
   delivery_address
   payment_method_expected
@@ -41,6 +43,11 @@ const VOUCHER_FIELDS = `
   bank_account_number_snapshot
   bank_account_holder_snapshot
   bank_branch_name_snapshot
+  base_amount_cny
+  exchange_rate
+  base_amount_vnd
+  deposit_percent
+  currency
   transfer_content
   status
   shipping_fee_total
@@ -54,7 +61,8 @@ const VOUCHER_FIELDS = `
   note
   cancelled_reason
   created_at
-  customer { id code name phone address }
+  customer { id code name phone email address }
+  order { id order_code status total_amount product_total_vnd deposit_percent deposit_amount_vnd deposit_paid_amount_vnd deposit_remaining_amount_vnd created_at }
   warehouse { id name }
   creator { id name }
   paymentAccount { ${PAYMENT_ACCOUNT_FIELDS} }
@@ -166,7 +174,7 @@ export const fetchPaymentVouchers = async (status?: string) => {
   const query = `
     query PaymentVouchers($page: Int!, $first: Int!, $filter: PaymentVoucherFilterInput) {
       paymentVouchers(page: $page, first: $first, filter: $filter) {
-        data { id voucher_code status total_amount paid_amount remaining_amount created_at customer { id name phone } creator { id name } }
+        data { id voucher_code voucher_type status total_amount paid_amount remaining_amount created_at customer { id name phone } creator { id name } }
         paginatorInfo { total }
       }
     }

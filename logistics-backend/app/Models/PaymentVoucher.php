@@ -21,7 +21,9 @@ class PaymentVoucher extends Model
     protected $fillable = [
         'voucher_code',
         'request_uuid',
+        'voucher_type',
         'customer_id',
+        'order_id',
         'vn_warehouse_id',
         'created_by',
         'receiver_type',
@@ -33,6 +35,11 @@ class PaymentVoucher extends Model
         'bank_account_number_snapshot',
         'bank_account_holder_snapshot',
         'bank_branch_name_snapshot',
+        'base_amount_cny',
+        'exchange_rate',
+        'base_amount_vnd',
+        'deposit_percent',
+        'currency',
         'transfer_content',
         'status',
         'shipping_fee_total',
@@ -47,9 +54,14 @@ class PaymentVoucher extends Model
         'cancelled_reason',
         'cancelled_by',
         'cancelled_at',
+        'expires_at',
     ];
 
     protected $casts = [
+        'base_amount_cny' => 'float',
+        'exchange_rate' => 'float',
+        'base_amount_vnd' => 'integer',
+        'deposit_percent' => 'float',
         'shipping_fee_total' => 'float',
         'domestic_shipping_fee' => 'float',
         'surcharge_total' => 'float',
@@ -59,7 +71,13 @@ class PaymentVoucher extends Model
         'paid_amount' => 'float',
         'remaining_amount' => 'float',
         'cancelled_at' => 'datetime',
+        'expires_at' => 'datetime',
     ];
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
+    }
 
     public function customer()
     {

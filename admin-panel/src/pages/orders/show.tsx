@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { DeleteButton, NumberField, Show } from "@refinedev/antd";
+import { DeleteButton, Show } from "@refinedev/antd";
 import { useShow, useUpdate } from "@refinedev/core";
 import {
   Alert,
@@ -29,6 +29,7 @@ import {
 import type { ImageProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { fetchDefaultPaymentAccount } from "../payment-vouchers/api";
+import { client, syncGraphqlAuthToken } from "../../providers/graphqlClient";
 import type { PaymentAccount } from "../payment-vouchers/types";
 import {
   CheckCircleOutlined,
@@ -51,7 +52,12 @@ import dayjs from "dayjs";
 import { Link } from "react-router";
 import { Modal, Radio, InputNumber } from "antd";
 import type { IOrder, IOrderItem } from "../../interfaces";
-import { formatVnd } from "../orders/helper";
+import {
+  formatCny,
+  formatVnd,
+  hasPositiveMoney,
+  resolveLegacyCnyTotal,
+} from "../../utils/currency";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -115,33 +121,31 @@ const orderJourneySteps = [
 // order modal
 
 const optionCardStyle: CSSProperties = {
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: 16,
-    background: "#fff",
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: 16,
+  background: "#fff",
 };
 
 const bankInfoStyle: CSSProperties = {
-    border: "1px solid #f5d7a1",
-    background: "#fff7e8",
-    borderRadius: 12,
-    padding: 16,
+  border: "1px solid #f5d7a1",
+  background: "#fff7e8",
+  borderRadius: 12,
+  padding: 16,
 };
 
 const modalSummaryRowStyle: CSSProperties = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 16,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
 };
 
 const summaryBlockStyle: CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
 };
-
-const currencyOptions = { style: "currency", currency: "USD" } as const;
 
 const statusMetaMap: Record<string, StatusMeta> = {
   pending: { color: "blue", label: "Chờ duyệt" },
@@ -174,7 +178,9 @@ const carrierOptions = [
 const createTrackingLocalId = () =>
   `tracking-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const buildTrackingDrafts = (trackings: NonNullable<IOrder["order_trackings"]>): TrackingDraft[] =>
+const buildTrackingDrafts = (
+  trackings: NonNullable<IOrder["order_trackings"]>,
+): TrackingDraft[] =>
   trackings.map((tracking) => ({
     local_id: createTrackingLocalId(),
     id: tracking.id,
@@ -400,8 +406,14 @@ export const OrderShow = () => {
     "deposit",
   );
   const [depositPercentage, setDepositPercentage] = useState(70);
+  const [manualDepositAmount, setManualDepositAmount] = useState<number | null>(
+    null,
+  );
+  const [manualDepositCode, setManualDepositCode] = useState("");
+  const [manualDepositNote, setManualDepositNote] = useState("");
   const [trackingDrafts, setTrackingDrafts] = useState<TrackingDraft[]>([]);
-  const [defaultPaymentAccount, setDefaultPaymentAccount] = useState<PaymentAccount | null>(null);
+  const [defaultPaymentAccount, setDefaultPaymentAccount] =
+    useState<PaymentAccount | null>(null);
   const navigateScreens = useBreakpoint();
   const record = data?.data;
   useEffect(() => {
@@ -411,7 +423,9 @@ export const OrderShow = () => {
 
     void fetchDefaultPaymentAccount()
       .then(setDefaultPaymentAccount)
-      .catch(() => message.error("Không tải được tài khoản nhận tiền mặc định."));
+      .catch(() =>
+        message.error("Không tải được tài khoản nhận tiền mặc định."),
+      );
   }, [isDepositModalOpen]);
   const cnPackages = useMemo(
     () => record?.cn_packages ?? [],
@@ -423,17 +437,24 @@ export const OrderShow = () => {
   );
   const items = useMemo(() => record?.items ?? [], [record?.items]);
   const normalizedOrderStatus = record?.status?.toLowerCase();
-  const isTrackingEditable = ["awaiting_tracking", "waiting_cn_warehouse"].includes(
-    normalizedOrderStatus ?? "",
-  );
-  const isTrackingReadonly = ["receiving", "shipped", "delivered", "completed", "cancelled"].includes(
-    normalizedOrderStatus ?? "",
-  );
+  const isTrackingEditable = [
+    "awaiting_tracking",
+    "waiting_cn_warehouse",
+  ].includes(normalizedOrderStatus ?? "");
+  const isTrackingReadonly = [
+    "receiving",
+    "shipped",
+    "delivered",
+    "completed",
+    "cancelled",
+  ].includes(normalizedOrderStatus ?? "");
   const currentStepIndex = getJourneyStepIndex(record?.status);
   const statusMeta = getStatusMeta(record?.status);
   const declaredTrackingCount = useMemo(
     () =>
-      trackingDrafts.filter((tracking) => tracking.tracking_number.trim().length > 0).length,
+      trackingDrafts.filter(
+        (tracking) => tracking.tracking_number.trim().length > 0,
+      ).length,
     [trackingDrafts],
   );
   const confirmedItemQuantityById = useMemo(() => {
@@ -443,7 +464,8 @@ export const OrderShow = () => {
       (pkg.package_items ?? []).forEach((packageItem) => {
         quantityMap.set(
           packageItem.order_item_id,
-          (quantityMap.get(packageItem.order_item_id) ?? 0) + Number(packageItem.quantity ?? 0),
+          (quantityMap.get(packageItem.order_item_id) ?? 0) +
+            Number(packageItem.quantity ?? 0),
         );
       });
     });
@@ -456,7 +478,8 @@ export const OrderShow = () => {
       (tracking.tracking_items ?? []).forEach((trackingItem) => {
         quantityMap.set(
           trackingItem.order_item_id,
-          (quantityMap.get(trackingItem.order_item_id) ?? 0) + Number(trackingItem.quantity ?? 0),
+          (quantityMap.get(trackingItem.order_item_id) ?? 0) +
+            Number(trackingItem.quantity ?? 0),
         );
       });
     });
@@ -624,9 +647,7 @@ export const OrderShow = () => {
           ),
           declaredValue: tracking.declaredValue ?? 0,
           note:
-            matchedTracking?.note ??
-            matchedPackage?.note ??
-            "Không có ghi chú",
+            matchedTracking?.note ?? matchedPackage?.note ?? "Không có ghi chú",
           products:
             sourceItems.length > 0
               ? sourceItems
@@ -658,7 +679,8 @@ export const OrderShow = () => {
       })),
       ...cnPackages.map((pkg) => ({
         key: `package-${pkg.id}`,
-        createdAt: pkg.received_at ?? pkg.created_at ?? record?.created_at ?? "",
+        createdAt:
+          pkg.received_at ?? pkg.created_at ?? record?.created_at ?? "",
         title: `Kiện ${pkg.tracking_number ?? pkg.id} cập nhật kho`,
         description:
           pkg.warehouse?.name ??
@@ -667,10 +689,17 @@ export const OrderShow = () => {
       })),
     ];
 
-    return events.sort((left, right) =>
-      dayjs(right.createdAt).valueOf() - dayjs(left.createdAt).valueOf(),
+    return events.sort(
+      (left, right) =>
+        dayjs(right.createdAt).valueOf() - dayjs(left.createdAt).valueOf(),
     );
-  }, [cnPackages, orderTrackings, record?.created_at, record?.creator?.name, record?.id]);
+  }, [
+    cnPackages,
+    orderTrackings,
+    record?.created_at,
+    record?.creator?.name,
+    record?.id,
+  ]);
   const paidStatuses = [
     "deposited",
     "purchasing",
@@ -750,7 +779,7 @@ export const OrderShow = () => {
       key: "unitPrice",
       align: "right",
       width: 120,
-      render: (value) => <NumberField value={value} options={currencyOptions} />,
+      render: (value) => <Text>{formatCny(value)}</Text>,
     },
     {
       title: "Thành tiền",
@@ -758,7 +787,7 @@ export const OrderShow = () => {
       key: "subtotal",
       align: "right",
       width: 132,
-      render: (value) => <NumberField value={value} options={currencyOptions} />,
+      render: (value) => <Text>{formatCny(value)}</Text>,
     },
   ];
   const trackingColumns: ColumnsType<(typeof trackingSummaryRows)[number]> = [
@@ -823,19 +852,132 @@ export const OrderShow = () => {
   ];
 
   const itemsSubtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.price_cny * item.quantity, 0),
+    () =>
+      items.reduce(
+        (sum, item) =>
+          sum +
+          (hasPositiveMoney(item.subtotal_cny)
+            ? Number(item.subtotal_cny)
+            : Number(item.price_cny) * Number(item.quantity)),
+        0,
+      ),
     [items],
   );
-  const estimateTotal =
-    items.length > 0 ? itemsSubtotal : (record?.total_amount ?? 0);
-  const depositAmount = Math.round((depositPercentage / 100) * estimateTotal);
+  const depositVoucher = record?.depositVoucher;
+  const hasDepositVoucher = Boolean(
+    depositVoucher?.voucher_type === "deposit" &&
+    depositVoucher.total_amount !== null &&
+    depositVoucher.total_amount !== undefined &&
+    depositVoucher.remaining_amount !== null &&
+    depositVoucher.remaining_amount !== undefined,
+  );
+  const isExchangeRateLocked = Boolean(
+    record?.exchange_rate_locked_at || depositVoucher?.exchange_rate,
+  );
+  const legacyCnyTotal = resolveLegacyCnyTotal(record);
+  const lockedExchangeRate = Number(
+    depositVoucher?.exchange_rate ?? record?.exchange_rate ?? 0,
+  );
+  const productTotalCny = hasDepositVoucher
+    ? Number(
+        depositVoucher?.base_amount_cny ??
+          record?.product_total_cny ??
+          legacyCnyTotal,
+      )
+    : Number(
+        record?.product_total_cny ??
+          (items.length > 0 ? itemsSubtotal : legacyCnyTotal),
+      );
+  const productTotalVnd = hasDepositVoucher
+    ? Number(depositVoucher?.base_amount_vnd ?? record?.product_total_vnd ?? 0)
+    : Number(record?.product_total_vnd ?? 0);
+  const estimateTotal = isExchangeRateLocked
+    ? productTotalVnd
+    : items.length > 0
+      ? itemsSubtotal
+      : legacyCnyTotal;
+  // A snapshot alone is not a payable request. Legacy/interrupted records must
+  // create or recover their actual deposit voucher first.
+  const hasDepositRequest = hasDepositVoucher;
+  const lockedDepositPercent = Number(
+    depositVoucher?.deposit_percent ??
+      record?.deposit_percent ??
+      depositPercentage,
+  );
+  const depositAmount = hasDepositVoucher
+    ? Number(depositVoucher?.total_amount ?? 0)
+    : hasDepositRequest
+      ? Number(record?.deposit_amount_vnd ?? 0)
+      : 0;
+  const depositPaidAmount = hasDepositVoucher
+    ? Number(depositVoucher?.paid_amount ?? 0)
+    : hasDepositRequest
+      ? Number(record?.deposit_paid_amount_vnd ?? 0)
+      : 0;
+  const depositRemainingAmount = hasDepositVoucher
+    ? Number(depositVoucher?.remaining_amount ?? depositAmount)
+    : hasDepositRequest
+      ? Number(record?.deposit_remaining_amount_vnd ?? depositAmount)
+      : 0;
+  const estimateTotalDisplay = isExchangeRateLocked
+    ? formatVnd(estimateTotal)
+    : formatCny(estimateTotal);
+  const depositDisplay = hasDepositRequest
+    ? formatVnd(depositAmount)
+    : "Chưa có yêu cầu đặt cọc";
+  const depositPaidDisplay = hasDepositRequest
+    ? formatVnd(depositPaidAmount)
+    : "-";
+  const depositRemainingDisplay = hasDepositRequest
+    ? formatVnd(depositRemainingAmount)
+    : "-";
+  const depositTransferContent =
+    depositVoucher?.transfer_content ??
+    record?.deposit_transfer_content ??
+    `COC ${record?.order_code ?? ""}`;
+  const depositBankName =
+    depositVoucher?.bank_name_snapshot ??
+    defaultPaymentAccount?.bank_name ??
+    "-";
+  const depositBankAccountNumber =
+    depositVoucher?.bank_account_number_snapshot ??
+    defaultPaymentAccount?.account_number ??
+    "-";
+  const depositBankAccountHolder =
+    depositVoucher?.bank_account_holder_snapshot ??
+    defaultPaymentAccount?.account_holder ??
+    "-";
+  const depositStatus = depositVoucher?.status ?? record?.deposit_status ?? "-";
+  const depositStatusLabelMap: Record<string, string> = {
+    waiting_payment: "Chờ thanh toán",
+    paid: "Đã thanh toán",
+    cancelled: "Đã hủy",
+  };
+  const depositStatusDisplay =
+    depositStatusLabelMap[depositStatus] ?? depositStatus;
+  const depositTransactions = depositVoucher?.transactions ?? [];
+  const zeroPaymentDisplay = isExchangeRateLocked
+    ? formatVnd(0)
+    : "Chưa chốt tỷ giá";
   const canOpenConfirmModal = normalizedOrderStatus === "pending";
   const canOpenDepositModal = normalizedOrderStatus === "awaiting_deposit";
   const canStartPurchasing = normalizedOrderStatus === "deposited";
   const canConfirmPurchased = normalizedOrderStatus === "purchasing";
-  const canManageTrackings = ["awaiting_tracking", "waiting_cn_warehouse"].includes(
-    normalizedOrderStatus ?? "",
-  );
+  const canManageTrackings = [
+    "awaiting_tracking",
+    "waiting_cn_warehouse",
+  ].includes(normalizedOrderStatus ?? "");
+  useEffect(() => {
+    if (
+      !isDepositModalOpen ||
+      !hasDepositRequest ||
+      depositRemainingAmount <= 0
+    ) {
+      return;
+    }
+
+    setManualDepositAmount(depositRemainingAmount);
+  }, [depositRemainingAmount, hasDepositRequest, isDepositModalOpen]);
   const primaryActionLabel = canOpenConfirmModal
     ? "Xác nhận đơn hàng"
     : canOpenDepositModal
@@ -851,6 +993,7 @@ export const OrderShow = () => {
   const handleUpdateOrderStatus = (
     nextStatus: string,
     onSuccessCallback?: () => void,
+    extraValues: Record<string, unknown> = {},
   ) => {
     if (!record?.id) return;
 
@@ -860,7 +1003,7 @@ export const OrderShow = () => {
       {
         resource: "orders",
         id: record.id,
-        values: { status: nextStatus },
+        values: { status: nextStatus, ...extraValues },
       },
       {
         onSuccess: async () => {
@@ -879,32 +1022,176 @@ export const OrderShow = () => {
       },
     );
   };
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
     if (depositOpions === "deposit") {
-      handleUpdateOrderStatus("awaiting_deposit", () => {
+      if (!record?.id) return;
+      setIsUpdatingStatus(true);
+
+      try {
+        syncGraphqlAuthToken();
+
+        // 1. Đổi trạng thái đơn hàng sang awaiting_deposit
+        await handleUpdateOrderStatus(
+          "awaiting_deposit",
+          undefined, // Không dùng callback nữa, dùng await bên dưới
+          { deposit_percent: depositPercentage },
+        );
+
+        // 2. Chờ tạo phiếu cọc xong hẳn
+        await client.request(
+          `mutation CreateDepositPaymentVoucher($order_id: ID!, $deposit_percent: Float) {
+          createDepositPaymentVoucher(order_id: $order_id, deposit_percent: $deposit_percent) {
+            id
+            voucher_code
+            voucher_type
+            status
+            currency
+            base_amount_cny
+            exchange_rate
+            base_amount_vnd
+            deposit_percent
+            total_amount
+            paid_amount
+            remaining_amount
+            bank_name_snapshot
+            bank_account_number_snapshot
+            bank_account_holder_snapshot
+            transfer_content
+          }
+        }`,
+          { order_id: record.id, deposit_percent: depositPercentage },
+        );
+
+        // 3. Refetch dữ liệu mới nhất & chuyển Modal
+        await query.refetch();
         setIsConfirmModalOpen(false);
         setIsDepositModalOpen(true);
-        messageApi.success("Đơn hàng đã chuyển sang trạng thái chờ đặt cọc.");
-      });
+        messageApi.success("Đã chốt tỷ giá và tạo yêu cầu đặt cọc.");
+      } catch (error) {
+        messageApi.error(
+          error instanceof Error
+            ? error.message
+            : "Không thể khởi tạo yêu cầu đặt cọc.",
+        );
+      } finally {
+        setIsUpdatingStatus(false);
+      }
       return;
     }
+
+    // Trường hợp không cần đặt cọc
     handleUpdateOrderStatus("purchasing", () => {
       setIsConfirmModalOpen(false);
       messageApi.success("Đơn hàng đã chuyển sang trạng thái đang đặt hàng.");
     });
   };
 
-  const handleConfirmDepositPaid = () => {
-    handleUpdateOrderStatus("deposited", () => {
-      setIsDepositModalOpen(false);
-      messageApi.success("Đơn hàng đã được xác nhận là đã đặt cọc.");
-    });
+  const handleCreateMissingDepositRequest = async () => {
+    if (!record?.id) return;
+    setIsUpdatingStatus(true);
+    try {
+      syncGraphqlAuthToken();
+      await client.request(
+        `mutation CreateDepositPaymentVoucher($order_id: ID!, $deposit_percent: Float) {
+          createDepositPaymentVoucher(order_id: $order_id, deposit_percent: $deposit_percent) {
+            id
+            voucher_code
+            voucher_type
+            status
+            currency
+            base_amount_cny
+            exchange_rate
+            base_amount_vnd
+            deposit_percent
+            total_amount
+            paid_amount
+            remaining_amount
+            bank_name_snapshot
+            bank_account_number_snapshot
+            bank_account_holder_snapshot
+            transfer_content
+          }
+        }`,
+        { order_id: record.id, deposit_percent: depositPercentage },
+      );
+      await query.refetch();
+      messageApi.success(
+        "Đã chốt tỷ giá và tạo yêu cầu đặt cọc.",
+      );
+    } catch (error) {
+      messageApi.error(
+        error instanceof Error
+          ? error.message
+          : "Không thể tạo yêu cầu đặt cọc.",
+      );
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleConfirmDepositPaid = async () => {
+    if (!record?.id || !manualDepositAmount || manualDepositAmount <= 0) {
+      messageApi.error(
+        "Vui lòng nhập số tiền thực nhận lớn hơn 0.",
+      );
+      return;
+    }
+    if (manualDepositAmount !== depositRemainingAmount) {
+      messageApi.error(
+        "Số tiền thực nhận phải bằng toàn bộ số tiền đặt cọc còn phải thanh toán.",
+      );
+      return;
+    }
+    if (!manualDepositCode.trim()) {
+      messageApi.error(
+        "Vui lòng nhập mã giao dịch ngân hàng.",
+      );
+      return;
+    }
+
+    setIsUpdatingStatus(true);
+    try {
+      syncGraphqlAuthToken();
+      await client.request(
+        `mutation ConfirmOrderDepositPayment($order_id: ID!, $input: ConfirmOrderDepositPaymentInput!) {
+          confirmOrderDepositPayment(order_id: $order_id, input: $input) { id status deposit_paid_amount_vnd deposit_remaining_amount_vnd deposit_status deposit_paid_at }
+        }`,
+        {
+          order_id: record.id,
+          input: {
+            amount_vnd: manualDepositAmount,
+            transaction_code: manualDepositCode.trim(),
+            note: manualDepositNote || null,
+          },
+        },
+      );
+      await query.refetch();
+      setManualDepositAmount(null);
+      setManualDepositCode("");
+      setManualDepositNote("");
+      messageApi.success(
+        "Đã xác nhận thanh toán tiền đặt cọc và tạo hóa đơn thành công.",
+      );
+    } catch (error) {
+      messageApi.error(
+        error instanceof Error
+          ? error.message
+          : "Xác nhận tiền cọc thất bại.",
+      );
+    } finally {
+      setIsUpdatingStatus(false);
+    }
   };
 
   const updateOrderTrackingPayload = async (
-    values: { packages?: NonNullable<IOrder["order_trackings"]> | TrackingDraft[]; status?: string },
+    values: {
+      packages?: NonNullable<IOrder["order_trackings"]> | TrackingDraft[];
+      status?: string;
+    },
     successMessage: string,
-    onSuccessCallback?: (nextTrackings: NonNullable<IOrder["order_trackings"]>) => void,
+    onSuccessCallback?: (
+      nextTrackings: NonNullable<IOrder["order_trackings"]>,
+    ) => void,
   ) => {
     if (!record?.id) {
       return;
@@ -914,14 +1201,17 @@ export const OrderShow = () => {
 
     const packages = Array.isArray(values.packages)
       ? values.packages.map((tracking) => {
-          const trackingDraft = "local_id" in tracking ? tracking : {
-            local_id: createTrackingLocalId(),
-            id: tracking.id,
-            tracking_number: tracking.tracking_number,
-            carrier: tracking.carrier,
-            dispatched_at: tracking.dispatched_at,
-            note: tracking.note,
-          };
+          const trackingDraft =
+            "local_id" in tracking
+              ? tracking
+              : {
+                  local_id: createTrackingLocalId(),
+                  id: tracking.id,
+                  tracking_number: tracking.tracking_number,
+                  carrier: tracking.carrier,
+                  dispatched_at: tracking.dispatched_at,
+                  note: tracking.note,
+                };
 
           return {
             id: trackingDraft.id,
@@ -954,7 +1244,9 @@ export const OrderShow = () => {
         },
         onError: (error) => {
           messageApi.error(
-            error instanceof Error ? error.message : "Không thể lưu mã vận đơn.",
+            error instanceof Error
+              ? error.message
+              : "Không thể lưu mã vận đơn.",
           );
           setIsUpdatingStatus(false);
         },
@@ -976,7 +1268,9 @@ export const OrderShow = () => {
   };
 
   const removeTrackingDraft = (trackingIndex: number) => {
-    setTrackingDrafts((current) => current.filter((_, index) => index !== trackingIndex));
+    setTrackingDrafts((current) =>
+      current.filter((_, index) => index !== trackingIndex),
+    );
   };
 
   const updateTrackingDraft = (
@@ -1047,7 +1341,9 @@ export const OrderShow = () => {
 
     if (canConfirmPurchased) {
       handleUpdateOrderStatus("awaiting_tracking", () => {
-        messageApi.success("Đơn hàng đã chuyển sang trạng thái chờ mã vận đơn.");
+        messageApi.success(
+          "Đơn hàng đã chuyển sang trạng thái chờ mã vận đơn.",
+        );
       });
       return;
     }
@@ -1219,12 +1515,19 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: { padding: 24 } }}
                   >
-                    <Space direction="vertical" size={18} style={{ width: "100%" }}>
+                    <Space
+                      direction="vertical"
+                      size={18}
+                      style={{ width: "100%" }}
+                    >
                       <Space size={12}>
                         <div style={sectionIconWrapStyle}>
                           <UserOutlined />
                         </div>
-                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                        <Title
+                          level={4}
+                          style={{ margin: 0, color: "#0f172a" }}
+                        >
                           Thông tin đơn hàng & khách hàng
                         </Title>
                       </Space>
@@ -1277,12 +1580,19 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: { padding: 24 } }}
                   >
-                    <Space direction="vertical" size={18} style={{ width: "100%" }}>
+                    <Space
+                      direction="vertical"
+                      size={18}
+                      style={{ width: "100%" }}
+                    >
                       <Space size={12}>
                         <div style={sectionIconWrapStyle}>
                           <ShoppingOutlined />
                         </div>
-                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                        <Title
+                          level={4}
+                          style={{ margin: 0, color: "#0f172a" }}
+                        >
                           Danh sách sản phẩm
                         </Title>
                       </Space>
@@ -1293,7 +1603,9 @@ export const OrderShow = () => {
                         columns={productColumns}
                         pagination={false}
                         scroll={{ x: 980 }}
-                        locale={{ emptyText: "Chưa có sản phẩm trong đơn hàng." }}
+                        locale={{
+                          emptyText: "Chưa có sản phẩm trong đơn hàng.",
+                        }}
                         summary={() => (
                           <Table.Summary.Row>
                             <Table.Summary.Cell index={0} colSpan={3}>
@@ -1316,7 +1628,15 @@ export const OrderShow = () => {
                               </Text>
                             </Table.Summary.Cell>
                             <Table.Summary.Cell index={3} align="center">
-                              <Text strong style={{ color: remainingSkuCount > 0 ? "#ef4444" : "#16a34a" }}>
+                              <Text
+                                strong
+                                style={{
+                                  color:
+                                    remainingSkuCount > 0
+                                      ? "#ef4444"
+                                      : "#16a34a",
+                                }}
+                              >
                                 {productSummaryRows.reduce(
                                   (sum, row) => sum + row.remainingQuantity,
                                   0,
@@ -1325,9 +1645,7 @@ export const OrderShow = () => {
                             </Table.Summary.Cell>
                             <Table.Summary.Cell index={4} />
                             <Table.Summary.Cell index={5} align="right">
-                              <Text strong>
-                                <NumberField value={itemsSubtotal} options={currencyOptions} />
-                              </Text>
+                              <Text strong>{formatCny(itemsSubtotal)}</Text>
                             </Table.Summary.Cell>
                           </Table.Summary.Row>
                         )}
@@ -1340,20 +1658,34 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: { padding: 24 } }}
                   >
-                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                      <Row justify="space-between" align="middle" gutter={[12, 12]}>
+                    <Space
+                      direction="vertical"
+                      size={16}
+                      style={{ width: "100%" }}
+                    >
+                      <Row
+                        justify="space-between"
+                        align="middle"
+                        gutter={[12, 12]}
+                      >
                         <Col>
                           <Space size={12}>
                             <div style={sectionIconWrapStyle}>
                               <InboxOutlined />
                             </div>
-                            <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                            <Title
+                              level={4}
+                              style={{ margin: 0, color: "#0f172a" }}
+                            >
                               Mã vận đơn
                             </Title>
                           </Space>
                         </Col>
                         <Col>
-                          <Button icon={<InboxOutlined />} onClick={openTrackingManager}>
+                          <Button
+                            icon={<InboxOutlined />}
+                            onClick={openTrackingManager}
+                          >
                             Quản lý mã vận đơn
                           </Button>
                         </Col>
@@ -1388,12 +1720,19 @@ export const OrderShow = () => {
                         style={surfaceCardStyle}
                         styles={{ body: { padding: 24 } }}
                       >
-                        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                        <Space
+                          direction="vertical"
+                          size={16}
+                          style={{ width: "100%" }}
+                        >
                           <Space size={12}>
                             <div style={sectionIconWrapStyle}>
                               <FileSearchOutlined />
                             </div>
-                            <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                            <Title
+                              level={4}
+                              style={{ margin: 0, color: "#0f172a" }}
+                            >
                               Lịch sử đơn hàng
                             </Title>
                           </Space>
@@ -1409,7 +1748,9 @@ export const OrderShow = () => {
                                     <Text type="secondary">
                                       {formatDateTime(entry.createdAt)}
                                     </Text>
-                                    <Text type="secondary">{entry.description}</Text>
+                                    <Text type="secondary">
+                                      {entry.description}
+                                    </Text>
                                   </Space>
                                 ),
                               }))}
@@ -1425,12 +1766,19 @@ export const OrderShow = () => {
                         style={surfaceCardStyle}
                         styles={{ body: { padding: 24 } }}
                       >
-                        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                        <Space
+                          direction="vertical"
+                          size={16}
+                          style={{ width: "100%" }}
+                        >
                           <Space size={12}>
                             <div style={sectionIconWrapStyle}>
                               <FileTextOutlined />
                             </div>
-                            <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                            <Title
+                              level={4}
+                              style={{ margin: 0, color: "#0f172a" }}
+                            >
                               Ghi chú nội bộ
                             </Title>
                           </Space>
@@ -1455,12 +1803,19 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: infoCardBodyStyle }}
                   >
-                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Space
+                      direction="vertical"
+                      size={16}
+                      style={{ width: "100%" }}
+                    >
                       <Space size={12}>
                         <div style={sectionIconWrapStyle}>
                           <ProfileOutlined />
                         </div>
-                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                        <Title
+                          level={4}
+                          style={{ margin: 0, color: "#0f172a" }}
+                        >
                           Thông tin tổng quan
                         </Title>
                       </Space>
@@ -1509,52 +1864,71 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: infoCardBodyStyle }}
                   >
-                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Space
+                      direction="vertical"
+                      size={16}
+                      style={{ width: "100%" }}
+                    >
                       <Space size={12}>
                         <div style={sectionIconWrapStyle}>
                           <DollarCircleOutlined />
                         </div>
-                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                        <Title
+                          level={4}
+                          style={{ margin: 0, color: "#0f172a" }}
+                        >
                           Thanh toán
                         </Title>
                       </Space>
 
-                      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                      <Space
+                        direction="vertical"
+                        size={12}
+                        style={{ width: "100%" }}
+                      >
                         <div style={modalSummaryRowStyle}>
-                          <Text style={mutedTextStyle}>Tạm tính ({items.length} sản phẩm)</Text>
-                          <Text strong>
-                            <NumberField value={itemsSubtotal} options={currencyOptions} />
+                          <Text style={mutedTextStyle}>
+                            Tạm tính ({items.length} sản phẩm)
                           </Text>
+                          <Text strong>{formatCny(itemsSubtotal)}</Text>
                         </div>
                         <div style={modalSummaryRowStyle}>
                           <Text style={mutedTextStyle}>Phí dịch vụ</Text>
-                          <Text strong>
-                            <NumberField value={0} options={currencyOptions} />
-                          </Text>
+                          <Text strong>{formatCny(0)}</Text>
                         </div>
                         <div style={modalSummaryRowStyle}>
-                          <Text style={mutedTextStyle}>Phí vận chuyển dự kiến</Text>
-                          <Text strong>
-                            <NumberField value={0} options={currencyOptions} />
+                          <Text style={mutedTextStyle}>
+                            Phí vận chuyển dự kiến
                           </Text>
+                          <Text strong>{formatCny(0)}</Text>
                         </div>
                         <div style={modalSummaryRowStyle}>
-                          <Text style={mutedTextStyle}>Đặt cọc ({depositPercentage}%)</Text>
+                          <Text style={mutedTextStyle}>
+                            Đặt cọc ({depositPercentage}%)
+                          </Text>
                           <Text strong style={{ color: "#2563eb" }}>
-                            {formatVnd(depositAmount)}
+                            {depositDisplay}
                           </Text>
                         </div>
-                        <Divider style={{ margin: "2px 0", borderColor: "#e7edf6" }} />
+                        <Divider
+                          style={{ margin: "2px 0", borderColor: "#e7edf6" }}
+                        />
                         <div style={modalSummaryRowStyle}>
                           <Text style={mutedTextStyle}>Đã thanh toán</Text>
                           <Text strong style={{ color: "#16a34a" }}>
-                            {hasPaidDeposit ? formatVnd(depositAmount) : "0đ"}
+                            {hasPaidDeposit
+                              ? depositDisplay
+                              : zeroPaymentDisplay}
                           </Text>
                         </div>
                         <div style={modalSummaryRowStyle}>
-                          <Text style={mutedTextStyle}>Còn lại phải thanh toán</Text>
+                          <Text style={mutedTextStyle}>
+                            Còn lại phải thanh toán
+                          </Text>
                           <Text strong style={{ color: "#ef4444" }}>
-                            {hasPaidDeposit ? "0đ" : formatVnd(depositAmount)}
+                            {hasPaidDeposit
+                              ? zeroPaymentDisplay
+                              : depositDisplay}
                           </Text>
                         </div>
                       </Space>
@@ -1566,12 +1940,19 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: infoCardBodyStyle }}
                   >
-                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Space
+                      direction="vertical"
+                      size={16}
+                      style={{ width: "100%" }}
+                    >
                       <Space size={12}>
                         <div style={sectionIconWrapStyle}>
                           <CheckCircleOutlined />
                         </div>
-                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                        <Title
+                          level={4}
+                          style={{ margin: 0, color: "#0f172a" }}
+                        >
                           Trạng thái thanh toán
                         </Title>
                       </Space>
@@ -1580,7 +1961,11 @@ export const OrderShow = () => {
                         <Text style={mutedTextStyle}>Trạng thái</Text>
                         <Tag
                           color={hasPaidDeposit ? "green" : "gold"}
-                          style={{ borderRadius: 999, marginInlineEnd: 0, padding: "4px 12px" }}
+                          style={{
+                            borderRadius: 999,
+                            marginInlineEnd: 0,
+                            padding: "4px 12px",
+                          }}
                         >
                           {hasPaidDeposit ? "Đã đặt cọc" : "Chờ đặt cọc"}
                         </Tag>
@@ -1616,12 +2001,19 @@ export const OrderShow = () => {
                     style={surfaceCardStyle}
                     styles={{ body: infoCardBodyStyle }}
                   >
-                    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Space
+                      direction="vertical"
+                      size={16}
+                      style={{ width: "100%" }}
+                    >
                       <Space size={12}>
                         <div style={sectionIconWrapStyle}>
                           <PaperClipOutlined />
                         </div>
-                        <Title level={4} style={{ margin: 0, color: "#0f172a" }}>
+                        <Title
+                          level={4}
+                          style={{ margin: 0, color: "#0f172a" }}
+                        >
                           Tệp đính kèm
                         </Title>
                       </Space>
@@ -1699,7 +2091,7 @@ export const OrderShow = () => {
                       <Text>
                         Số tiền cần đặt cọc:{" "}
                         <Text strong style={{ color: "#dc2626" }}>
-                          {formatVnd(depositAmount)}
+                          {depositDisplay}
                         </Text>
                       </Text>
                     </Space>
@@ -1735,58 +2127,209 @@ export const OrderShow = () => {
         title={`Đơn hàng: ${record?.order_code ?? ""}`}
       >
         <Space orientation="vertical" size={16} style={{ width: "100%" }}>
-          <Tag color={normalizedOrderStatus === "deposited" ? "green" : "purple"}>
-            {normalizedOrderStatus === "deposited" ? "Đã đặt cọc" : "Chờ đặt cọc"}
+          <Tag
+            color={normalizedOrderStatus === "deposited" ? "green" : "purple"}
+          >
+            {normalizedOrderStatus === "deposited"
+              ? "Đã đặt cọc"
+              : "Chờ đặt cọc"}
           </Tag>
 
           <div style={summaryBlockStyle}>
             <div style={modalSummaryRowStyle}>
               <Text>Tổng tiền tạm tính</Text>
-              <Text strong>{formatVnd(estimateTotal)}</Text>
+              <Text strong>{estimateTotalDisplay}</Text>
             </div>
+            {hasDepositRequest ? (
+              <>
+                <div style={modalSummaryRowStyle}>
+                  <Text>{"Tổng tiền hàng gốc"}</Text>
+                  <Text strong>{formatCny(productTotalCny)}</Text>
+                </div>
+                <div style={modalSummaryRowStyle}>
+                  <Text>{"Tỷ giá đã chốt"}</Text>
+                  <Text strong>
+                    {lockedExchangeRate > 0
+                      ? `1 CNY = ${formatVnd(lockedExchangeRate)}`
+                      : "-"}
+                  </Text>
+                </div>
+                <div style={modalSummaryRowStyle}>
+                  <Text>{"Tổng quy đổi"}</Text>
+                  <Text strong>{formatVnd(productTotalVnd)}</Text>
+                </div>
+              </>
+            ) : null}
             <div style={modalSummaryRowStyle}>
               <Text>Tỷ lệ đặt cọc</Text>
-              <Text strong>{depositPercentage}%</Text>
+              <Text strong>{lockedDepositPercent}%</Text>
             </div>
             <div style={modalSummaryRowStyle}>
               <Text>Số tiền cần đặt cọc</Text>
-              <Text strong>{formatVnd(depositAmount)}</Text>
+              <Text strong>{depositDisplay}</Text>
             </div>
             <div style={modalSummaryRowStyle}>
               <Text>Đã thanh toán</Text>
-              <Text strong>{normalizedOrderStatus === "deposited" ? formatVnd(depositAmount) : "0đ"}</Text>
+              <Text strong>{depositPaidDisplay}</Text>
             </div>
             <div style={modalSummaryRowStyle}>
               <Text>Còn phải thanh toán</Text>
               <Text strong style={{ color: "#dc2626" }}>
-                {normalizedOrderStatus === "deposited" ? "0đ" : formatVnd(depositAmount)}
+                {depositRemainingDisplay}
               </Text>
             </div>
           </div>
 
-          <div style={bankInfoStyle}>
-            <Text strong>Hướng dẫn thanh toán</Text>
-            <div>
-              <Text>Ngân hàng: {defaultPaymentAccount?.bank_name ?? "-"}</Text>
+          {!hasDepositRequest ? (
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              <Alert
+                type="warning"
+                showIcon
+                message="Chưa thể hướng dẫn thanh toán vì chưa có yêu cầu đặt cọc VND hợp lệ."
+              />
+              <Button
+                type="primary"
+                loading={isUpdatingStatus}
+                onClick={handleCreateMissingDepositRequest}
+              >
+                {"Tạo yêu cầu đặt cọc"}
+              </Button>
+            </Space>
+          ) : (
+            <div style={bankInfoStyle}>
+              <Text strong>{"Hướng dẫn thanh toán"}</Text>
+              <div>
+                <Text>
+                  {"Ngân hàng: "}
+                  {depositBankName}
+                </Text>
+              </div>
+              <div>
+                <Text>STK: {depositBankAccountNumber}</Text>
+              </div>
+              <div>
+                <Text>
+                  {"Chủ TK: "}
+                  {depositBankAccountHolder}
+                </Text>
+              </div>
+              <div>
+                <Text>
+                  {"Số tiền chuyển khoản: "}
+                  {depositRemainingDisplay}
+                </Text>
+              </div>
+              <div>
+                <Text>
+                  {"Nội dung: "}
+                  {depositTransferContent}
+                </Text>
+              </div>
+              <div>
+                <Text>
+                  {"Trạng thái phiếu: "}
+                  {depositStatusDisplay}
+                </Text>
+              </div>
             </div>
-            <div>
-              <Text>STK: {defaultPaymentAccount?.account_number ?? "-"}</Text>
-            </div>
-            <div>
-              <Text>Chủ TK: {defaultPaymentAccount?.account_holder ?? "-"}</Text>
-            </div>
-            <div>
-              <Text>
-                Nội dung: COC {record?.order_code} - {record?.customer?.name}
-              </Text>
-            </div>
-          </div>
+          )}
+
+          {depositTransactions.length > 0 ? (
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="id"
+              dataSource={depositTransactions}
+              columns={[
+                {
+                  title: "Mã hệ thống",
+                  dataIndex: "transaction_code",
+                },
+                {
+                  title: "Số tiền",
+                  dataIndex: "amount",
+                  render: (value) => formatVnd(Number(value ?? 0)),
+                },
+                {
+                  title: "Mã ngân hàng",
+                  dataIndex: "bank_transaction_code",
+                  render: (value) => value || "-",
+                },
+                {
+                  title: "Thời gian nhận",
+                  dataIndex: "received_at",
+                  render: (value) => formatDateTime(value ?? undefined),
+                },
+                {
+                  title: "Trạng thái",
+                  dataIndex: "status",
+                  render: (value) =>
+                    value === "confirmed"
+                      ? "Đã xác nhận"
+                      : value,
+                },
+              ]}
+            />
+          ) : null}
+
+          {depositVoucher?.invoice ? (
+            <Alert
+              type="success"
+              showIcon
+              message="Hóa đơn đặt cọc đã được tạo"
+              description={(
+                <Space wrap>
+                  <Tag color="gold">Hóa đơn đặt cọc</Tag>
+                  <Link to={`/invoices/${depositVoucher.invoice.id}`}>
+                    {depositVoucher.invoice.invoice_code} — {formatVnd(Number(depositVoucher.invoice.total_amount ?? 0))}
+                  </Link>
+                </Space>
+              )}
+            />
+          ) : null}
+
+          <Space orientation="vertical" size={8} style={{ width: "100%" }}>
+            <InputNumber
+              min={0}
+              precision={0}
+              step={1000}
+              style={{ width: "100%" }}
+              placeholder="Số tiền đã thanh toán (VND)"
+              value={manualDepositAmount}
+              onChange={(value) => setManualDepositAmount(Number(value ?? 0))}
+              formatter={(value) =>
+                value ? `${Number(value).toLocaleString("vi-VN")} VND` : ""
+              }
+              parser={(value) =>
+                Number(value?.replace(/\./g, "").replace(/[^\d]/g, "") || 0)
+              }
+            />
+            <Input
+              placeholder="Mã giao dịch / Mã chuyển khoản"
+              value={manualDepositCode}
+              onChange={(event) => setManualDepositCode(event.target.value)}
+              disabled={!hasDepositRequest || depositRemainingAmount <= 0}
+            />
+            <Input.TextArea
+              placeholder="Ghi chú xác nhận thanh toán"
+              value={manualDepositNote}
+              onChange={(event) => setManualDepositNote(event.target.value)}
+              disabled={!hasDepositRequest || depositRemainingAmount <= 0}
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Space>
 
           <Space style={{ width: "100%", justifyContent: "space-between" }}>
             <Button
               type="primary"
               loading={isUpdatingStatus}
-              disabled={normalizedOrderStatus === "deposited"}
+              disabled={
+                !hasDepositRequest ||
+                depositRemainingAmount <= 0 ||
+                normalizedOrderStatus === "deposited" ||
+                manualDepositAmount !== depositRemainingAmount ||
+                !manualDepositCode.trim()
+              }
               onClick={handleConfirmDepositPaid}
             >
               Xác nhận đã thanh toán
@@ -1804,7 +2347,8 @@ export const OrderShow = () => {
         footer={
           <Space style={{ width: "100%", justifyContent: "space-between" }}>
             <div>
-              {isTrackingEditable && normalizedOrderStatus === "awaiting_tracking" ? (
+              {isTrackingEditable &&
+              normalizedOrderStatus === "awaiting_tracking" ? (
                 <Button
                   type="primary"
                   ghost
@@ -1817,7 +2361,9 @@ export const OrderShow = () => {
               ) : null}
             </div>
             <Space>
-              <Button onClick={() => setIsTrackingManagerOpen(false)}>Hủy</Button>
+              <Button onClick={() => setIsTrackingManagerOpen(false)}>
+                Hủy
+              </Button>
               <Button
                 type="primary"
                 loading={isUpdatingStatus}
@@ -1837,26 +2383,48 @@ export const OrderShow = () => {
                 <Space orientation="vertical" size={2}>
                   <Text type="secondary">Mã đơn hàng</Text>
                   <Text strong>{record?.order_code ?? "-"}</Text>
-                  <Text type="secondary">Khách hàng: {record?.customer?.name ?? "-"}</Text>
-                  <Text type="secondary">Ngày đặt: {formatDateOnly(record?.created_at)}</Text>
+                  <Text type="secondary">
+                    Khách hàng: {record?.customer?.name ?? "-"}
+                  </Text>
+                  <Text type="secondary">
+                    Ngày đặt: {formatDateOnly(record?.created_at)}
+                  </Text>
                 </Space>
               </Col>
               <Col xs={12} md={3}>
-                <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
+                <Space
+                  orientation="vertical"
+                  size={0}
+                  style={{ width: "100%", textAlign: "center" }}
+                >
                   <Text type="secondary">Tổng SKU</Text>
-                  <Title level={2} style={{ margin: 0 }}>{items.length}</Title>
+                  <Title level={2} style={{ margin: 0 }}>
+                    {items.length}
+                  </Title>
                 </Space>
               </Col>
               <Col xs={12} md={4}>
-                <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
+                <Space
+                  orientation="vertical"
+                  size={0}
+                  style={{ width: "100%", textAlign: "center" }}
+                >
                   <Text type="secondary">Da khai bao tracking</Text>
-                  <Title level={2} style={{ margin: 0, color: "#16a34a" }}>{declaredTrackingCount}</Title>
+                  <Title level={2} style={{ margin: 0, color: "#16a34a" }}>
+                    {declaredTrackingCount}
+                  </Title>
                 </Space>
               </Col>
               <Col xs={12} md={4}>
-                <Space orientation="vertical" size={0} style={{ width: "100%", textAlign: "center" }}>
+                <Space
+                  orientation="vertical"
+                  size={0}
+                  style={{ width: "100%", textAlign: "center" }}
+                >
                   <Text type="secondary">Cho kho TQ xac nhan item</Text>
-                  <Title level={2} style={{ margin: 0, color: "#f97316" }}>{remainingSkuCount}</Title>
+                  <Title level={2} style={{ margin: 0, color: "#f97316" }}>
+                    {remainingSkuCount}
+                  </Title>
                 </Space>
               </Col>
               <Col xs={24} md={6}>
@@ -1874,9 +2442,16 @@ export const OrderShow = () => {
             <Col xs={24} xl={10}>
               <Card title="1. San pham trong don" size="small">
                 {items.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đơn hàng chưa có sản phẩm." />
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="Đơn hàng chưa có sản phẩm."
+                  />
                 ) : (
-                  <Space orientation="vertical" size={12} style={{ width: "100%" }}>
+                  <Space
+                    orientation="vertical"
+                    size={12}
+                    style={{ width: "100%" }}
+                  >
                     <Alert
                       type="info"
                       showIcon
@@ -1896,11 +2471,36 @@ export const OrderShow = () => {
                         quantity: item.quantity,
                       }))}
                       columns={[
-                        { title: "#", dataIndex: "index", width: 48, align: "center" as const },
-                        { title: "San pham", dataIndex: "productName", key: "productName" },
-                        { title: "Shop", dataIndex: "shop", key: "shop", width: 160 },
-                        { title: "Phan loai", dataIndex: "variant", key: "variant", width: 140 },
-                        { title: "SL dat", dataIndex: "quantity", key: "quantity", width: 80, align: "center" as const },
+                        {
+                          title: "#",
+                          dataIndex: "index",
+                          width: 48,
+                          align: "center" as const,
+                        },
+                        {
+                          title: "San pham",
+                          dataIndex: "productName",
+                          key: "productName",
+                        },
+                        {
+                          title: "Shop",
+                          dataIndex: "shop",
+                          key: "shop",
+                          width: 160,
+                        },
+                        {
+                          title: "Phan loai",
+                          dataIndex: "variant",
+                          key: "variant",
+                          width: 140,
+                        },
+                        {
+                          title: "SL dat",
+                          dataIndex: "quantity",
+                          key: "quantity",
+                          width: 80,
+                          align: "center" as const,
+                        },
                       ]}
                     />
                   </Space>
@@ -1913,7 +2513,11 @@ export const OrderShow = () => {
                 title="2. Danh sách mã vận đơn"
                 size="small"
                 extra={
-                  <Button type="dashed" onClick={addTrackingDraft} disabled={!isTrackingEditable}>
+                  <Button
+                    type="dashed"
+                    onClick={addTrackingDraft}
+                    disabled={!isTrackingEditable}
+                  >
                     + Thêm mã vận đơn khác
                   </Button>
                 }
@@ -1924,7 +2528,11 @@ export const OrderShow = () => {
                     description="Chưa có mã vận đơn nào. Hãy thêm block mã vận đơn đầu tiên."
                   />
                 ) : (
-                  <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+                  <Space
+                    orientation="vertical"
+                    size={16}
+                    style={{ width: "100%" }}
+                  >
                     {trackingDrafts.map((tracking, trackingIndex) => (
                       <Card
                         key={tracking.local_id}
@@ -1941,7 +2549,11 @@ export const OrderShow = () => {
                           </Button>
                         }
                       >
-                        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+                        <Space
+                          orientation="vertical"
+                          size={16}
+                          style={{ width: "100%" }}
+                        >
                           <Row gutter={[12, 12]}>
                             <Col xs={24} md={10}>
                               <Text>Mã vận đơn *</Text>
@@ -1965,27 +2577,42 @@ export const OrderShow = () => {
                                 disabled={!isTrackingEditable}
                                 options={carrierOptions}
                                 onChange={(value) =>
-                                  updateTrackingDraft(trackingIndex, "carrier", value)
+                                  updateTrackingDraft(
+                                    trackingIndex,
+                                    "carrier",
+                                    value,
+                                  )
                                 }
                                 placeholder="Chọn đơn vị"
                               />
                             </Col>
                             <Col xs={24} md={7}>
                               <Text>Shop / người bán</Text>
-                              <Input value={getTrackingShopSummary()} disabled />
+                              <Input
+                                value={getTrackingShopSummary()}
+                                disabled
+                              />
                             </Col>
                             <Col xs={24} md={7}>
                               <Text>Ngày phát hàng</Text>
                               <DatePicker
                                 style={{ width: "100%" }}
-                                value={tracking.dispatched_at ? dayjs(tracking.dispatched_at) : null}
+                                value={
+                                  tracking.dispatched_at
+                                    ? dayjs(tracking.dispatched_at)
+                                    : null
+                                }
                                 disabled={!isTrackingEditable}
                                 format="DD/MM/YYYY"
                                 onChange={(value) =>
                                   updateTrackingDraft(
                                     trackingIndex,
                                     "dispatched_at",
-                                    value ? value.startOf("day").format("YYYY-MM-DD HH:mm:ss") : null,
+                                    value
+                                      ? value
+                                          .startOf("day")
+                                          .format("YYYY-MM-DD HH:mm:ss")
+                                      : null,
                                   )
                                 }
                               />
@@ -1997,14 +2624,22 @@ export const OrderShow = () => {
                                 value={tracking.note ?? ""}
                                 disabled={!isTrackingEditable}
                                 onChange={(event) =>
-                                  updateTrackingDraft(trackingIndex, "note", event.target.value)
+                                  updateTrackingDraft(
+                                    trackingIndex,
+                                    "note",
+                                    event.target.value,
+                                  )
                                 }
                                 placeholder="Ví dụ: Shop đóng gói cẩn thận"
                               />
                             </Col>
                           </Row>
 
-                          <Space orientation="vertical" size={10} style={{ width: "100%" }}>
+                          <Space
+                            orientation="vertical"
+                            size={10}
+                            style={{ width: "100%" }}
+                          >
                             <Alert
                               type="info"
                               showIcon

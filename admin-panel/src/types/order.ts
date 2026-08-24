@@ -22,7 +22,11 @@ export interface OrderItem {
   product_name: string;
   product_link?: string | null;
   price_cny: number;
+  exchange_rate?: number | null;
+  unit_price_vnd?: number | null;
   quantity: number;
+  subtotal_cny?: number | null;
+  subtotal_vnd?: number | null;
   note?: string | null;
   product_image?: string | null;
   seller?: string | null;
@@ -202,6 +206,50 @@ export interface CnPackageUpdateInput {
   received_at?: string | null;
 }
 
+export interface OrderDepositTransaction {
+  id: string;
+  transaction_code: string;
+  amount: number;
+  payment_method: string;
+  bank_name?: string | null;
+  bank_transaction_code?: string | null;
+  received_at?: string | null;
+  confirmed_by?: string | null;
+  status: string;
+  note?: string | null;
+  created_at?: string | null;
+}
+
+export interface OrderDepositVoucher {
+  id: string;
+  voucher_code: string;
+  voucher_type: string;
+  status: string;
+  currency: string;
+  base_amount_cny?: number | null;
+  exchange_rate?: number | null;
+  base_amount_vnd?: number | null;
+  deposit_percent?: number | null;
+  total_amount?: number | null;
+  paid_amount?: number | null;
+  remaining_amount?: number | null;
+  bank_name_snapshot?: string | null;
+  bank_account_number_snapshot?: string | null;
+  bank_account_holder_snapshot?: string | null;
+  bank_branch_name_snapshot?: string | null;
+  transfer_content?: string | null;
+  created_at?: string | null;
+  transactions?: OrderDepositTransaction[];
+  invoice?: {
+    id: string;
+    invoice_code: string;
+    invoice_type: string;
+    status: string;
+    total_amount: number;
+    paid_amount: number;
+    issued_at?: string | null;
+  } | null;
+}
 export interface OrderSummary {
   id: string;
   order_code: string;
@@ -210,6 +258,20 @@ export interface OrderSummary {
   creator: Pick<User, "id" | "name">;
   status: OrderStatus | string;
   total_amount: number;
+  exchange_rate?: number | null;
+  product_total_cny?: number | null;
+  product_total_vnd?: number | null;
+  currency?: string | null;
+  exchange_rate_locked_at?: string | null;
+  deposit_percent?: number | null;
+  deposit_amount_vnd?: number | null;
+  deposit_paid_amount_vnd?: number | null;
+  deposit_remaining_amount_vnd?: number | null;
+  deposit_status?: string | null;
+  deposit_transfer_content?: string | null;
+  deposit_requested_at?: string | null;
+  deposit_paid_at?: string | null;
+  depositVoucher?: OrderDepositVoucher | null;
   note?: string | null;
   created_at: string;
   items: OrderItem[];
@@ -232,10 +294,10 @@ export interface OrderCreateInput {
 export interface OrderUpdateInput {
   customer_id?: string;
   account_manager_id?: string;
-  total_amount?: number;
   items?: OrderItemInput[];
   packages?: OrderPackageInput[];
   status?: OrderStatus | string;
+  deposit_percent?: number;
   note?: string | null;
 }
 

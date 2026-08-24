@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DeleteButton, List, ShowButton, useTable } from "@refinedev/antd";
-import { Button, Card, Col, DatePicker, Form, Input, Row, Select, Space, Statistic, Table, Tag, Typography } from "antd";
+import { Button, Card, Col, DatePicker, Form, Input, Row, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
 import {
     CheckCircleOutlined,
@@ -16,9 +16,9 @@ import type { CrudFilter } from "@refinedev/core";
 import type { ICustomer } from "../../interfaces";
 import { CustomerFormModal } from "./components/CustomerFormModal";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-
+import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../components/admin-page-summary";
 const { Search } = Input;
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 const fullWidthStyle = { width: "100%" };
 const compactFormItemStyle = { marginBottom: 8 };
@@ -84,26 +84,6 @@ const getCustomerActivityRate = (customers: readonly ICustomer[]) => {
     return Math.round((activeCustomers / customers.length) * 100);
 };
 
-type CustomerSummaryCardProps = {
-    title: string;
-    value: number;
-    prefix: ReactNode;
-    description: string;
-    valueSuffix?: string;
-};
-
-const CustomerSummaryCard = ({
-    title,
-    value,
-    prefix,
-    description,
-    valueSuffix,
-}: CustomerSummaryCardProps) => (
-    <Card size="small" style={{ height: "100%" }}>
-        <Statistic title={title} value={value} prefix={prefix} suffix={valueSuffix} />
-        <Text type="secondary">{description}</Text>
-    </Card>
-);
 
 export const CustomerList = () => {
     const [filterForm] = Form.useForm<CustomerFilterValues>();
@@ -304,17 +284,11 @@ export const CustomerList = () => {
     return (
         <List breadcrumb={false} headerButtons={() => null} title={false}>
             <Space direction="vertical" size="large" style={{ width: "100%" }}>
-                <Row align="middle" justify="space-between" gutter={[16, 16]}>
-                    <Col>
-                        <Space direction="vertical" size={4}>
-                            <Title level={2}>Customers</Title>
-                            <Text type="secondary">
-                                Manage your national logistics partner network and track individual account performance.
-                            </Text>
-                        </Space>
-                    </Col>
-                    <Col>
-                        <Space>
+                <PageHeader
+                    title="Customers"
+                    description="Manage your national logistics partner network and track individual account performance."
+                    actions={
+                        <PageHeaderActions>
                             <Button icon={<ReloadOutlined />} onClick={handleFilterReset}>
                                 Reset Filters
                             </Button>
@@ -326,39 +300,35 @@ export const CustomerList = () => {
                             >
                                 Add Customer
                             </Button>
-                        </Space>
-                    </Col>
-                </Row>
-
+                        </PageHeaderActions>
+                    }
+                />
                 {isInitialLoading ? (
                     <CustomerListStatsSkeleton />
                 ) : (
-                    <Row gutter={[16, 16]}>
-                        <Col xs={24} md={8}>
-                            <CustomerSummaryCard
-                                title="Total Partners"
-                                value={totalCustomers}
-                                prefix={<TeamOutlined />}
-                                description="All registered customers"
-                            />
-                        </Col>
-                        <Col xs={24} md={8}>
-                            <CustomerSummaryCard
-                                title="Active Accounts"
-                                value={activeCustomers}
-                                prefix={<CheckCircleOutlined />}
-                                description={`${activityRate}% of listed customers`}
-                            />
-                        </Col>
-                        <Col xs={24} md={8}>
-                            <CustomerSummaryCard
-                                title="Blocked Customers"
-                                value={blockedCustomers}
-                                prefix={<StopOutlined />}
-                                description="Requires account review"
-                            />
-                        </Col>
-                    </Row>
+                    <StatsGrid columns={3}>
+                        <StatCard
+                            label="Total Partners"
+                            value={totalCustomers}
+                            icon={<TeamOutlined />}
+                            description="All registered customers"
+                            tone="blue"
+                        />
+                        <StatCard
+                            label="Active Accounts"
+                            value={activeCustomers}
+                            icon={<CheckCircleOutlined />}
+                            description={`${activityRate}% of listed customers`}
+                            tone="green"
+                        />
+                        <StatCard
+                            label="Blocked Customers"
+                            value={blockedCustomers}
+                            icon={<StopOutlined />}
+                            description="Requires account review"
+                            tone="red"
+                        />
+                    </StatsGrid>
                 )}
 
                 <Card size="small">

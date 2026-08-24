@@ -25,6 +25,8 @@ import {
   message,
 } from "antd";
 import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -54,8 +56,9 @@ import {
 } from "./helpers";
 import type { BatchApiRecord, BatchEditFormValues, BatchFilters, BatchPackageRow, BatchViewModel } from "./types";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
+import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const CnBatchStatsSkeleton = () => (
   <Row gutter={[12, 12]}>
     <Col xs={12} md={6}>
@@ -589,49 +592,21 @@ export const CnBatchesPage = () => {
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       {pageError ? <Alert type="error" message={pageError} showIcon /> : null}
 
-      <Card>
-        <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} xl={10}>
-            <Space direction="vertical" size={4}>
-              <Title level={2} style={{ margin: 0 }}>
-                Quản lý lô hàng vận chuyển
-              </Title>
-              <Text type="secondary">
-                Quản lý các lô hàng được gom từ kho Trung Quốc để vận chuyển về Việt Nam.
-              </Text>
-            </Space>
-          </Col>
-          <Col xs={24} xl={14}>
-            {isInitialLoading ? (
-              <CnBatchStatsSkeleton />
-            ) : (
-              <Row gutter={[12, 12]}>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Tổng lô hàng" value={stats.total} />
-                  </Card>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Đang vận chuyển" value={stats.exporting} valueStyle={{ color: "#1677ff" }} />
-                  </Card>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Đã về kho Việt Nam" value={stats.arrivedVn} valueStyle={{ color: "#0958d9" }} />
-                  </Card>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Card size="small">
-                    <Statistic title="Hoàn tất" value={stats.completed} valueStyle={{ color: "#389e0d" }} />
-                  </Card>
-                </Col>
-              </Row>
-            )}
-          </Col>
-        </Row>
-      </Card>
+      <PageHeader
+        title="Quản lý lô hàng vận chuyển"
+        description="Quản lý các lô hàng được gom từ kho Trung Quốc để vận chuyển về Việt Nam."
+      />
 
+      {isInitialLoading ? (
+        <CnBatchStatsSkeleton />
+      ) : (
+        <StatsGrid columns={4}>
+          <StatCard label="Tổng lô hàng" value={stats.total} unit="lô" icon={<InboxOutlined />} tone="blue" />
+          <StatCard label="Đang vận chuyển" value={stats.exporting} unit="lô" icon={<ClockCircleOutlined />} tone="orange" />
+          <StatCard label="Đã về kho Việt Nam" value={stats.arrivedVn} unit="lô" icon={<CheckCircleOutlined />} tone="purple" />
+          <StatCard label="Hoàn tất" value={stats.completed} unit="lô" icon={<CheckCircleOutlined />} tone="green" />
+        </StatsGrid>
+      )}
       <Card title="Bộ lọc tìm kiếm">
         <Form<BatchFilters> form={filterForm} layout="vertical" onFinish={handleSearch}>
           <Row gutter={[16, 0]}>

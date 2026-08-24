@@ -8,12 +8,20 @@ use App\Models\OrderItem;
 use App\Models\OrderTracking;
 use App\Models\OrderTrackingItem;
 use Illuminate\Database\Eloquent\Builder;
+use App\Services\OrderPricingService;
+use App\Services\PaymentVoucherService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OrderResolver
 {
+    public function __construct(
+        private readonly OrderPricingService $pricingService,
+        private readonly PaymentVoucherService $paymentVoucherService,
+    ) {
+    }
+
     public function list($_, array $args): Builder
     {
         $filter = $args['filter'] ?? [];
@@ -77,28 +85,30 @@ class OrderResolver
         return DB::transaction(function () use ($args) {
             $input = $args['input'];
 
-            $total = collect($input['items'])->sum(function ($item) {
-                return $item['price_cny'] * $item['quantity'];
-            });
-
             $order = Order::create([
                 'order_code' => 'ORD-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6)),
                 'customer_id' => $input['customer_id'],
-                'total_amount' => $total,
+                'total_amount' => 0,
+                'product_total_cny' => 0,
+                'product_total_vnd' => 0,
+                'currency' => 'CNY',
                 'note' => $input['note'] ?? null,
                 'status' => 'pending',
                 'created_by' => Auth::id(),
             ]);
 
             foreach ($input['items'] as $item) {
-                $order->items()->create($this->normalizeOrderItemPayload($item));
+                $createdItem = $order->items()->create($this->normalizeOrderItemPayload($item));
+                $this->pricingService->recalculateOrderItemAmounts($createdItem);
             }
+
+            $freshOrder = $this->pricingService->recalculateOrderTotals($order->fresh('items'));
 
             if (array_key_exists('packages', $input) && is_array($input['packages'])) {
-                $this->syncOrderTrackings($order->fresh('items'), $input['packages']);
+                $this->syncOrderTrackings($freshOrder->fresh('items'), $input['packages']);
             }
 
-            return $order->fresh()->load($this->orderRelations());
+            return $freshOrder->fresh()->load($this->orderRelations());
         });
     }
 
@@ -108,49 +118,83 @@ class OrderResolver
             $order = Order::findOrFail($args['id']);
             $input = $args['input'];
 
-            if (! $this->canUpdateOrder($order, $input)) {
-                throw new HttpException(403, 'Order cannot be updated with the requested status transition.');
-            }
-
             $nextItems = null;
 
             if (array_key_exists('items', $input) && is_array($input['items'])) {
                 $nextItems = $input['items'];
             }
 
+            if ($nextItems !== null && $order->exchange_rate_locked_at) {
+                throw new HttpException(403, 'Đơn hàng đã chốt tỷ giá. Không thể sửa sản phẩm trong luồng hiện tại.');
+            }
+
+            if (! $this->canUpdateOrder($order, $input)) {
+                throw new HttpException(403, 'Không thể cập nhật đơn hàng với trạng thái hoặc dữ liệu yêu cầu.');
+            }
+
             if ($nextItems !== null && array_key_exists('packages', $input)) {
                 throw new HttpException(422, 'Cannot sync trackings while replacing order items in the same request.');
             }
 
-            $total = $nextItems !== null
-                ? collect($nextItems)->sum(fn ($item) => $item['price_cny'] * $item['quantity'])
-                : (float) $order->items()->get()->sum(
-                    fn (OrderItem $item) => (float) $item->price_cny * (int) $item->quantity,
-                );
+            $currentStatus = (string) $order->status;
+            $nextStatus = $input['status'] ?? $order->status;
+
+            if ($nextStatus === 'deposited' && (int) ($order->deposit_remaining_amount_vnd ?? 0) > 0) {
+                throw new HttpException(422, 'Chua the xac nhan da dat coc khi so tien coc chua thanh toan du.');
+            }
+
+            if ($nextStatus === 'awaiting_deposit' && ($currentStatus !== 'awaiting_deposit' || (int) ($order->deposit_amount_vnd ?? 0) <= 0)) {
+                $order = $this->createDepositRequest($order, $input['deposit_percent'] ?? null);
+            }
 
             $order->update([
                 'customer_id' => $input['customer_id'] ?? $order->customer_id,
-                'status' => $input['status'] ?? $order->status,
+                'status' => $nextStatus,
                 'note' => $input['note'] ?? $order->note,
                 'created_by' => $input['created_by'] ?? $order->created_by,
                 'account_manager_id' => $input['account_manager_id'] ?? $order->account_manager_id,
-                'total_amount' => $total,
             ]);
+
+            if ((string) $nextStatus === 'awaiting_deposit') {
+                // Keep the status/snapshot and its payment voucher in one transaction.
+                // The service is idempotent, so the UI's legacy second mutation is safe.
+                $this->paymentVoucherService->createDepositVoucher(
+                    $order->id,
+                    $input['deposit_percent'] ?? $order->deposit_percent,
+                    false,
+                );
+            }
 
             if ($nextItems !== null) {
                 $order->items()->delete();
 
                 foreach ($nextItems as $item) {
-                    $order->items()->create($this->normalizeOrderItemPayload($item));
+                    $createdItem = $order->items()->create($this->normalizeOrderItemPayload($item));
+                    $this->pricingService->recalculateOrderItemAmounts($createdItem, $order->exchange_rate);
                 }
             }
 
-            if (array_key_exists('packages', $input) && is_array($input['packages'])) {
-                $this->syncOrderTrackings($order->fresh('items'), $input['packages']);
+            $freshOrder = $order->fresh('items');
+            if ($nextItems !== null) {
+                $freshOrder = $this->pricingService->recalculateOrderTotals($freshOrder, $freshOrder->exchange_rate);
             }
 
-            return $order->fresh()->load($this->orderRelations());
+            if (! $order->exchange_rate_locked_at && $this->shouldLockExchangeRate($currentStatus, (string) $nextStatus)) {
+                $freshOrder = $this->pricingService->lockExchangeRateForOrder($order);
+            }
+
+            if (array_key_exists('packages', $input) && is_array($input['packages'])) {
+                $this->syncOrderTrackings($freshOrder->fresh('items'), $input['packages']);
+            }
+
+            return $freshOrder->fresh()->load($this->orderRelations());
         });
+    }
+
+    public function confirmDepositPayment($_, array $args): Order
+    {
+        return $this->paymentVoucherService->confirmDepositPayment($args['order_id'], $args['input'] ?? [])
+            ->load($this->orderRelations());
     }
 
     public function delete($_, array $args): Order
@@ -235,8 +279,9 @@ class OrderResolver
 
             foreach ($groupedItems as $index => $items) {
                 $trackingNumber = sprintf('PENDING-%s-%02d', $order->id, $index + 1);
-                $declaredValue = (float) $items->sum(
-                    fn (OrderItem $item) => (float) $item->price_cny * (int) $item->quantity,
+                $declaredValue = $items->reduce(
+                    fn (string $sum, OrderItem $item) => $this->pricingService->addCny($sum, $this->pricingService->multiplyCnyByQuantity((string) $item->price_cny, (int) $item->quantity)),
+                    '0.00',
                 );
 
                 $tracking = OrderTracking::query()->create([
@@ -261,9 +306,70 @@ class OrderResolver
         });
     }
 
+    private function shouldLockExchangeRate(string $currentStatus, string $nextStatus): bool
+    {
+        $currentStatus = strtolower($currentStatus);
+        $nextStatus = strtolower($nextStatus);
+
+        return $currentStatus !== $nextStatus && in_array($nextStatus, ['purchasing', 'awaiting_tracking', 'waiting_cn_warehouse'], true);
+    }
+
     private function isOrderEditable(Order $order): bool
     {
         return strtolower((string) $order->status) === 'pending';
+    }
+
+    private function createDepositRequest(Order $order, mixed $depositPercent): Order
+    {
+        $percent = round((float) ($depositPercent ?? 70), 2);
+        if ($percent <= 0 || $percent > 100) {
+            throw new HttpException(422, 'Ty le dat coc phai lon hon 0 va khong vuot qua 100%.');
+        }
+
+        $lockedOrder = $order->exchange_rate_locked_at ? $order->fresh('items') : $this->pricingService->lockExchangeRateForOrder($order);
+        $baseAmountVnd = (int) ($lockedOrder->product_total_vnd ?? 0);
+        if ($baseAmountVnd <= 0 || ! $lockedOrder->exchange_rate_locked_at) {
+            throw new HttpException(422, 'Chua the tao yeu cau dat coc vi chua xac dinh duoc so tien VND.');
+        }
+
+        $depositAmount = (int) round($baseAmountVnd * $percent / 100);
+        if ($depositAmount <= 0) {
+            throw new HttpException(422, 'So tien dat coc phai lon hon 0.');
+        }
+
+        $lockedOrder->forceFill([
+            'deposit_percent' => $percent,
+            'deposit_amount_vnd' => $depositAmount,
+            'deposit_paid_amount_vnd' => 0,
+            'deposit_remaining_amount_vnd' => $depositAmount,
+            'deposit_status' => 'waiting_payment',
+            'deposit_transfer_content' => 'COC ' . $lockedOrder->order_code,
+            'deposit_requested_at' => now(),
+        ])->save();
+
+        return $lockedOrder->fresh('items');
+    }
+
+    private function parseDateTime(mixed $value): ?\Illuminate\Support\Carbon
+    {
+        if (! $value) {
+            return null;
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function ensurePermission(string $permission): void
+    {
+        $user = Auth::user();
+        $permissions = $user?->role?->permissions ?? [];
+        if (in_array('all', $permissions, true) || in_array($permission, $permissions, true) || in_array('payments.all', $permissions, true)) {
+            return;
+        }
+        throw new HttpException(403, 'Ban khong co quyen thuc hien thao tac nay.');
     }
 
     private function canUpdateOrder(Order $order, array $input): bool
@@ -285,19 +391,23 @@ class OrderResolver
             return false;
         }
 
-        $nonStatusFields = array_diff(array_keys($input), ['status']);
+        $nonStatusFields = array_values(array_diff(array_keys($input), ['status']));
+        $nextStatus = strtolower(trim((string) $input['status']));
 
-        if ($nonStatusFields !== []) {
+        if ($nonStatusFields !== [] && ! ($nextStatus === 'awaiting_deposit' && $nonStatusFields === ['deposit_percent'])) {
             return false;
         }
 
         $currentStatus = strtolower((string) $order->status);
-        $nextStatus = strtolower(trim((string) $input['status']));
+        if ($currentStatus === $nextStatus) {
+            return true;
+        }
+
         $allowedTransitions = [
-            'pending' => ['awaiting_deposit', 'purchasing'],
-            'awaiting_deposit' => ['deposited'],
-            'deposited' => ['purchasing'],
-            'purchasing' => ['awaiting_tracking'],
+            'pending' => ['awaiting_deposit', 'purchasing', 'awaiting_tracking', 'waiting_cn_warehouse'],
+            'awaiting_deposit' => ['deposited', 'purchasing', 'awaiting_tracking', 'waiting_cn_warehouse'],
+            'deposited' => ['purchasing', 'awaiting_tracking', 'waiting_cn_warehouse'],
+            'purchasing' => ['awaiting_tracking', 'waiting_cn_warehouse'],
             'awaiting_tracking' => ['waiting_cn_warehouse'],
             'waiting_cn_warehouse' => ['receiving'],
         ];
@@ -344,14 +454,14 @@ class OrderResolver
         ];
     }
 
-    private function calculateDeclaredValue($trackingItems): float
+    private function calculateDeclaredValue($trackingItems): string
     {
-        return (float) collect($trackingItems)->sum(function (OrderTrackingItem $trackingItem) {
-            $price = (float) ($trackingItem->orderItem?->price_cny ?? 0);
-            $quantity = (int) ($trackingItem->quantity ?? 0);
-
-            return $price * $quantity;
-        });
+        return collect($trackingItems)->reduce(function (string $sum, OrderTrackingItem $trackingItem) {
+            return $this->pricingService->addCny(
+                $sum,
+                $this->pricingService->multiplyCnyByQuantity((string) ($trackingItem->orderItem?->price_cny ?? 0), (int) ($trackingItem->quantity ?? 0)),
+            );
+        }, '0.00');
     }
 
     private function resolvePackageGroupingKey(OrderItem $item): string
@@ -552,14 +662,17 @@ class OrderResolver
         }
     }
 
-    private function calculateDeclaredValueFromSelections($selectedItems): float
+    private function calculateDeclaredValueFromSelections($selectedItems): string
     {
-        return (float) $selectedItems->sum(function (array $selection) {
+        return $selectedItems->reduce(function (string $sum, array $selection) {
             /** @var OrderItem $orderItem */
             $orderItem = $selection['order_item'];
 
-            return (float) $orderItem->price_cny * (int) $selection['quantity'];
-        });
+            return $this->pricingService->addCny(
+                $sum,
+                $this->pricingService->multiplyCnyByQuantity((string) $orderItem->price_cny, (int) $selection['quantity']),
+            );
+        }, '0.00');
     }
 
     private function reconcilePackagesWithTracking(OrderTracking $tracking): void
@@ -596,6 +709,7 @@ class OrderResolver
             'cnPackages.orderTracking',
             'orderTrackings.trackingItems.orderItem',
             'orderTrackings.packages',
+            'depositVoucher.transactions',
         ];
     }
 

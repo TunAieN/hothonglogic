@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Space, Typography } from "antd";
 import { CheckCircleOutlined, SaveOutlined } from "@ant-design/icons";
+import { formatCny } from "../../../utils/currency";
 
 const { Text } = Typography;
 
@@ -15,11 +16,6 @@ type OrderSummaryPanelProps = {
   onConfirm?: () => void;
 };
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("vi-VN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
 
 export const OrderSummaryPanel = ({
   orderReference,
@@ -43,8 +39,8 @@ export const OrderSummaryPanel = ({
         <Text strong>{orderReference}</Text>
       </div>
       <div className="order-edit-summary-row">
-        <Text>Tổng giá trị (RMB)</Text>
-        <Text strong>{formatCurrency(totalAmount)} ¥</Text>
+        <Text>Tổng tiền hàng (CNY)</Text>
+        <Text strong>{formatCny(totalAmount)}</Text>
       </div>
       <div className="order-edit-summary-row">
         <Text>Trạng thái</Text>

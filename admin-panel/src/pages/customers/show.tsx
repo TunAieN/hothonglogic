@@ -1,4 +1,6 @@
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router";
+import { formatCny, formatVnd, resolveLegacyCnyTotal, toNumber } from "../../utils/currency";
 import { Show } from "@refinedev/antd";
 import { useShow } from "@refinedev/core";
 import {
@@ -6,164 +8,133 @@ import {
     Breadcrumb,
     Button,
     Card,
-    Col,
-    Descriptions,
     Dropdown,
-    Flex,
-    Progress,
-    Row,
+    Empty,
     Space,
-    Statistic,
     Table,
+    Tabs,
     Tag,
     Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
     CalendarOutlined,
-    DownloadOutlined,
+    ClockCircleOutlined,
+    DollarOutlined,
+    EditOutlined,
     EnvironmentOutlined,
+    FileTextOutlined,
     HomeOutlined,
+    IdcardOutlined,
     MailOutlined,
     MoreOutlined,
     PhoneOutlined,
     RiseOutlined,
-    SafetyCertificateOutlined,
     ShoppingOutlined,
     StarFilled,
+    TeamOutlined,
     UserOutlined,
+    WalletOutlined,
 } from "@ant-design/icons";
-import type { ICustomer, IOrder } from "../../interfaces";
-import mapImage from "../../assets/map.jpg";
+import type { ICustomer } from "../../interfaces";
+import type { CustomerStatus, OrderSummary } from "../../types";
 import { CustomerFormModal } from "./components/CustomerFormModal";
+import "./customer-show.css";
 
-const { Text, Title, Paragraph } = Typography;
+const { Text, Title } = Typography;
 
-type PurchaseStatus = IOrder["status"];
+const EMPTY_VALUE = "—";
+const UNASSIGNED_LABEL = "Chưa phân công";
 
 interface PurchaseHistoryItem {
     id: string;
     orderCode: string;
     orderDate: string;
     totalAmount: number;
-    status: PurchaseStatus;
+    totalCny: number;
+    isExchangeRateLocked: boolean;
+    paidAmount: number;
+    debtAmount: number;
+    depositAmount: number;
+    depositStatus?: string | null;
+    status: string;
 }
 
-interface CustomerProfile extends Omit<ICustomer, "orders"> {
-    tier: string;
-    lifetimeValue: number;
-    lifetimeProgress: number;
-    logisticsRegion: string;
-    orders: PurchaseHistoryItem[];
+interface CustomerSummary {
+    totalOrders: number;
+    totalSpent: number;
+    totalPaid: number;
+    totalDebt: number;
+    averageOrderValue: number;
+    successfulOrders: number;
+    complaintOrders: number;
+    lastPurchaseDate?: string;
 }
 
-const pageStyle: CSSProperties = {
-    maxWidth: 1680,
-    width: "100%",
-};
+interface MetricCardProps {
+    label: string;
+    value: string;
+    helper: string;
+    icon: ReactNode;
+    tone: "blue" | "green" | "purple";
+}
 
-const mapWrapStyle: CSSProperties = {
-    height: 176,
-    overflow: "hidden",
-    position: "relative",
-};
+interface InfoRowProps {
+    icon?: ReactNode;
+    label: string;
+    value: ReactNode;
+}
 
-const mapImageStyle: CSSProperties = {
-    height: "100%",
-    objectFit: "cover",
-    width: "100%",
-};
+interface SimpleRowProps {
+    label: string;
+    value: ReactNode;
+    accent?: "success" | "danger" | "primary";
+}
 
-const mapMarkerStyle: CSSProperties = {
-    border: "2px solid #ffffff",
-    borderRadius: "50%",
-    height: 12,
-    position: "absolute",
-    width: 12,
-};
-
-const mockCustomer: CustomerProfile = {
-    id: "CUS-1048",
-    name: "Alexander Vance",
-    email: "avance@enterprise-logistics.com",
-    phone: "+1 (555) 924-1028",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80",
-    status: "active",
-    address: "882 Highline Boulevard, Suite 400, Seattle, WA 98104",
-    created_at: "2021-10-14T09:30:00.000Z",
-    orders_count: 5,
-    tier: "Premium Member - Gold Tier",
-    lifetimeValue: 42910,
-    lifetimeProgress: 72,
-    logisticsRegion: "Seattle region",
-    orders: [
-        {
-            id: "1",
-            orderCode: "ORD-82109",
-            orderDate: "2024-05-24T10:10:00.000Z",
-            totalAmount: 1240.5,
-            status: "delivered",
-        },
-        {
-            id: "2",
-            orderCode: "ORD-879442",
-            orderDate: "2024-05-18T11:45:00.000Z",
-            totalAmount: 892.2,
-            status: "shipped",
-        },
-        {
-            id: "3",
-            orderCode: "ORD-875102",
-            orderDate: "2024-05-12T15:20:00.000Z",
-            totalAmount: 205,
-            status: "delivered",
-        },
-        {
-            id: "4",
-            orderCode: "ORD-869204",
-            orderDate: "2024-04-29T08:30:00.000Z",
-            totalAmount: 450,
-            status: "cancelled",
-        },
-        {
-            id: "5",
-            orderCode: "ORD-861198",
-            orderDate: "2024-04-15T13:00:00.000Z",
-            totalAmount: 1580.3,
-            status: "delivered",
-        },
-    ],
-};
-
-const statusColor: Record<PurchaseStatus, string> = {
-    pending: "gold",
-    shipped: "blue",
-    delivered: "green",
-    cancelled: "red",
-};
-
-const statusLabel: Record<PurchaseStatus, string> = {
-    pending: "Pending",
-    shipped: "In Transit",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
-};
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-});
-
-const formatDate = (value?: string) => {
-    if (!value) {
-        return "-";
+const safeText = (value?: string | number | null, fallback = EMPTY_VALUE) => {
+    if (value === null || value === undefined) {
+        return fallback;
     }
 
-    return new Intl.DateTimeFormat("en-US", {
-        day: "numeric",
-        month: "short",
+    const text = String(value).trim();
+
+    return text || fallback;
+};
+
+const formatDate = (value?: string | null) => {
+    if (!value) {
+        return EMPTY_VALUE;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return EMPTY_VALUE;
+    }
+
+    return new Intl.DateTimeFormat("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
         year: "numeric",
-    }).format(new Date(value));
+    }).format(date);
+};
+
+const formatDateTime = (value?: string | null) => {
+    if (!value) {
+        return EMPTY_VALUE;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return EMPTY_VALUE;
+    }
+
+    return new Intl.DateTimeFormat("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(date);
 };
 
 const formatCustomerLocation = (customer: Pick<ICustomer, "province" | "district" | "ward">) =>
@@ -176,6 +147,7 @@ const normalizeAddressPart = (value?: string | null) =>
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/đ/g, "d")
+        .replace(/Đ/g, "d")
         .replace(/\s+/g, " ")
         .replace(/[.,;/\\-]+/g, " ")
         .replace(/,+/g, ",")
@@ -198,363 +170,570 @@ const formatFullAddress = (customer: Pick<ICustomer, "address" | "ward" | "distr
     return [address, ...locationParts].filter(Boolean).join(", ");
 };
 
-const getProfileFromRecord = (record?: ICustomer): CustomerProfile => {
-    if (!record) {
-        return mockCustomer;
+const getOrderVndTotal = (order: OrderSummary) => {
+    if (order.exchange_rate_locked_at) {
+        return toNumber(order.product_total_vnd);
     }
 
-    const orders = Array.isArray(record.orders)
-        ? record.orders.map((order) => ({
-              id: order.id,
-              orderCode: order.order_code || `ORD-${order.id}`,
-              orderDate: order.created_at,
-              totalAmount: order.total_amount,
-              status: order.status,
-          }))
-        : [];
+    return 0;
+};
 
-    const lifetimeValue = orders.reduce(
-        (total, order) => total + order.totalAmount,
-        0,
-    );
+const getOrderPaidAmount = (order: OrderSummary) => toNumber(order.deposit_paid_amount_vnd);
+
+const getOrderDebtAmount = (order: OrderSummary) => {
+    if (order.deposit_remaining_amount_vnd !== null && order.deposit_remaining_amount_vnd !== undefined) {
+        return Math.max(toNumber(order.deposit_remaining_amount_vnd), 0);
+    }
+
+    return Math.max(toNumber(order.deposit_amount_vnd) - toNumber(order.deposit_paid_amount_vnd), 0);
+};
+
+const mapOrders = (orders?: OrderSummary[]): PurchaseHistoryItem[] => {
+    if (!Array.isArray(orders)) {
+        return [];
+    }
+
+    return orders.map((order) => ({
+        id: order.id,
+        orderCode: order.order_code || `ORD-${order.id}`,
+        orderDate: order.created_at,
+        totalAmount: getOrderVndTotal(order),
+        totalCny: resolveLegacyCnyTotal(order),
+        isExchangeRateLocked: Boolean(order.exchange_rate_locked_at),
+        paidAmount: getOrderPaidAmount(order),
+        debtAmount: getOrderDebtAmount(order),
+        depositAmount: toNumber(order.deposit_amount_vnd),
+        depositStatus: order.deposit_status,
+        status: order.status,
+    }));
+};
+
+const buildSummary = (customer?: ICustomer): CustomerSummary => {
+    const orders = Array.isArray(customer?.orders) ? customer.orders : [];
+    const purchaseItems = mapOrders(orders);
+    const totalOrders = customer?.orders_count ?? purchaseItems.length;
+    const totalSpent = purchaseItems.reduce((total, order) => total + order.totalAmount, 0);
+    const totalPaid = purchaseItems.reduce((total, order) => total + order.paidAmount, 0);
+    const totalDebt = purchaseItems.reduce((total, order) => total + order.debtAmount, 0);
+    const successfulOrders = purchaseItems.filter((order) => ["delivered", "completed"].includes(order.status)).length;
+    const complaintOrders = purchaseItems.filter((order) => order.status === "complaint").length;
+    const lastPurchaseDate = purchaseItems
+        .map((order) => order.orderDate)
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 
     return {
-        ...record,
-        tier: record.vip_group ? `VIP Group - ${record.vip_group}` : record.status === "active" ? "Premium Member - Gold Tier" : "Standard Member",
-        lifetimeValue: lifetimeValue || mockCustomer.lifetimeValue,
-        lifetimeProgress: lifetimeValue ? Math.min(Math.round(lifetimeValue / 650), 100) : 72,
-        logisticsRegion: formatCustomerLocation(record) || "Seattle region",
-        orders,
+        totalOrders,
+        totalSpent,
+        totalPaid,
+        totalDebt,
+        averageOrderValue: totalOrders > 0 ? totalSpent / totalOrders : 0,
+        successfulOrders,
+        complaintOrders,
+        lastPurchaseDate,
     };
 };
 
-const KpiCard = ({ label, value, helper, icon, color, bg }: any) => (
-    <Card size="small" style={{ height: "100%" }}>
-        <Flex align="center" justify="space-between">
-            <Statistic
-                title={label}
-                value={value}
-                valueStyle={{ fontWeight: 600 }}
-            />
+const customerStatusMeta: Record<CustomerStatus, { color: string; label: string }> = {
+    active: { color: "success", label: "Hoạt động" },
+    inactive: { color: "default", label: "Ngừng hoạt động" },
+    blocked: { color: "error", label: "Tạm khóa" },
+};
 
-            <Flex
-                align="center"
-                justify="center"
-                style={{
-                    background: bg,
-                    color: color,
-                    width: 36,
-                    height: 36,
-                    borderRadius: 6,
-                }}
-            >
-                {icon}
-            </Flex>
-        </Flex>
+const orderStatusMeta: Record<string, { color: string; label: string }> = {
+    draft: { color: "default", label: "Nháp" },
+    pending: { color: "gold", label: "Chờ xử lý" },
+    awaiting_deposit: { color: "orange", label: "Chờ đặt cọc" },
+    deposited: { color: "cyan", label: "Đã đặt cọc" },
+    purchasing: { color: "blue", label: "Đang mua hàng" },
+    awaiting_tracking: { color: "geekblue", label: "Chờ mã vận đơn" },
+    waiting_cn_warehouse: { color: "purple", label: "Chờ kho Trung Quốc" },
+    receiving: { color: "processing", label: "Đang nhận hàng" },
+    shipped: { color: "blue", label: "Đang vận chuyển" },
+    delivered: { color: "success", label: "Đã giao hàng" },
+    completed: { color: "success", label: "Hoàn thành" },
+    complaint: { color: "volcano", label: "Khiếu nại" },
+    cancelled: { color: "error", label: "Đã hủy" },
+};
 
-        <Text type="secondary" style={{ fontSize: 12 }}>
-            {helper}
+const getStatusTag = (status?: string | null) => {
+    const meta = status ? orderStatusMeta[status] : undefined;
+
+    return <Tag color={meta?.color ?? "default"}>{meta?.label ?? safeText(status, "Khác")}</Tag>;
+};
+
+const MetricCard = ({ label, value, helper, icon, tone }: MetricCardProps) => (
+    <Card className={`customer-metric-card customer-metric-card--${tone}`}>
+        <div className="customer-metric-card__content">
+            <span className="customer-metric-card__icon">{icon}</span>
+            <div>
+                <Text className="customer-muted">{label}</Text>
+                <div className="customer-metric-card__value">{value}</div>
+                <Text className="customer-muted customer-small-text">{helper}</Text>
+            </div>
+        </div>
+    </Card>
+);
+
+const InfoRow = ({ icon, label, value }: InfoRowProps) => (
+    <div className="customer-info-row">
+        {icon ? <span className="customer-info-row__icon">{icon}</span> : null}
+        <div className="customer-info-row__body">
+            <Text className="customer-muted customer-small-text">{label}</Text>
+            <div className="customer-info-row__value">{value}</div>
+        </div>
+    </div>
+);
+
+const SimpleRow = ({ label, value, accent }: SimpleRowProps) => (
+    <div className="customer-simple-row">
+        <Text className="customer-muted">{label}</Text>
+        <span className={accent ? `customer-simple-row__value customer-simple-row__value--${accent}` : "customer-simple-row__value"}>
+            {value}
+        </span>
+    </div>
+);
+
+const EmptyData = ({ description }: { description: string }) => (
+    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={description} />
+);
+
+const CustomerProfileCard = ({ customer }: { customer: ICustomer }) => {
+    const statusMeta = customerStatusMeta[customer.status] ?? { color: "default", label: safeText(customer.status) };
+    const fullAddress = formatFullAddress(customer);
+    const location = formatCustomerLocation(customer);
+
+    return (
+        <Card className="customer-profile-card" styles={{ body: { padding: 0 } }}>
+            <div className="customer-profile-card__hero">
+                <Avatar
+                    alt={customer.name}
+                    className="customer-profile-card__avatar"
+                    icon={<UserOutlined />}
+                    size={92}
+                    src={customer.avatar}
+                />
+                <Title level={4} className="customer-profile-card__name">
+                    {safeText(customer.name)}
+                </Title>
+                <Space size={6} wrap className="customer-profile-card__badges">
+                    {customer.vip_group ? <Tag color="blue">{customer.vip_group}</Tag> : <Tag>{EMPTY_VALUE}</Tag>}
+                    <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+                </Space>
+            </div>
+
+            <div className="customer-profile-card__details">
+                <InfoRow
+                    icon={<MailOutlined />}
+                    label="Email"
+                    value={customer.email ? <a href={`mailto:${customer.email}`}>{customer.email}</a> : EMPTY_VALUE}
+                />
+                <InfoRow
+                    icon={<PhoneOutlined />}
+                    label="Số điện thoại"
+                    value={customer.phone ? <a href={`tel:${customer.phone}`}>{customer.phone}</a> : EMPTY_VALUE}
+                />
+                <InfoRow icon={<HomeOutlined />} label="Địa chỉ" value={safeText(fullAddress)} />
+                <InfoRow icon={<EnvironmentOutlined />} label="Tỉnh/thành, quận/huyện, phường/xã" value={safeText(location)} />
+                <InfoRow icon={<CalendarOutlined />} label="Tham gia" value={formatDate(customer.created_at)} />
+                <InfoRow icon={<StarFilled />} label="Nguồn khách hàng" value={EMPTY_VALUE} />
+                <InfoRow icon={<TeamOutlined />} label="Nhân viên phụ trách" value={UNASSIGNED_LABEL} />
+            </div>
+        </Card>
+    );
+};
+
+const CustomerValueCard = ({ summary }: { summary: CustomerSummary }) => (
+    <Card className="customer-value-card">
+        <div className="customer-card-title customer-card-title--blue">
+            <WalletOutlined />
+            <span>Giá trị trọn đời (LTV)</span>
+        </div>
+        <div className="customer-value-card__amount">{formatVnd(summary.totalSpent)}</div>
+        <Text className="customer-muted">Tổng chi tiêu tích lũy</Text>
+        <div className="customer-divider" />
+        <SimpleRow
+            label="Công nợ hiện tại"
+            value={formatVnd(summary.totalDebt)}
+            accent={summary.totalDebt > 0 ? "danger" : "success"}
+        />
+        <Text className="customer-muted customer-small-text">
+            {summary.totalDebt > 0 ? "Còn công nợ cần theo dõi" : "Không có công nợ"}
         </Text>
     </Card>
 );
 
-export const CustomerShow = () => {
-    const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
-    const { query } = useShow<ICustomer>({
-        resource: "customers",
-    });
-    const { data, isLoading } = query;
-    console.log("Raw data from useShow:", data);
-    const customer = getProfileFromRecord(data?.data);
-    console.log("Customer data:", customer);
+const OrderHistoryCard = ({ orders }: { orders: PurchaseHistoryItem[] }) => {
+    const navigate = useNavigate();
+    const debtRows = orders.filter((order) => order.debtAmount > 0 || order.depositAmount > 0 || order.paidAmount > 0);
+    const complaintRows = orders.filter((order) => order.status === "complaint");
+
     const columns: ColumnsType<PurchaseHistoryItem> = [
         {
-            title: "Order ID",
+            title: "Mã đơn hàng",
             dataIndex: "orderCode",
             key: "orderCode",
-            render: (value: string) => <Text strong>{value}</Text>,
+            width: 180,
+            render: (value: string, order) => <Link to={`/orders/show/${order.id}`}>{value}</Link>,
         },
         {
-            title: "Order Date",
+            title: "Ngày đặt",
             dataIndex: "orderDate",
             key: "orderDate",
-            render: (value: string) => <Text>{formatDate(value)}</Text>,
+            width: 140,
+            render: (value: string) => <Text>{formatDateTime(value)}</Text>,
         },
         {
-            title: "Total Amount",
+            title: "Trạng thái",
+            dataIndex: "status",
+            key: "status",
+            width: 150,
+            render: (value: string) => getStatusTag(value),
+        },
+        {
+            title: "Tổng tiền",
             dataIndex: "totalAmount",
             key: "totalAmount",
             align: "right",
-            render: (value: number) => <Text strong>{currencyFormatter.format(value)}</Text>,
-        },
-        {
-            title: "Status",
-            dataIndex: "status",
-            key: "status",
-            render: (value: PurchaseStatus) => (
-                <Tag color={statusColor[value]}>
-                    {statusLabel[value]}
-                </Tag>
+            width: 170,
+            render: (_value: number, order) => order.isExchangeRateLocked ? (
+                <Space direction="vertical" size={0} align="end">
+                    <Text strong>{formatVnd(order.totalAmount)}</Text>
+                    <Text type="secondary">{formatCny(order.totalCny)}</Text>
+                </Space>
+            ) : (
+                <Space direction="vertical" size={0} align="end">
+                    <Text>{formatCny(order.totalCny)}</Text>
+                    <Text type="secondary">Chưa chốt tỷ giá</Text>
+                </Space>
             ),
         },
         {
-            title: "Actions",
+            title: "Đã thanh toán",
+            dataIndex: "paidAmount",
+            key: "paidAmount",
+            align: "right",
+            width: 150,
+            render: (value: number) => <Text type={value > 0 ? "success" : "secondary"}>{formatVnd(value)}</Text>,
+        },
+        {
+            title: "Công nợ",
+            dataIndex: "debtAmount",
+            key: "debtAmount",
+            align: "right",
+            width: 140,
+            render: (value: number) => <Text type={value > 0 ? "danger" : "secondary"}>{formatVnd(value)}</Text>,
+        },
+        {
+            title: "Thao tác",
             key: "actions",
             align: "center",
-            width: 96,
-            render: () => (
+            width: 92,
+            render: (_, order) => (
                 <Dropdown
                     trigger={["click"]}
                     menu={{
-                        items: [
-                            { key: "view", label: "View order" },
-                            { key: "invoice", label: "Download invoice" },
-                        ],
+                        items: [{ key: "view", label: "Xem chi tiết" }],
+                        onClick: () => navigate(`/orders/show/${order.id}`),
                     }}
                 >
-                    <Button aria-label="Order actions" icon={<MoreOutlined />} size="small" type="text" />
+                    <Button aria-label="Thao tác đơn hàng" icon={<MoreOutlined />} size="small" type="text" />
                 </Dropdown>
             ),
         },
     ];
 
+    const debtColumns: ColumnsType<PurchaseHistoryItem> = [
+        { title: "Mã đơn", dataIndex: "orderCode", key: "orderCode", render: (value: string, order) => <Link to={`/orders/show/${order.id}`}>{value}</Link> },
+        { title: "Ngày phát sinh", dataIndex: "orderDate", key: "orderDate", render: (value: string) => formatDate(value) },
+        { title: "Giá trị", dataIndex: "depositAmount", key: "depositAmount", align: "right", render: (value: number) => formatVnd(value) },
+        { title: "Đã thanh toán", dataIndex: "paidAmount", key: "paidAmount", align: "right", render: (value: number) => formatVnd(value) },
+        { title: "Còn nợ", dataIndex: "debtAmount", key: "debtAmount", align: "right", render: (value: number) => <Text type={value > 0 ? "danger" : "secondary"}>{formatVnd(value)}</Text> },
+        { title: "Trạng thái", dataIndex: "depositStatus", key: "depositStatus", render: (value?: string | null) => <Tag>{safeText(value, "Chưa có")}</Tag> },
+    ];
+
     return (
-        <Show
-            breadcrumb={false}
-            headerButtons={() => null}
-            isLoading={isLoading}
-            title={false}
-        >
-            <Space orientation="vertical" size="large" style={pageStyle}>
-                <Row align="bottom" justify="space-between" gutter={[16, 16]}>
-                    <Col>
-                        <Space orientation="vertical" size={8}>
-                            <Breadcrumb
-                                items={[
-                                    { title: "Directory" },
-                                    { title: "Customers" },
-                                    { title: customer.name },
-                                ]}
-                            />
-                            <Title level={2} style={{ margin: 0 }}>
-                                Customer Profile
-                            </Title>
-                        </Space>
-                    </Col>
-                    <Col>
-                        <Space wrap>
-                            <Button
-                                icon={<SafetyCertificateOutlined />}
-                                onClick={() => setEditingCustomerId(customer.id)}
-                            >
-                                Edit Profile
-                            </Button>
-                            <Button icon={<MailOutlined />} type="primary">
-                                Contact Customer
-                            </Button>
-                        </Space>
-                    </Col>
-                </Row>
-
-                <Row gutter={[24, 24]} align="stretch">
-                    <Col xs={24} lg={8} xl={6} xxl={5}>
-                        <Card style={{ height: "100%" }}>
-                            <Space align="center" orientation="vertical" size={10} style={{ width: "100%" }}>
-                                <Avatar
-                                    alt={customer.name}
-                                    icon={<UserOutlined />}
-                                    size={96}
-                                    src={customer.avatar}
-                                />
-                                <Space align="center" orientation="vertical" size={2}>
-                                    <Title level={4} style={{ margin: 0 }}>
-                                        {customer.name}
-                                    </Title>
-                                    <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                                        {customer.tier}
-                                    </Tag>
-                                </Space>
-                            </Space>
-
-                            <Descriptions
-                                column={1}
-                                layout="vertical"
-                                size="small"
-                                style={{ marginTop: 24 }}
-                                items={[
-                                    {
-                                        key: "vip_group",
-                                        label: (
-                                            <Space size={4}>
-                                                <StarFilled />
-                                                VIP Group
-                                            </Space>
-                                        ),
-                                        children: customer.vip_group ?? "-",
-                                    },
-                                    {
-                                        key: "email",
-                                        label: (
-                                            <Space size={4}>
-                                                <MailOutlined />
-                                                Email Address
-                                            </Space>
-                                        ),
-                                        children: customer.email,
-                                    },
-                                    {
-                                        key: "phone",
-                                        label: (
-                                            <Space size={4}>
-                                                <PhoneOutlined />
-                                                Phone Number
-                                            </Space>
-                                        ),
-                                        children: customer.phone,
-                                    },
-                                    {
-                                        key: "address",
-                                        label: (
-                                            <Space size={4}>
-                                                <HomeOutlined />
-                                                Full Address
-                                            </Space>
-                                        ),
-                                        children: formatFullAddress(customer) || "-",
-                                    },
-                                    {
-                                        key: "location",
-                                        label: (
-                                            <Space size={4}>
-                                                <EnvironmentOutlined />
-                                                Province / District / Ward
-                                            </Space>
-                                        ),
-                                        children: formatCustomerLocation(customer) || "-",
-                                    },
-                                    {
-                                        key: "created_at",
-                                        label: (
-                                            <Space size={4}>
-                                                <CalendarOutlined />
-                                                Join Date
-                                            </Space>
-                                        ),
-                                        children: formatDate(customer.created_at),
-                                    },
-                                ]}
-                            />
-
-                            <Card size="small" title="Lifetime Value" style={{ marginTop: 16 }}>
-                                <Text strong>{currencyFormatter.format(customer.lifetimeValue)}</Text>
-                                <Progress
-                                    percent={customer.lifetimeProgress}
-                                    showInfo={false}
-                                    style={{ marginTop: 8 }}
-                                />
-                            </Card>
-                        </Card>
-                    </Col>
-
-                    <Col xs={24} lg={16} xl={18} xxl={19}>
-                        <Space orientation="vertical" size="large" style={{ width: "100%" }}>
-                            <Row gutter={[16, 16]}>
-                                <Col xs={24} md={8}>
-                                    <KpiCard
-                                        helper="Across active accounts"
-                                        icon={<ShoppingOutlined />}
-                                        color="#1890ff"
-                                        bg="#e6f7ff"
-                                        label="Total Orders"
-                                        value={String(customer.orders_count ?? customer.orders.length)}
-                                    />
-                                </Col>
-                                <Col xs={24} md={8}>
-                                    <KpiCard
-                                        helper="Month over month"
-                                        icon={<RiseOutlined />}
-                                        color="#52c41a"
-                                        bg="#f6ffed"
-                                        label="Avg. Growth"
-                                        value="14.2%"
-                                    />
-                                </Col>
-                                <Col xs={24} md={8}>
-                                    <KpiCard
-                                        helper="Feedback score"
-                                        icon={<StarFilled />}
-                                        color="#fa8c16"
-                                        bg="#fff7e6"
-                                        label="Feedback Score"
-                                        value="4.9"
-                                    />
-                                </Col>
-                            </Row>
-
-                            <Card
-                                title="Purchase History"
-                                extra={<Button icon={<DownloadOutlined />} size="small">Export CSV</Button>}
-                            >
-                                <Paragraph type="secondary">
-                                    Recent orders and transaction status.
-                                </Paragraph>
+        <Card className="customer-history-card">
+            <Tabs
+                className="customer-tabs"
+                items={[
+                    {
+                        key: "orders",
+                        label: "Lịch sử mua hàng",
+                        children: (
+                            <>
                                 <Table<PurchaseHistoryItem>
                                     columns={columns}
-                                    dataSource={customer.orders}
+                                    dataSource={orders}
                                     pagination={false}
                                     rowKey="id"
-                                    locale={{
-                                        emptyText: "Customer has no orders yet.",
-                                    }}
-                                    scroll={{ x: 960 }}
-                                    size="middle"
+                                    locale={{ emptyText: <EmptyData description="Khách hàng chưa có đơn hàng" /> }}
+                                    scroll={{ x: 980 }}
                                 />
-                                <div style={{ marginTop: 16, textAlign: "center" }}>
-                                    <Button type="link">View All Transactions</Button>
+                                <div className="customer-table-footer">
+                                    <Button type="link" onClick={() => navigate("/orders")}>Xem tất cả đơn hàng</Button>
                                 </div>
-                            </Card>
+                            </>
+                        ),
+                    },
+                    {
+                        key: "payments",
+                        label: "Giao dịch & Thanh toán",
+                        children: <EmptyData description="Backend chưa cung cấp dữ liệu giao dịch thanh toán cho khách hàng này" />,
+                    },
+                    {
+                        key: "debt",
+                        label: "Công nợ",
+                        children: debtRows.length ? (
+                            <Table<PurchaseHistoryItem>
+                                columns={debtColumns}
+                                dataSource={debtRows}
+                                pagination={false}
+                                rowKey="id"
+                                scroll={{ x: 780 }}
+                            />
+                        ) : <EmptyData description="Không có công nợ từ dữ liệu hiện có" />,
+                    },
+                    {
+                        key: "complaints",
+                        label: "Khiếu nại",
+                        children: complaintRows.length ? (
+                            <Table<PurchaseHistoryItem>
+                                columns={columns.slice(0, 4)}
+                                dataSource={complaintRows}
+                                pagination={false}
+                                rowKey="id"
+                                scroll={{ x: 680 }}
+                            />
+                        ) : <EmptyData description="Chưa có khiếu nại" />,
+                    },
+                ]}
+            />
+        </Card>
+    );
+};
 
-                            <Card
-                                title="Logistics Coverage"
-                                extra={<SafetyCertificateOutlined />}
+const DeliveryCoverageCard = ({ customer, summary }: { customer: ICustomer; summary: CustomerSummary }) => (
+    <Card className="customer-section-card" title={<span className="customer-card-title"><EnvironmentOutlined />Phạm vi giao hàng</span>}>
+        <div className="customer-coverage-box">
+            <SimpleRow label="Địa chỉ chính" value={safeText(formatFullAddress(customer))} />
+            <SimpleRow label="Khu vực giao thường xuyên" value={safeText(formatCustomerLocation(customer))} />
+            <SimpleRow label="Số lần giao thành công" value={summary.successfulOrders} accent="success" />
+            <SimpleRow label="Lần giao gần nhất" value={formatDate(summary.lastPurchaseDate)} />
+        </div>
+    </Card>
+);
+
+const ActivityCard = ({ orders }: { orders: PurchaseHistoryItem[] }) => {
+    const recentOrders = [...orders]
+        .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+        .slice(0, 5);
+
+    return (
+        <Card className="customer-section-card" title={<span className="customer-card-title"><ClockCircleOutlined />Hoạt động gần đây</span>}>
+            {recentOrders.length ? (
+                <div className="customer-timeline">
+                    {recentOrders.map((order) => (
+                        <div className="customer-timeline__item" key={order.id}>
+                            <span className="customer-timeline__dot"><ShoppingOutlined /></span>
+                            <div>
+                                <Link to={`/orders/show/${order.id}`}>Đơn hàng {order.orderCode}</Link>
+                                <div className="customer-muted customer-small-text">{formatDateTime(order.orderDate)}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : <EmptyData description="Chưa có hoạt động từ dữ liệu hiện có" />}
+        </Card>
+    );
+};
+
+const AdditionalInfoCard = () => (
+    <Card className="customer-section-card" title={<span className="customer-card-title"><FileTextOutlined />Thông tin bổ sung</span>}>
+        <Tabs
+            className="customer-tabs customer-tabs--compact"
+            items={[
+                {
+                    key: "personal",
+                    label: "Thông tin cá nhân",
+                    children: (
+                        <div className="customer-additional-grid">
+                            <SimpleRow label="Ngày sinh" value={EMPTY_VALUE} />
+                            <SimpleRow label="Giới tính" value={EMPTY_VALUE} />
+                            <SimpleRow label="CMND/CCCD" value={EMPTY_VALUE} />
+                            <SimpleRow label="Mã số thuế" value={EMPTY_VALUE} />
+                        </div>
+                    ),
+                },
+                { key: "addresses", label: "Địa chỉ khác", children: <EmptyData description="Chưa có dữ liệu địa chỉ khác" /> },
+                { key: "banks", label: "Tài khoản ngân hàng", children: <EmptyData description="Chưa có dữ liệu tài khoản ngân hàng" /> },
+                { key: "files", label: "Tài liệu đính kèm", children: <EmptyData description="Chưa có tài liệu đính kèm" /> },
+            ]}
+        />
+    </Card>
+);
+
+const CustomerInfoCard = ({ customer, summary }: { customer: ICustomer; summary: CustomerSummary }) => {
+    const statusMeta = customerStatusMeta[customer.status] ?? { color: "default", label: safeText(customer.status) };
+
+    return (
+        <Card className="customer-side-card" title={<span className="customer-card-title"><IdcardOutlined />Thông tin khách hàng</span>}>
+            <SimpleRow label="Loại khách hàng" value={customer.vip_group ? <Tag color="purple">{customer.vip_group}</Tag> : EMPTY_VALUE} />
+            <SimpleRow label="Xếp hạng" value={EMPTY_VALUE} />
+            <SimpleRow label="Hạn mức công nợ" value={EMPTY_VALUE} />
+            <SimpleRow label="Hạn mức còn lại" value={EMPTY_VALUE} />
+            <SimpleRow label="Số dư tài khoản" value={EMPTY_VALUE} />
+            <SimpleRow label="Điểm tích lũy" value={EMPTY_VALUE} />
+            <SimpleRow label="Trạng thái" value={<Tag color={statusMeta.color}>{statusMeta.label}</Tag>} />
+            <div className="customer-divider" />
+            <SimpleRow label="Công nợ hiện tại" value={formatVnd(summary.totalDebt)} accent={summary.totalDebt > 0 ? "danger" : "success"} />
+        </Card>
+    );
+};
+
+const InternalNoteCard = ({ note }: { note?: string | null }) => (
+    <Card className="customer-side-card" title={<span className="customer-card-title customer-card-title--orange"><StarFilled />Ghi chú nội bộ</span>}>
+        <div className="customer-note-box">{safeText(note, "Chưa có ghi chú")}</div>
+    </Card>
+);
+
+const PreferencesCard = () => (
+    <Card className="customer-side-card" title={<span className="customer-card-title customer-card-title--purple"><ShoppingOutlined />Sở thích mua hàng</span>}>
+        <EmptyData description="Backend chưa cung cấp dữ liệu sở thích mua hàng" />
+    </Card>
+);
+
+const QuickStatsCard = ({ summary }: { summary: CustomerSummary }) => (
+    <Card className="customer-side-card" title={<span className="customer-card-title customer-card-title--purple"><RiseOutlined />Thống kê nhanh</span>}>
+        <SimpleRow label="Số đơn hàng" value={summary.totalOrders} />
+        <SimpleRow label="Tổng chi tiêu" value={formatVnd(summary.totalSpent)} />
+        <SimpleRow label="Đơn hàng trung bình" value={formatVnd(summary.averageOrderValue)} />
+        <SimpleRow label="Sản phẩm đã mua" value={EMPTY_VALUE} />
+        <SimpleRow label="Lần mua cuối" value={formatDate(summary.lastPurchaseDate)} />
+        <SimpleRow label="Tỷ lệ đơn thành công" value={summary.totalOrders > 0 ? `${Math.round((summary.successfulOrders / summary.totalOrders) * 100)}%` : EMPTY_VALUE} />
+        <SimpleRow label="Số khiếu nại" value={summary.complaintOrders} />
+    </Card>
+);
+
+export const CustomerShow = () => {
+    const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+    const { query } = useShow<ICustomer>({ resource: "customers" });
+    const { data, isLoading, isError } = query;
+    const customer = data?.data;
+    const orders = useMemo(() => mapOrders(customer?.orders), [customer?.orders]);
+    const summary = useMemo(() => buildSummary(customer), [customer]);
+
+    if (!isLoading && (isError || !customer)) {
+        return (
+            <Show breadcrumb={false} headerButtons={() => null} isLoading={isLoading} title={false}>
+                <div className="customer-detail-page">
+                    <EmptyData description="Không tìm thấy khách hàng" />
+                </div>
+            </Show>
+        );
+    }
+
+    return (
+        <Show breadcrumb={false} headerButtons={() => null} isLoading={isLoading} title={false}>
+            {customer ? (
+                <div className="customer-detail-page">
+                    <div className="customer-detail-header">
+                        <div>
+                            <Breadcrumb
+                                items={[
+                                    { title: "Khách hàng" },
+                                    { title: "Chi tiết khách hàng" },
+                                    { title: safeText(customer.name) },
+                                ]}
+                            />
+                            <Title level={2} className="customer-detail-title">Chi tiết khách hàng</Title>
+                        </div>
+                        <Space wrap className="customer-detail-actions">
+                            <Button icon={<EditOutlined />} onClick={() => setEditingCustomerId(customer.id)}>
+                                Chỉnh sửa
+                            </Button>
+                            <Button
+                                disabled={!customer.email}
+                                href={customer.email ? `mailto:${customer.email}` : undefined}
+                                icon={<MailOutlined />}
+                                type="primary"
                             >
-                                <Paragraph type="secondary">
-                                    Active shipments for this customer in the {customer.logisticsRegion}.
-                                </Paragraph>
-                                <div style={{ marginTop: 16, ...mapWrapStyle }}>
-                                    <img alt="Logistics coverage map" src={mapImage} style={mapImageStyle} />
-                                    <span
-                                        style={{
-                                            ...mapMarkerStyle,
-                                            background: "#0b5cad",
-                                            left: "64%",
-                                            top: "30%",
-                                        }}
-                                    />
-                                    <span
-                                        style={{
-                                            ...mapMarkerStyle,
-                                            background: "#0b6b55",
-                                            left: "38%",
-                                            top: "52%",
-                                        }}
-                                    />
-                                    <Tag
-                                        icon={<EnvironmentOutlined />}
-                                        style={{
-                                            bottom: 14,
-                                            position: "absolute",
-                                            right: 14,
-                                        }}
-                                    >
-                                        2 active lanes
-                                    </Tag>
-                                </div>
-                            </Card>
+                                Liên hệ khách hàng
+                            </Button>
+                            <Dropdown
+                                trigger={["click"]}
+                                menu={{
+                                    items: [
+                                        {
+                                            key: "edit",
+                                            icon: <EditOutlined />,
+                                            label: "Chỉnh sửa",
+                                            onClick: () => setEditingCustomerId(customer.id),
+                                        },
+                                        {
+                                            key: "email",
+                                            icon: <MailOutlined />,
+                                            label: "Gửi email",
+                                            disabled: !customer.email,
+                                        },
+                                    ],
+                                }}
+                            >
+                                <Button aria-label="Thao tác khác" icon={<MoreOutlined />} />
+                            </Dropdown>
                         </Space>
-                    </Col>
-                </Row>
-            </Space>
+                    </div>
+
+                    <div className="customer-detail-grid">
+                        <aside className="customer-detail-left">
+                            <CustomerProfileCard customer={customer} />
+                            <CustomerValueCard summary={summary} />
+                        </aside>
+
+                        <main className="customer-detail-main">
+                            <div className="customer-metrics-grid">
+                                <MetricCard
+                                    helper="Tất cả thời gian"
+                                    icon={<ShoppingOutlined />}
+                                    label="Tổng đơn hàng"
+                                    tone="blue"
+                                    value={String(summary.totalOrders)}
+                                />
+                                <MetricCard
+                                    helper="Backend chưa cung cấp dữ liệu so sánh"
+                                    icon={<RiseOutlined />}
+                                    label="Tăng trưởng TB"
+                                    tone="green"
+                                    value={EMPTY_VALUE}
+                                />
+                                <MetricCard
+                                    helper="Tổng đơn đã chốt tỷ giá"
+                                    icon={<DollarOutlined />}
+                                    label="Tổng chi tiêu"
+                                    tone="purple"
+                                    value={formatVnd(summary.totalSpent)}
+                                />
+                            </div>
+
+                            <OrderHistoryCard orders={orders} />
+
+                            <div className="customer-main-split">
+                                <DeliveryCoverageCard customer={customer} summary={summary} />
+                                <ActivityCard orders={orders} />
+                            </div>
+
+                            <AdditionalInfoCard />
+                        </main>
+
+                        <aside className="customer-detail-right">
+                            <CustomerInfoCard customer={customer} summary={summary} />
+                            <InternalNoteCard note={customer.note} />
+                            <PreferencesCard />
+                            <QuickStatsCard summary={summary} />
+                        </aside>
+                    </div>
+                </div>
+            ) : null}
 
             <CustomerFormModal
                 customerId={editingCustomerId ?? undefined}
