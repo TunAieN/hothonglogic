@@ -86,9 +86,12 @@ export type VoucherPreviewPackage = {
 export type VoucherPreview = {
   customer: PaymentCustomer;
   packages: VoucherPreviewPackage[];
+  order_total: number;
+  product_total: number;
   shipping_fee_total: number;
   domestic_shipping_fee: number;
   surcharge_total: number;
+  gross_total: number;
   deposit_applied: number;
   customer_credit_available: number;
   customer_credit_applied: number;
@@ -190,4 +193,3 @@ export type PaymentVoucher = {
   invoice?: Invoice | null;
   order?: PaymentVoucherRelatedOrder | null;
 };
-

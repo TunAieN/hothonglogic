@@ -228,20 +228,29 @@ const DepositSummaryCard = ({ voucher }: { voucher: PaymentVoucher }) => {
   );
 };
 
-const ShipmentPaymentSummaryCard = ({ voucher }: { voucher: PaymentVoucher }) => (
-  <DetailCard title="Tổng quan thanh toán" className="payment-vouchers-show__summary-card">
-    <div className="payment-vouchers-show__summary-list">
-      <SummaryLine label="Phí cân nặng / vận chuyển" value={money(voucher.shipping_fee_total)} />
-      <SummaryLine label="Phí vận chuyển nội địa TQ" value={money(voucher.domestic_shipping_fee)} />
-      <SummaryLine label="Phụ phí khác" value={money(voucher.surcharge_total)} />
-      <SummaryLine label="Tiền cọc được khấu trừ" value={money(voucher.deposit_applied)} danger />
-      <SummaryLine label="Tiền dư áp dụng" value={money(voucher.customer_credit_applied)} danger />
-      <SummaryLine label="Đã thanh toán" value={money(voucher.paid_amount)} />
-      <SummaryLine label="Còn phải trả" value={money(voucher.remaining_amount)} />
-      <SummaryLine label="Tổng thanh toán" value={money(voucher.total_amount)} strong />
-    </div>
-  </DetailCard>
-);
+const ShipmentPaymentSummaryCard = ({ voucher }: { voucher: PaymentVoucher }) => {
+  const grossTotal = Number(voucher.base_amount_vnd ?? 0)
+    + Number(voucher.shipping_fee_total ?? 0)
+    + Number(voucher.domestic_shipping_fee ?? 0)
+    + Number(voucher.surcharge_total ?? 0);
+
+  return (
+    <DetailCard title="Tổng quan thanh toán" className="payment-vouchers-show__summary-card">
+      <div className="payment-vouchers-show__summary-list">
+        <SummaryLine label="Tổng giá trị đơn hàng" value={money(voucher.base_amount_vnd)} />
+        <SummaryLine label="Phí cân nặng / vận chuyển" value={money(voucher.shipping_fee_total)} />
+        <SummaryLine label="Phí vận chuyển nội địa Việt Nam" value={money(voucher.domestic_shipping_fee)} />
+        <SummaryLine label="Phụ phí khác" value={money(voucher.surcharge_total)} />
+        <SummaryLine label="Tổng trước khấu trừ" value={money(grossTotal)} />
+        <SummaryLine label="Tiền cọc được khấu trừ" value={money(voucher.deposit_applied)} danger />
+        <SummaryLine label="Tiền dư áp dụng" value={money(voucher.customer_credit_applied)} danger />
+        <SummaryLine label="Đã thanh toán" value={money(voucher.paid_amount)} />
+        <SummaryLine label="Còn phải trả" value={money(voucher.remaining_amount)} />
+        <SummaryLine label="Số tiền cần thanh toán" value={money(voucher.total_amount)} strong />
+      </div>
+    </DetailCard>
+  );
+};
 
 const DepositOrdersSection = ({ order, voucher }: { order?: PaymentVoucherRelatedOrder | null; voucher: PaymentVoucher }) => {
   const columns: ColumnsType<PaymentVoucherRelatedOrder> = [

@@ -70,31 +70,8 @@ class PaymentVoucherService
 
         $this->assertPackagesEligible($packages);
         $surcharges = $this->normalizeSurcharges($input['surcharges'] ?? []);
-        $packageRows = $this->calculatePackageRows($packages, $surcharges);
-        $customer = $packages->first()->cnPackage?->order?->customer;
-        $surchargeTotal = array_sum(array_column($packageRows, 'surcharge_amount')) + $this->voucherLevelSurchargeTotal($surcharges);
-        $shippingTotal = array_sum(array_column($packageRows, 'shipping_fee'));
-        $domesticTotal = array_sum(array_column($packageRows, 'domestic_shipping_fee'));
-        $depositApplied = 0.0;
-        $creditAvailable = $this->customerCreditBalance((int) $customer->id);
-        $grossTotal = $shippingTotal + $domesticTotal + $surchargeTotal;
-        $creditApplied = min($creditAvailable, $grossTotal);
-        $totalAmount = max(0, $grossTotal - $depositApplied - $creditApplied);
 
-        return [
-            'customer' => $customer,
-            'packages' => array_values($packageRows),
-            'shipping_fee_total' => $this->money($shippingTotal),
-            'domestic_shipping_fee' => $this->money($domesticTotal),
-            'surcharge_total' => $this->money($surchargeTotal),
-            'deposit_applied' => $this->money($depositApplied),
-            'customer_credit_available' => $this->money($creditAvailable),
-            'customer_credit_applied' => $this->money($creditApplied),
-            'total_amount' => $this->money($totalAmount),
-            'remaining_amount' => $this->money($totalAmount),
-            'payment_account' => $this->defaultPaymentAccount(),
-            'transfer_content' => 'TT <ma phieu thanh toan>',
-        ];
+        return $this->buildVoucherPreview($packages, $surcharges);
     }
 
     public function createDepositVoucher(
@@ -338,7 +315,8 @@ class PaymentVoucherService
             }
 
             $this->assertPackagesEligible($packages, true);
-            $preview = $this->preview(['package_ids' => $packageIds, 'surcharges' => $input['surcharges'] ?? []]);
+            $surcharges = $this->normalizeSurcharges($input['surcharges'] ?? []);
+            $preview = $this->buildVoucherPreview($packages, $surcharges);
             $customer = $preview['customer'];
             $paymentMethodExpected = $input['payment_method_expected'] ?? 'bank_transfer';
             $paymentAccount = in_array($paymentMethodExpected, ['bank_transfer', 'mixed'], true) ? $this->defaultPaymentAccount() : null;
@@ -369,7 +347,11 @@ class PaymentVoucherService
                 'bank_account_holder_snapshot' => $paymentAccount?->account_holder,
                 'bank_branch_name_snapshot' => $paymentAccount?->branch_name,
                 'transfer_content' => $paymentAccount ? 'TT '.$voucherCode : null,
+                'voucher_type' => 'shipping',
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
+                'base_amount_cny' => $preview['product_total_cny'],
+                'base_amount_vnd' => $preview['product_total'],
+                'currency' => 'VND',
                 'shipping_fee_total' => $preview['shipping_fee_total'],
                 'domestic_shipping_fee' => $preview['domestic_shipping_fee'],
                 'surcharge_total' => $preview['surcharge_total'],
@@ -827,6 +809,64 @@ class PaymentVoucherService
         }
 
         return $rows;
+    }
+
+    private function buildVoucherPreview($packages, array $surcharges): array
+    {
+        $packageRows = $this->calculatePackageRows($packages, $surcharges);
+        $customer = $packages->first()->cnPackage?->order?->customer;
+
+        if (! $customer) {
+            throw new HttpException(422, 'Không xác định được khách hàng của phiếu thanh toán.');
+        }
+
+        $amounts = $this->calculateVoucherAmounts($packages, $packageRows, $surcharges, (int) $customer->id);
+
+        return [
+            'customer' => $customer,
+            'packages' => array_values($packageRows),
+            ...$amounts,
+            'payment_account' => $this->defaultPaymentAccount(),
+            'transfer_content' => 'TT <ma phieu thanh toan>',
+        ];
+    }
+
+    private function calculateVoucherAmounts($packages, array $packageRows, array $surcharges, int $customerId): array
+    {
+        $orders = $packages
+            ->map(fn (VnPackage $package) => $package->cnPackage?->order)
+            ->filter()
+            ->unique(fn (Order $order) => (int) $order->id)
+            ->values();
+
+        $productTotal = (float) $orders->sum(fn (Order $order) => max(0, (float) $order->product_total_vnd));
+        $productTotalCny = (float) $orders->sum(fn (Order $order) => max(0, (float) $order->product_total_cny));
+        $shippingTotal = array_sum(array_column($packageRows, 'shipping_fee'));
+        $domesticTotal = array_sum(array_column($packageRows, 'domestic_shipping_fee'));
+        $surchargeTotal = array_sum(array_column($packageRows, 'surcharge_amount'))
+            + $this->voucherLevelSurchargeTotal($surcharges);
+        $grossTotal = $productTotal + $shippingTotal + $domesticTotal + $surchargeTotal;
+        $paidDeposits = (float) $orders->sum(fn (Order $order) => max(0, (float) $order->deposit_paid_amount_vnd));
+        $depositApplied = min($paidDeposits, $grossTotal);
+        $afterDeposit = max(0, $grossTotal - $depositApplied);
+        $creditAvailable = $this->customerCreditBalance($customerId);
+        $creditApplied = min($creditAvailable, $afterDeposit);
+        $totalAmount = max(0, $afterDeposit - $creditApplied);
+
+        return [
+            'order_total' => $this->money($productTotal),
+            'product_total' => $this->money($productTotal),
+            'product_total_cny' => round($productTotalCny, 2),
+            'shipping_fee_total' => $this->money($shippingTotal),
+            'domestic_shipping_fee' => $this->money($domesticTotal),
+            'surcharge_total' => $this->money($surchargeTotal),
+            'gross_total' => $this->money($grossTotal),
+            'deposit_applied' => $this->money($depositApplied),
+            'customer_credit_available' => $this->money($creditAvailable),
+            'customer_credit_applied' => $this->money($creditApplied),
+            'total_amount' => $this->money($totalAmount),
+            'remaining_amount' => $this->money($totalAmount),
+        ];
     }
 
     private function volumetricWeight(VnPackage $package): float

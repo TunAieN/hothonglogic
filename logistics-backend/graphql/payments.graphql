@@ -118,9 +118,12 @@ type PaymentTransaction {
 type PaymentVoucherPreview {
   customer: Customer!
   packages: [PaymentVoucherPreviewPackage!]!
+  order_total: Float!
+  product_total: Float!
   shipping_fee_total: Float!
   domestic_shipping_fee: Float!
   surcharge_total: Float!
+  gross_total: Float!
   deposit_applied: Float!
   customer_credit_available: Float!
   customer_credit_applied: Float!

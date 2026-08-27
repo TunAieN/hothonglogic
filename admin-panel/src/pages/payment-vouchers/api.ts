@@ -132,9 +132,12 @@ export const previewPaymentVoucher = async (packageIds: string[], surcharges: Vo
       previewPaymentVoucher(input: $input) {
         customer { id code name phone address }
         packages { id tracking_number order_id order_code customer_name actual_weight volumetric_weight chargeable_weight price_per_kg shipping_rate_id shipping_rate_detail_id unit_price price_type rate_description shipping_fee domestic_shipping_fee surcharge_amount total_amount }
+        order_total
+        product_total
         shipping_fee_total
         domestic_shipping_fee
         surcharge_total
+        gross_total
         deposit_applied
         customer_credit_available
         customer_credit_applied
