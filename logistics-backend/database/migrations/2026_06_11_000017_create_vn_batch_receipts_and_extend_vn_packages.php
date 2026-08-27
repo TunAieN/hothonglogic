@@ -105,24 +105,26 @@ return new class extends Migration
         }
 
         Schema::table('vn_packages', function (Blueprint $table) {
-            if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id')) {
+            if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id') && ! $this->indexExists('vn_packages', 'vn_packages_receipt_index')) {
                 $table->index('vn_batch_receipt_id', 'vn_packages_receipt_index');
             }
 
-            if (Schema::hasColumn('vn_packages', 'tracking_number_snapshot')) {
+            if (Schema::hasColumn('vn_packages', 'tracking_number_snapshot') && ! $this->indexExists('vn_packages', 'vn_packages_tracking_snapshot_index')) {
                 $table->index('tracking_number_snapshot', 'vn_packages_tracking_snapshot_index');
             }
 
-            if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id') && Schema::hasColumn('vn_packages', 'tracking_number_snapshot')) {
+            if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id')
+                && Schema::hasColumn('vn_packages', 'tracking_number_snapshot')
+                && ! $this->indexExists('vn_packages', 'vn_packages_receipt_tracking_unique')) {
                 $table->unique(['vn_batch_receipt_id', 'tracking_number_snapshot'], 'vn_packages_receipt_tracking_unique');
             }
         });
 
-        if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id')) {
+        if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id') && ! $this->foreignKeyExists('vn_packages', 'vn_packages_receipt_foreign')) {
             DB::statement('ALTER TABLE vn_packages ADD CONSTRAINT vn_packages_receipt_foreign FOREIGN KEY (vn_batch_receipt_id) REFERENCES vn_batch_receipts(id) ON DELETE SET NULL');
         }
 
-        if (Schema::hasColumn('vn_packages', 'handled_by')) {
+        if (Schema::hasColumn('vn_packages', 'handled_by') && ! $this->foreignKeyExists('vn_packages', 'vn_packages_handled_by_foreign')) {
             DB::statement('ALTER TABLE vn_packages ADD CONSTRAINT vn_packages_handled_by_foreign FOREIGN KEY (handled_by) REFERENCES users(id) ON DELETE SET NULL');
         }
     }
@@ -130,58 +132,31 @@ return new class extends Migration
     public function down(): void
     {
         if (Schema::hasTable('vn_packages')) {
-            Schema::table('vn_packages', function (Blueprint $table) {
-                if (Schema::hasColumn('vn_packages', 'vn_batch_receipt_id')) {
-                    $table->dropUnique('vn_packages_receipt_tracking_unique');
-                    $table->dropIndex('vn_packages_receipt_index');
+            $hasReceiptId = Schema::hasColumn('vn_packages', 'vn_batch_receipt_id');
+            $hasReceiptUnique = $this->indexExists('vn_packages', 'vn_packages_receipt_tracking_unique');
+            $hasReceiptIndex = $this->indexExists('vn_packages', 'vn_packages_receipt_index');
+            $hasTrackingIndex = $this->indexExists('vn_packages', 'vn_packages_tracking_snapshot_index');
+            $hasReceiptForeign = $this->foreignKeyExists('vn_packages', 'vn_packages_receipt_foreign');
+
+            Schema::table('vn_packages', function (Blueprint $table) use ($hasReceiptId, $hasReceiptUnique, $hasReceiptIndex, $hasTrackingIndex, $hasReceiptForeign) {
+                if ($hasReceiptForeign) {
                     $table->dropForeign('vn_packages_receipt_foreign');
-                    $table->dropColumn('vn_batch_receipt_id');
                 }
 
-                if (Schema::hasColumn('vn_packages', 'tracking_number_snapshot')) {
+                if ($hasReceiptUnique) {
+                    $table->dropUnique('vn_packages_receipt_tracking_unique');
+                }
+
+                if ($hasReceiptIndex) {
+                    $table->dropIndex('vn_packages_receipt_index');
+                }
+
+                if ($hasTrackingIndex) {
                     $table->dropIndex('vn_packages_tracking_snapshot_index');
-                    $table->dropColumn('tracking_number_snapshot');
                 }
 
-                if (Schema::hasColumn('vn_packages', 'actual_length')) {
-                    $table->dropColumn('actual_length');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'actual_width')) {
-                    $table->dropColumn('actual_width');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'actual_height')) {
-                    $table->dropColumn('actual_height');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'extra_fee')) {
-                    $table->dropColumn('extra_fee');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'wooden_fee')) {
-                    $table->dropColumn('wooden_fee');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'other_fee')) {
-                    $table->dropColumn('other_fee');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'order_code_snapshot')) {
-                    $table->dropColumn('order_code_snapshot');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'customer_name_snapshot')) {
-                    $table->dropColumn('customer_name_snapshot');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'handled_by')) {
-                    $table->dropForeign('vn_packages_handled_by_foreign');
-                    $table->dropColumn('handled_by');
-                }
-
-                if (Schema::hasColumn('vn_packages', 'scanned_at')) {
-                    $table->dropColumn('scanned_at');
+                if ($hasReceiptId) {
+                    $table->dropColumn('vn_batch_receipt_id');
                 }
             });
         }
@@ -198,5 +173,24 @@ return new class extends Migration
         }
 
         DB::statement(sprintf('ALTER TABLE %s MODIFY %s %s', $table, $column, $definition));
+    }
+
+    private function indexExists(string $table, string $index): bool
+    {
+        return DB::table('information_schema.statistics')
+            ->where('table_schema', DB::connection()->getDatabaseName())
+            ->where('table_name', $table)
+            ->where('index_name', $index)
+            ->exists();
+    }
+
+    private function foreignKeyExists(string $table, string $constraint): bool
+    {
+        return DB::table('information_schema.table_constraints')
+            ->where('constraint_schema', DB::connection()->getDatabaseName())
+            ->where('table_name', $table)
+            ->where('constraint_name', $constraint)
+            ->where('constraint_type', 'FOREIGN KEY')
+            ->exists();
     }
 };
