@@ -1,4 +1,11 @@
 import { initializeExtensionStorage } from "./extension-src/storage/settings.js";
+import {
+    addCartItem,
+    clearCart,
+    getCart,
+    removeCartItem,
+} from "./extension-src/storage/cart.js";
+import { MESSAGE_TYPES } from "./extension-src/shared/constants.js";
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
@@ -11,72 +18,29 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'addToCart') {
-        addToCart(request.data).then(result => {
-            sendResponse({ success: true, data: result });
-        }).catch(error => {
-            sendResponse({ success: false, error: error.message });
-        });
-        return true; // Keep channel open for async response
-    }
+    const handlers = {
+        [MESSAGE_TYPES.ADD_TO_CART]: () => addCartItem(request.data),
+        [MESSAGE_TYPES.GET_CART]: () => getCart(),
+        [MESSAGE_TYPES.CLEAR_CART]: () => clearCart(),
+        [MESSAGE_TYPES.REMOVE_FROM_CART]: () => removeCartItem(request.index),
+        [MESSAGE_TYPES.OPEN_LOGIN]: async () => {
+            await chrome.windows.create({
+                url: chrome.runtime.getURL("login.html"),
+                type: "popup",
+                width: 400,
+                height: 600,
+            });
+        },
+    };
 
-    if (request.action === 'getCart') {
-        chrome.storage.local.get(['cart'], (result) => {
-            sendResponse({ success: true, data: result.cart || [] });
-        });
-        return true;
-    }
+    const handler = handlers[request.action];
+    if (!handler) return false;
 
-    if (request.action === 'clearCart') {
-        chrome.storage.local.set({ cart: [] }, () => {
-            sendResponse({ success: true });
-        });
-        return true;
-    }
-
-    if (request.action === 'removeFromCart') {
-        removeFromCart(request.index).then(() => {
-            sendResponse({ success: true });
-        });
-        return true;
-    }
-
+    handler()
+        .then((data) => sendResponse({ success: true, data }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
 });
-
-// Add product to cart
-async function addToCart(productData) {
-    return new Promise((resolve, reject) => {
-        chrome.storage.local.get(['cart'], (result) => {
-            const cart = result.cart || [];
-
-            // Add timestamp and unique ID
-            const cartItem = {
-                ...productData,
-                id: Date.now(),
-                addedAt: new Date().toISOString()
-            };
-
-            cart.push(cartItem);
-
-            chrome.storage.local.set({ cart }, () => {
-                resolve(cartItem);
-            });
-        });
-    });
-}
-
-// Remove item from cart
-async function removeFromCart(index) {
-    return new Promise((resolve) => {
-        chrome.storage.local.get(['cart'], (result) => {
-            const cart = result.cart || [];
-            cart.splice(index, 1);
-            chrome.storage.local.set({ cart }, () => {
-                resolve();
-            });
-        });
-    });
-}
 
 // Badge update to show cart count
 chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -86,16 +50,5 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
             text: cartCount > 0 ? cartCount.toString() : ''
         });
         chrome.action.setBadgeBackgroundColor({ color: '#FF5722' });
-    }
-});
-// open login
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "openLogin") {
-        chrome.windows.create({
-            url: chrome.runtime.getURL("login.html"),
-            type: "popup",
-            width: 400,
-            height: 600
-        });
     }
 });

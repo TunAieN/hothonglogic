@@ -1,4 +1,4 @@
-export const ACTIVE_EXTENSION_ENVIRONMENT = "development";
+export const ACTIVE_ENVIRONMENT = "development";
 
 const ENVIRONMENTS = Object.freeze({
   development: Object.freeze({
@@ -11,7 +11,7 @@ const ENVIRONMENTS = Object.freeze({
   }),
 });
 
-export const getEnvironmentConfig = (environment = ACTIVE_EXTENSION_ENVIRONMENT) => {
+export function getEnvironmentConfig(environment = ACTIVE_ENVIRONMENT) {
   const config = ENVIRONMENTS[environment];
 
   if (!config) {
@@ -19,4 +19,4 @@ export const getEnvironmentConfig = (environment = ACTIVE_EXTENSION_ENVIRONMENT)
   }
 
   return config;
-};
+}

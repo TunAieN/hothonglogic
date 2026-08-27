@@ -1,18 +1,17 @@
-import {
-  ACTIVE_EXTENSION_ENVIRONMENT,
-  getEnvironmentConfig,
-} from "../config/environment.js";
+import { ACTIVE_ENVIRONMENT, getEnvironmentConfig } from "../config/config.js";
+import { STORAGE_KEYS } from "../shared/constants.js";
+import { getStoredValues, setStoredValues } from "./storage.js";
 
 const SETTINGS_KEYS = [
-  "environment",
-  "apiEndpoint",
-  "frontendOrderUrl",
-  "autoExtract",
-  "token",
+  STORAGE_KEYS.ENVIRONMENT,
+  STORAGE_KEYS.API_ENDPOINT,
+  STORAGE_KEYS.ADMIN_ORDER_URL,
+  STORAGE_KEYS.AUTO_EXTRACT,
+  STORAGE_KEYS.TOKEN,
 ];
 
 export const getDefaultSettings = () => {
-  const environment = ACTIVE_EXTENSION_ENVIRONMENT;
+  const environment = ACTIVE_ENVIRONMENT;
   const config = getEnvironmentConfig(environment);
 
   return {
@@ -26,7 +25,7 @@ export const getDefaultSettings = () => {
 
 export const loadExtensionSettings = async () => {
   const defaults = getDefaultSettings();
-  const stored = await chrome.storage.local.get(SETTINGS_KEYS);
+  const stored = await getStoredValues(SETTINGS_KEYS);
 
   return {
     environment: stored.environment || defaults.environment,
@@ -46,14 +45,14 @@ export const saveExtensionSettings = async (nextSettings) => {
     frontendOrderUrl: nextSettings.frontendOrderUrl?.trim() || current.frontendOrderUrl,
   };
 
-  await chrome.storage.local.set(normalized);
+  await setStoredValues(normalized);
 
   return normalized;
 };
 
 export const initializeExtensionStorage = async () => {
   const defaults = getDefaultSettings();
-  const stored = await chrome.storage.local.get([...SETTINGS_KEYS, "cart"]);
+  const stored = await getStoredValues([...SETTINGS_KEYS, STORAGE_KEYS.CART]);
   const missingValues = {};
 
   for (const [key, value] of Object.entries(defaults)) {
@@ -62,11 +61,11 @@ export const initializeExtensionStorage = async () => {
     }
   }
 
-  if (!Array.isArray(stored.cart)) {
-    missingValues.cart = [];
+  if (!Array.isArray(stored[STORAGE_KEYS.CART])) {
+    missingValues[STORAGE_KEYS.CART] = [];
   }
 
   if (Object.keys(missingValues).length > 0) {
-    await chrome.storage.local.set(missingValues);
+    await setStoredValues(missingValues);
   }
 };

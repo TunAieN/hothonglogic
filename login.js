@@ -1,4 +1,6 @@
 import { loadExtensionSettings } from "./extension-src/storage/settings.js";
+import { login } from "./extension-src/api/authentication.js";
+import { saveAuthSession } from "./extension-src/auth/auth.js";
 
 const showToast = (message, type = "success") => {
     const toast = document.getElementById("toast");
@@ -22,35 +24,12 @@ document.getElementById("loginSubmit").addEventListener("click", async () => {
 
     try {
         const settings = await loadExtensionSettings();
-        const response = await fetch(settings.apiEndpoint, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                query: `
-                    mutation Login($email: String!, $password: String!) {
-                        login(email: $email, password: $password) {
-                            access_token
-                            user {
-                                id
-                                name
-                                email
-                            }
-                        }
-                    }
-                `,
-                variables: { email, password },
-            }),
+        const { access_token: accessToken, user } = await login({
+            endpoint: settings.apiEndpoint,
+            email,
+            password,
         });
-        const payload = await response.json();
-
-        if (!response.ok || !payload.data?.login) {
-            throw new Error(payload.errors?.[0]?.message || "Sai tài khoản hoặc mật khẩu.");
-        }
-
-        const { access_token: accessToken, user } = payload.data.login;
-        await chrome.storage.local.set({ token: accessToken, user });
+        await saveAuthSession(accessToken, user);
         showToast("Đăng nhập thành công!");
 
         setTimeout(() => window.close(), 800);
