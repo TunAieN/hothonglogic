@@ -10,7 +10,9 @@ import { MESSAGE_TYPES } from "../shared/constants.js";
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
     // Enable Side Panel to open on action click
-    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    void chrome.sidePanel
+        .setPanelBehavior({ openPanelOnActionClick: true })
+        .catch((error) => console.warn("Unable to configure side panel behavior:", error));
 
     // Initialize only missing values so updates do not erase user state.
     void initializeExtensionStorage();

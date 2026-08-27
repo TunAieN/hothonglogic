@@ -108,12 +108,30 @@ function setupListeners() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadSettings();
+  try {
+    await loadSettings();
+  } catch (error) {
+    console.error("Popup settings initialization failed:", error);
+    showStatus("Không thể tải cài đặt Extension", "error");
+    return;
+  }
+
   setupTabs();
   setupAuth();
   setupListeners();
-  await initializeCart({ getCurrentProduct, getSettings, showStatus, closeSidePanel });
-  await updateAuthUI();
-  await loadCustomers();
-  await loadCurrentProduct();
+
+  const tasks = [
+    ["cart", () => initializeCart({ getCurrentProduct, getSettings, showStatus, closeSidePanel })],
+    ["authentication", updateAuthUI],
+    ["customers", loadCustomers],
+    ["product", loadCurrentProduct],
+  ];
+
+  for (const [name, task] of tasks) {
+    try {
+      await task();
+    } catch (error) {
+      console.error(`Popup ${name} initialization failed:`, error);
+    }
+  }
 });

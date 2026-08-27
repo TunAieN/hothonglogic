@@ -18,15 +18,24 @@ export function showStatus(message, type = "info") {
 }
 
 export async function closeSidePanel() {
+  if (!chrome.sidePanel?.close) {
+    console.warn("Side Panel close API is unavailable in this Chrome version.");
+    return false;
+  }
+
   try {
-    if (chrome.sidePanel?.close) {
-      await chrome.sidePanel.close({});
-      return;
+    const currentWindow = await chrome.windows.getCurrent();
+    if (currentWindow?.id == null) {
+      console.warn("Unable to close side panel: current window has no id.");
+      return false;
     }
+
+    await chrome.sidePanel.close({ windowId: currentWindow.id });
+    return true;
   } catch (error) {
     console.warn("Unable to close side panel via API:", error);
+    return false;
   }
-  window.close();
 }
 
 export function escapeHtml(value) {
