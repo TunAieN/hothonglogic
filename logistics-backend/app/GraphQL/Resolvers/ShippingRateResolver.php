@@ -8,8 +8,7 @@ class ShippingRateResolver
 {
     public function __construct(
         private readonly ShippingRateService $service,
-    ) {
-    }
+    ) {}
 
     public function list($_, array $args)
     {

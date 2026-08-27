@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
@@ -20,7 +19,7 @@ class Customer extends Model
         'ward',
         'address',
         'note',
-        'status'
+        'status',
     ];
 
     public function getOrdersCountAttribute(): int
@@ -32,10 +31,11 @@ class Customer extends Model
         return $this->orders()->count() ?? 0;
     }
 
-    function orders()
+    public function orders()
     {
         return $this->hasMany(Order::class);
     }
+
     public function paymentVouchers()
     {
         return $this->hasMany(PaymentVoucher::class);
@@ -45,6 +45,7 @@ class Customer extends Model
     {
         return $this->hasMany(CustomerBalanceLedger::class);
     }
+
     public function scopeWithOrdersCount($query)
     {
         return $query->withCount('orders');

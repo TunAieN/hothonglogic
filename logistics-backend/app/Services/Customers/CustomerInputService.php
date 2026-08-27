@@ -59,7 +59,7 @@ class CustomerInputService
         $lastCustomer = Customer::query()->latest('id')->first();
         $nextId = $lastCustomer ? $lastCustomer->id + 1 : 1;
 
-        return 'KH' . str_pad((string) $nextId, 6, '0', STR_PAD_LEFT);
+        return 'KH'.str_pad((string) $nextId, 6, '0', STR_PAD_LEFT);
     }
 
     public function validateGeneratedCode(string $code): void
@@ -146,7 +146,7 @@ class CustomerInputService
             return '';
         }
 
-        return $hasLeadingPlus ? '+' . $digitsOnly : $digitsOnly;
+        return $hasLeadingPlus ? '+'.$digitsOnly : $digitsOnly;
     }
 
     private function phoneExists(string $normalizedPhone, ?int $ignoreCustomerId = null): bool

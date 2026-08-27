@@ -39,6 +39,7 @@ class ShippingRateService
             foreach ($details as $index => $detail) {
                 $this->createDetail($rate->id, $detail + ['sort_order' => $detail['sort_order'] ?? $index]);
             }
+
             return $this->show($rate->id);
         });
     }
@@ -59,6 +60,7 @@ class ShippingRateService
                     $this->createDetail($rate->id, $detail + ['sort_order' => $detail['sort_order'] ?? $index]);
                 }
             }
+
             return $this->show($rate->id);
         });
     }
@@ -67,6 +69,7 @@ class ShippingRateService
     {
         $rate = ShippingRate::query()->findOrFail($id);
         $rate->update(['status' => ShippingRate::STATUS_INACTIVE]);
+
         return $this->show($rate->id);
     }
 
@@ -98,6 +101,7 @@ class ShippingRateService
         ])->all();
         $this->assertDetailsValid($details);
         $detail->update($this->normalizeDetailInput($detail->rate_id, $input, $detail));
+
         return $detail->fresh();
     }
 
@@ -109,6 +113,7 @@ class ShippingRateService
     public function findActiveRate(array $criteria = []): ?ShippingRate
     {
         $date = Carbon::parse($criteria['date'] ?? now())->toDateString();
+
         return ShippingRate::query()
             ->with(['details' => fn ($query) => $query->orderBy('sort_order')->orderBy('min_weight')->orderBy('weight_from')])
             ->where('status', ShippingRate::STATUS_ACTIVE)
@@ -138,7 +143,7 @@ class ShippingRateService
 
         $detail = $this->findMatchingDetail($rate, $weight);
         if (! $detail) {
-            throw new HttpException(422, 'Chưa có khung giá phù hợp cho cân tính phí ' . $weight . ' kg.');
+            throw new HttpException(422, 'Chưa có khung giá phù hợp cho cân tính phí '.$weight.' kg.');
         }
 
         $price = $this->detailPrice($detail);
@@ -160,6 +165,7 @@ class ShippingRateService
         return $rate->details->first(function ($detail) use ($weight) {
             $min = $this->detailMin($detail);
             $max = $this->detailMax($detail);
+
             return $weight >= $min && ($max === null || $weight <= $max);
         });
     }
@@ -169,15 +175,17 @@ class ShippingRateService
         $min = $this->detailMin($detail);
         $max = $this->detailMax($detail);
         if ($max === null) {
-            return 'Từ ' . $min . 'kg trở lên';
+            return 'Từ '.$min.'kg trở lên';
         }
-        return 'Từ ' . $min . 'kg đến ' . $max . 'kg';
+
+        return 'Từ '.$min.'kg đến '.$max.'kg';
     }
 
     private function normalizeRateInput(array $input, ?ShippingRate $existing = null): array
     {
         $from = $input['effective_from'] ?? $input['valid_from'] ?? $existing?->effective_from?->toDateString() ?? $existing?->valid_from?->toDateString() ?? now()->toDateString();
         $to = array_key_exists('effective_to', $input) ? $input['effective_to'] : ($input['valid_to'] ?? $existing?->effective_to?->toDateString());
+
         return [
             'name' => $input['name'] ?? $existing?->name ?? 'Bảng cước dành cho khách lẻ',
             'customer_type' => $input['customer_type'] ?? $existing?->customer_type,
@@ -198,6 +206,7 @@ class ShippingRateService
         $max = array_key_exists('max_weight', $input) ? $input['max_weight'] : ($input['weight_to'] ?? $this->detailMax($existing));
         $max = $max === '' ? null : $max;
         $price = (float) ($input['price'] ?? $input['price_per_kg'] ?? $this->detailPrice($existing));
+
         return [
             'rate_id' => $rateId,
             'shipping_rate_id' => $rateId,
@@ -278,6 +287,7 @@ class ShippingRateService
     private function detailMax(?ShippingRateDetail $detail): ?float
     {
         $value = $detail?->max_weight ?? $detail?->weight_to;
+
         return $value === null ? null : (float) $value;
     }
 

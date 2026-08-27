@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class PaymentTransaction extends Model
 {
     public const STATUS_CONFIRMED = 'confirmed';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [

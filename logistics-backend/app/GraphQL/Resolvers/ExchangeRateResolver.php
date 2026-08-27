@@ -6,9 +6,7 @@ use App\Services\Orders\OrderPricingService;
 
 class ExchangeRateResolver
 {
-    public function __construct(private readonly OrderPricingService $service)
-    {
-    }
+    public function __construct(private readonly OrderPricingService $service) {}
 
     public function list($_, array $args)
     {

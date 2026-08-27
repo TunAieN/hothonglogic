@@ -399,12 +399,12 @@ class CnBatchResolver
     private function generateBatchCode(CnWarehouse $warehouse): string
     {
         $dateCode = now()->format('dmY');
-        $prefix = strtoupper($warehouse->code) . $dateCode;
+        $prefix = strtoupper($warehouse->code).$dateCode;
         $sequence = CnBatch::query()
-            ->where('batch_code', 'like', $prefix . '%')
+            ->where('batch_code', 'like', $prefix.'%')
             ->count() + 1;
 
-        return $prefix . $sequence;
+        return $prefix.$sequence;
     }
 
     private function syncEditablePackages(CnBatch $batch, Collection $rows): void

@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class CnBatch extends Model
 {
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_EXPORTING = 'exporting';
+
     public const STATUS_ARRIVED_VN = 'arrived_vn';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     public const VALID_STATUSES = [

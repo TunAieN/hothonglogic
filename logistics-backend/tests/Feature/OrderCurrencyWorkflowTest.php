@@ -10,10 +10,10 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PaymentAccount;
 use App\Models\PaymentVoucher;
-use App\Services\Payments\PaymentVoucherService;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Orders\OrderPricingService;
+use App\Services\Payments\PaymentVoucherService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -237,6 +237,7 @@ class OrderCurrencyWorkflowTest extends TestCase
         $this->assertSame('waiting_payment', $repaired->deposit_status);
         $this->assertSame($first->transfer_content, $repaired->deposit_transfer_content);
     }
+
     public function test_create_deposit_voucher_without_active_rate_fails_with_utf8_message(): void
     {
         Auth::login($this->createUser(['payment_vouchers.create']));
@@ -461,7 +462,6 @@ class OrderCurrencyWorkflowTest extends TestCase
         app(OrderPricingService::class)->lockExchangeRateForOrder($order);
     }
 
-
     public function test_old_order_keeps_snapshot_and_new_order_uses_new_active_rate(): void
     {
         $service = app(OrderPricingService::class);
@@ -499,7 +499,7 @@ class OrderCurrencyWorkflowTest extends TestCase
     {
         $order = $this->createLegacyOrderMissingProductSnapshot('49.26', 'receiving');
         $voucher = PaymentVoucher::query()->create([
-            'voucher_code' => 'PV-TEST-' . strtoupper(substr(uniqid(), -6)),
+            'voucher_code' => 'PV-TEST-'.strtoupper(substr(uniqid(), -6)),
             'voucher_type' => 'shipping',
             'customer_id' => $order->customer_id,
             'order_id' => $order->id,
@@ -569,6 +569,7 @@ class OrderCurrencyWorkflowTest extends TestCase
     private function createPaymentAccount(): PaymentAccount
     {
         PaymentAccount::query()->update(['is_default' => false]);
+
         return PaymentAccount::query()->create([
             'bank_name' => 'Vietcombank',
             'bank_code' => 'VCB',
@@ -597,13 +598,13 @@ class OrderCurrencyWorkflowTest extends TestCase
     {
         $user = $this->createUser(['all']);
         $customer = Customer::query()->create([
-            'code' => 'CUS' . uniqid(),
+            'code' => 'CUS'.uniqid(),
             'name' => 'Test customer',
             'phone' => '0900000000',
             'status' => 'active',
         ]);
         $order = Order::query()->create([
-            'order_code' => 'ORD-TEST-' . strtoupper(substr(uniqid(), -6)),
+            'order_code' => 'ORD-TEST-'.strtoupper(substr(uniqid(), -6)),
             'customer_id' => $customer->id,
             'status' => $status,
             'total_amount' => 0,
@@ -616,7 +617,7 @@ class OrderCurrencyWorkflowTest extends TestCase
         foreach ($items as $index => $item) {
             $createdItem = OrderItem::query()->create([
                 'order_id' => $order->id,
-                'product_name' => 'Test item ' . ($index + 1),
+                'product_name' => 'Test item '.($index + 1),
                 'price_cny' => $item['price_cny'],
                 'quantity' => $item['quantity'],
             ]);
@@ -644,13 +645,13 @@ class OrderCurrencyWorkflowTest extends TestCase
     private function createUser(array $permissions): User
     {
         $role = Role::query()->create([
-            'name' => 'Role ' . uniqid(),
+            'name' => 'Role '.uniqid(),
             'permissions' => $permissions,
         ]);
 
         return User::query()->create([
             'name' => 'Test User',
-            'email' => uniqid('user') . '@example.test',
+            'email' => uniqid('user').'@example.test',
             'password' => Hash::make('password'),
             'role_id' => $role->id,
             'status' => 'active',

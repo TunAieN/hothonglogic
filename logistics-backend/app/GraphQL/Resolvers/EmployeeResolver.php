@@ -31,10 +31,10 @@ class EmployeeResolver
 
                 $query->where(function (Builder $nestedQuery) use ($search) {
                     $nestedQuery
-                        ->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('email', 'like', '%' . $search . '%')
-                        ->orWhere('phone', 'like', '%' . $search . '%')
-                        ->orWhere('address', 'like', '%' . $search . '%');
+                        ->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('email', 'like', '%'.$search.'%')
+                        ->orWhere('phone', 'like', '%'.$search.'%')
+                        ->orWhere('address', 'like', '%'.$search.'%');
                 });
             })
             ->when($this->filled($filter, 'role_id'), fn (Builder $query) => $query->where(

@@ -6,17 +6,17 @@ use App\Models\AuditLog;
 use App\Models\CustomerBalanceLedger;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Order;
 use App\Models\PaymentAccount;
 use App\Models\PaymentTransaction;
 use App\Models\PaymentVoucher;
 use App\Models\PaymentVoucherPackage;
 use App\Models\PaymentVoucherSurcharge;
-use App\Models\Order;
-use App\Services\Orders\OrderPricingService;
 use App\Models\VnPackage;
+use App\Services\Orders\OrderPricingService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Carbon;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PaymentVoucherService
@@ -37,7 +37,7 @@ class PaymentVoucherService
                 ->whereHas('voucher', fn ($voucherQuery) => $voucherQuery->whereIn('status', PaymentVoucher::ACTIVE_STATUSES)))
             ->when($filter['customer_id'] ?? null, fn ($query, $customerId) => $query->whereHas('cnPackage.order', fn ($orderQuery) => $orderQuery->where('customer_id', $customerId)))
             ->when($filter['search'] ?? null, function ($query, $search) {
-                $term = '%' . trim((string) $search) . '%';
+                $term = '%'.trim((string) $search).'%';
                 $query->where(function ($inner) use ($term) {
                     $inner->where('tracking_number_snapshot', 'like', $term)
                         ->orWhere('order_code_snapshot', 'like', $term)
@@ -96,8 +96,7 @@ class PaymentVoucherService
         int|string $orderId,
         mixed $depositPercent = null,
         bool $enforcePermission = true,
-    ): PaymentVoucher
-    {
+    ): PaymentVoucher {
         if ($enforcePermission) {
             $this->ensurePermission('payment_vouchers.create');
         }
@@ -122,6 +121,7 @@ class PaymentVoucherService
                 ->first();
             if ($existing) {
                 $this->syncOrderDepositSnapshot($order, $existing);
+
                 return $existing->fresh($this->voucherRelations());
             }
 
@@ -169,7 +169,7 @@ class PaymentVoucherService
                 'base_amount_vnd' => $baseAmountVnd,
                 'deposit_percent' => $percent,
                 'currency' => 'VND',
-                'transfer_content' => 'COC ' . $lockedOrder->order_code,
+                'transfer_content' => 'COC '.$lockedOrder->order_code,
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
                 'shipping_fee_total' => 0,
                 'domestic_shipping_fee' => 0,
@@ -179,12 +179,13 @@ class PaymentVoucherService
                 'customer_credit_applied' => 0,
                 'paid_amount' => 0,
                 'remaining_amount' => $depositAmount,
-                'note' => 'Deposit for order ' . $lockedOrder->order_code,
+                'note' => 'Deposit for order '.$lockedOrder->order_code,
             ]);
 
             $this->syncOrderDepositSnapshot($lockedOrder, $voucher);
 
             $this->audit('create_deposit_payment_voucher', $voucher, null, $voucher->toArray());
+
             return $voucher->fresh($this->voucherRelations());
         });
     }
@@ -362,7 +363,7 @@ class PaymentVoucherService
                 'bank_account_number_snapshot' => $paymentAccount?->account_number,
                 'bank_account_holder_snapshot' => $paymentAccount?->account_holder,
                 'bank_branch_name_snapshot' => $paymentAccount?->branch_name,
-                'transfer_content' => $paymentAccount ? 'TT ' . $voucherCode : null,
+                'transfer_content' => $paymentAccount ? 'TT '.$voucherCode : null,
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
                 'shipping_fee_total' => $preview['shipping_fee_total'],
                 'domestic_shipping_fee' => $preview['domestic_shipping_fee'],
@@ -406,7 +407,7 @@ class PaymentVoucherService
             ]);
 
             if ($voucher->customer_credit_applied > 0) {
-                $this->appendLedger($voucher->customer_id, $voucher->id, null, 'debit', $voucher->customer_credit_applied, 'Áp dụng tiền dư cho phiếu ' . $voucher->voucher_code);
+                $this->appendLedger($voucher->customer_id, $voucher->id, null, 'debit', $voucher->customer_credit_applied, 'Áp dụng tiền dư cho phiếu '.$voucher->voucher_code);
                 $this->audit('apply_customer_credit', $voucher, null, ['amount' => $voucher->customer_credit_applied]);
             }
 
@@ -484,7 +485,7 @@ class PaymentVoucherService
             ]);
 
             if ($overpaid > 0) {
-                $this->appendLedger($voucher->customer_id, $voucher->id, $transaction->id, 'credit', $overpaid, 'Khách trả dư phiếu ' . $voucher->voucher_code);
+                $this->appendLedger($voucher->customer_id, $voucher->id, $transaction->id, 'credit', $overpaid, 'Khách trả dư phiếu '.$voucher->voucher_code);
                 $this->audit('create_customer_credit', $voucher, null, ['amount' => $overpaid]);
             }
 
@@ -539,6 +540,7 @@ class PaymentVoucherService
             ]);
 
             $this->audit('cancel_payment_voucher', $voucher, $before, $voucher->fresh()->toArray());
+
             return $voucher->fresh($this->voucherRelations());
         });
     }
@@ -547,8 +549,7 @@ class PaymentVoucherService
         int|string $voucherId,
         ?PaymentTransaction $paymentTransaction = null,
         bool $enforcePermission = true,
-    ): Invoice
-    {
+    ): Invoice {
         if ($enforcePermission) {
             $this->ensurePermission('invoices.issue');
         }
@@ -588,15 +589,15 @@ class PaymentVoucherService
             'paid_amount' => $voucher->paid_amount,
             'status' => 'issued',
             'note' => $isDeposit
-                ? 'Hóa đơn đặt cọc cho đơn hàng ' . ($voucher->order?->order_code ?? $voucher->order_id)
-                : 'Hóa đơn từ phiếu thanh toán ' . $voucher->voucher_code,
+                ? 'Hóa đơn đặt cọc cho đơn hàng '.($voucher->order?->order_code ?? $voucher->order_id)
+                : 'Hóa đơn từ phiếu thanh toán '.$voucher->voucher_code,
         ]);
 
         if ($isDeposit) {
             InvoiceItem::query()->create([
                 'invoice_id' => $invoice->id,
                 'item_type' => 'deposit',
-                'description' => 'Tiền đặt cọc đơn hàng ' . ($voucher->order?->order_code ?? $voucher->order_id),
+                'description' => 'Tiền đặt cọc đơn hàng '.($voucher->order?->order_code ?? $voucher->order_id),
                 'quantity' => 1,
                 'unit_price' => $voucher->total_amount,
                 'amount' => $voucher->total_amount,
@@ -622,7 +623,7 @@ class PaymentVoucherService
                 'shipping_fee' => $package->shipping_fee,
                 'payment_voucher_package_id' => $package->id,
                 'item_type' => 'shipping_fee',
-                'description' => 'Phí vận chuyển vận đơn ' . ($package->vnPackage?->tracking_number_snapshot ?? $package->vn_package_id),
+                'description' => 'Phí vận chuyển vận đơn '.($package->vnPackage?->tracking_number_snapshot ?? $package->vn_package_id),
                 'quantity' => $package->chargeable_weight,
                 'unit_price' => $package->price_per_kg,
                 'amount' => $package->shipping_fee,
@@ -637,7 +638,7 @@ class PaymentVoucherService
                     'shipping_fee' => $package->surcharge_amount,
                     'payment_voucher_package_id' => $package->id,
                     'item_type' => 'surcharge',
-                    'description' => 'Phụ phí vận đơn ' . ($package->vnPackage?->tracking_number_snapshot ?? $package->vn_package_id),
+                    'description' => 'Phụ phí vận đơn '.($package->vnPackage?->tracking_number_snapshot ?? $package->vn_package_id),
                     'quantity' => 1,
                     'unit_price' => $package->surcharge_amount,
                     'amount' => $package->surcharge_amount,
@@ -657,6 +658,7 @@ class PaymentVoucherService
         if (! $isDeposit) {
             $this->audit('package_status_changed', $voucher, null, ['delivery_status' => 'ready_for_delivery']);
         }
+
         return $invoice->load('items');
     }
 
@@ -746,20 +748,20 @@ class PaymentVoucherService
         foreach ($packages as $package) {
             $customer = $package->cnPackage?->order?->customer;
             if (! $customer) {
-                throw new HttpException(422, 'Vận đơn ' . $package->id . ' chưa liên kết khách hàng.');
+                throw new HttpException(422, 'Vận đơn '.$package->id.' chưa liên kết khách hàng.');
             }
             $customerIds[] = (int) $customer->id;
             if (! $package->received_at || ! $package->vn_batch_receipt_id) {
-                throw new HttpException(422, 'Vận đơn ' . $package->tracking_number_snapshot . ' chưa nhập kho Việt Nam.');
+                throw new HttpException(422, 'Vận đơn '.$package->tracking_number_snapshot.' chưa nhập kho Việt Nam.');
             }
             if ($package->inspection_status !== VnPackage::STATUS_INSPECTED) {
-                throw new HttpException(422, 'Vận đơn ' . $package->tracking_number_snapshot . ' chưa được kiểm.');
+                throw new HttpException(422, 'Vận đơn '.$package->tracking_number_snapshot.' chưa được kiểm.');
             }
             if (in_array($package->delivery_status, ['delivered', 'cancelled'], true)) {
-                throw new HttpException(422, 'Vận đơn ' . $package->tracking_number_snapshot . ' đã giao hoặc đã hủy.');
+                throw new HttpException(422, 'Vận đơn '.$package->tracking_number_snapshot.' đã giao hoặc đã hủy.');
             }
             if ($checkActiveVoucher && $this->isPackageInActiveVoucher($package)) {
-                throw new HttpException(422, 'Vận đơn ' . $package->tracking_number_snapshot . ' đang nằm trong phiếu thanh toán active.');
+                throw new HttpException(422, 'Vận đơn '.$package->tracking_number_snapshot.' đang nằm trong phiếu thanh toán active.');
             }
         }
         if (count(array_unique($customerIds)) !== 1) {
@@ -787,7 +789,7 @@ class PaymentVoucherService
             $volumetricWeight = $this->volumetricWeight($package);
             $chargeableWeight = max($actualWeight, $volumetricWeight);
             if ($chargeableWeight <= 0) {
-                throw new HttpException(422, 'Vận đơn ' . $package->tracking_number_snapshot . ' chưa có cân tính phí.');
+                throw new HttpException(422, 'Vận đơn '.$package->tracking_number_snapshot.' chưa có cân tính phí.');
             }
             $rateResult = app(ShippingRateService::class)->calculateFee($chargeableWeight, [
                 'date' => now()->toDateString(),
@@ -818,6 +820,7 @@ class PaymentVoucherService
                 'total_amount' => $this->money($shippingFee + $domesticShippingFee + $packageSurcharge),
             ];
         }
+
         return $rows;
     }
 
@@ -826,6 +829,7 @@ class PaymentVoucherService
         if ($package->actual_length && $package->actual_width && $package->actual_height) {
             return ((float) $package->actual_length * (float) $package->actual_width * (float) $package->actual_height) / 6000;
         }
+
         return (float) ($package->actual_volume ?? 0);
     }
 
@@ -857,6 +861,7 @@ class PaymentVoucherService
             if ($amount <= 0) {
                 return null;
             }
+
             return [
                 'vn_package_id' => $item['vn_package_id'] ?? null,
                 'surcharge_type' => $item['surcharge_type'] ?? 'other',
@@ -894,6 +899,7 @@ class PaymentVoucherService
     private function customerCreditBalance(int $customerId): float
     {
         $last = CustomerBalanceLedger::query()->where('customer_id', $customerId)->latest('id')->first();
+
         return max(0, (float) ($last?->balance_after ?? 0));
     }
 
@@ -925,9 +931,10 @@ class PaymentVoucherService
     {
         $next = ((int) DB::table($table)->lockForUpdate()->count()) + 1;
         do {
-            $code = $prefix . str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+            $code = $prefix.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
             $next++;
         } while (DB::table($table)->where($column, $code)->exists());
+
         return $code;
     }
 

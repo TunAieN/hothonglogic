@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class ShippingTask extends Model
 {
     public const STATUS_CREATED = 'created';
+
     public const STATUS_PREPARING = 'preparing';
+
     public const STATUS_IN_TRANSIT = 'in_transit';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [

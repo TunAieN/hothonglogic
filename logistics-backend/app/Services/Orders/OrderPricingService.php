@@ -88,6 +88,7 @@ class OrderPricingService
                 ->where('is_active', true)
                 ->update(['is_active' => false, 'effective_to' => now()]);
             $rate->update(['is_active' => true, 'effective_from' => $rate->effective_from ?? now(), 'effective_to' => null]);
+
             return $rate->fresh('creator');
         });
     }
@@ -97,6 +98,7 @@ class OrderPricingService
         $this->ensurePermission('exchange_rates.manage');
         $rate = ExchangeRate::query()->findOrFail($id);
         $rate->update(['is_active' => false, 'effective_to' => $rate->effective_to ?? now()]);
+
         return $rate->fresh('creator');
     }
 
@@ -122,6 +124,7 @@ class OrderPricingService
             }
 
             $this->recalculateOrderTotals($lockedOrder, (string) $rate->rate, true, false);
+
             return $lockedOrder->fresh('items');
         });
     }
@@ -169,6 +172,7 @@ class OrderPricingService
         }
 
         $order->forceFill($attributes)->save();
+
         return $order->fresh('items');
     }
 
@@ -176,12 +180,14 @@ class OrderPricingService
     {
         $cnyCents = $this->decimalToInt($amountCny, 2);
         $rateUnits = $this->decimalToInt($exchangeRate, 4);
+
         return intdiv(($cnyCents * $rateUnits) + 500000, 1000000);
     }
 
     public function multiplyCnyByQuantity(string $priceCny, int $quantity): string
     {
         $cents = $this->decimalToInt($priceCny, 2) * max(0, $quantity);
+
         return number_format($cents / 100, 2, '.', '');
     }
 
@@ -207,6 +213,7 @@ class OrderPricingService
     public function isLegacyTotalMatchingItems(Order $order): bool
     {
         $totals = $this->orderProductTotals($order);
+
         return $this->decimalToInt((string) ($order->total_amount ?? 0), 2) === $this->decimalToInt($totals['product_total_cny'], 2);
     }
 
@@ -225,12 +232,14 @@ class OrderPricingService
         if ($roundDigit >= 5) {
             $base++;
         }
+
         return $negative ? -$base : $base;
     }
 
     private function sumDecimalStrings(array $values, int $scale): string
     {
         $sum = array_sum(array_map(fn ($value) => $this->decimalToInt((string) $value, $scale), $values));
+
         return number_format($sum / (10 ** $scale), $scale, '.', '');
     }
 
@@ -239,6 +248,7 @@ class OrderPricingService
         if (is_string($rate)) {
             $rate = str_replace(',', '.', trim($rate));
         }
+
         return is_numeric($rate) ? (float) $rate : 0.0;
     }
 

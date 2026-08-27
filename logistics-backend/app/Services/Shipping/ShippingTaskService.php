@@ -156,7 +156,7 @@ class ShippingTaskService
             }
 
             $task = ShippingTask::query()->create([
-                'task_code' => 'TMP-' . Str::uuid(),
+                'task_code' => 'TMP-'.Str::uuid(),
                 'delivery_staff_id' => $validated['delivery_staff_id'],
                 'vn_warehouse_id' => $validated['vn_warehouse_id'],
                 'carrier_code' => $validated['carrier_code'],
@@ -196,7 +196,7 @@ class ShippingTaskService
                 ->filter()->unique()->values();
 
             $slip = ExportSlip::query()->create([
-                'export_code' => 'TMP-' . Str::uuid(),
+                'export_code' => 'TMP-'.Str::uuid(),
                 'shipping_task_id' => $task->id,
                 'invoice_id' => $invoiceIds->count() === 1 ? $invoiceIds->first() : null,
                 'customer_id' => $customerIds->count() === 1 ? $customerIds->first() : null,
@@ -634,11 +634,11 @@ class ShippingTaskService
         $row['payment'] = $this->slipPaymentSummary($items);
         $orderValue = (float) $taskOrders->sum(fn (ShippingTaskOrder $taskOrder) => $taskOrder->order?->product_total_vnd ?? 0);
         $actualShippingFee = (float) $items->sum(function (ExportItem $item) {
-                $paymentPackage = $item->package?->paymentVoucherPackage;
+            $paymentPackage = $item->package?->paymentVoucherPackage;
 
-                return (float) ($paymentPackage?->shipping_fee ?? 0)
-                    + (float) ($paymentPackage?->domestic_shipping_fee ?? 0);
-            });
+            return (float) ($paymentPackage?->shipping_fee ?? 0)
+                + (float) ($paymentPackage?->domestic_shipping_fee ?? 0);
+        });
         $shippingFee = (float) ($task?->estimated_shipping_fee ?? 0) > 0
             ? (float) $task->estimated_shipping_fee
             : $actualShippingFee;

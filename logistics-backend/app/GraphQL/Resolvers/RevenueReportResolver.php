@@ -9,8 +9,7 @@ class RevenueReportResolver
 {
     public function __construct(
         private readonly RevenueReportService $service,
-    ) {
-    }
+    ) {}
 
     public function report($_, array $args): array
     {

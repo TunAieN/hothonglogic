@@ -13,8 +13,7 @@ class PaymentVoucherResolver
 {
     public function __construct(
         private readonly PaymentVoucherService $service,
-    ) {
-    }
+    ) {}
 
     public function eligiblePackages($_, array $args)
     {
@@ -39,7 +38,7 @@ class PaymentVoucherResolver
             ->with(['customer', 'creator', 'warehouse'])
             ->when($filter['customer_id'] ?? null, fn ($query, $value) => $query->where('customer_id', $value))
             ->when($filter['status'] ?? null, fn ($query, $value) => $query->where('status', $value))
-            ->when($filter['voucher_code'] ?? null, fn ($query, $value) => $query->where('voucher_code', 'like', '%' . trim($value) . '%'))
+            ->when($filter['voucher_code'] ?? null, fn ($query, $value) => $query->where('voucher_code', 'like', '%'.trim($value).'%'))
             ->when($filter['created_by'] ?? null, fn ($query, $value) => $query->where('created_by', $value))
             ->when($filter['created_from'] ?? null, fn ($query, $value) => $query->whereDate('created_at', '>=', $value))
             ->when($filter['created_to'] ?? null, fn ($query, $value) => $query->whereDate('created_at', '<=', $value))

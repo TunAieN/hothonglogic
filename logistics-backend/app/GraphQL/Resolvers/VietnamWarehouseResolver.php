@@ -2,8 +2,8 @@
 
 namespace App\GraphQL\Resolvers;
 
-use App\Services\Warehouses\Vietnam\VietnamWarehouseReceiptService;
 use App\Models\VnPackage;
+use App\Services\Warehouses\Vietnam\VietnamWarehouseReceiptService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -11,8 +11,7 @@ class VietnamWarehouseResolver
 {
     public function __construct(
         private readonly VietnamWarehouseReceiptService $service,
-    ) {
-    }
+    ) {}
 
     public function cnBatchByCode($_, array $args)
     {

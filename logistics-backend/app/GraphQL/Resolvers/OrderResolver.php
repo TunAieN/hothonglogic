@@ -7,9 +7,10 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderTracking;
 use App\Models\OrderTrackingItem;
-use Illuminate\Database\Eloquent\Builder;
 use App\Services\Orders\OrderPricingService;
 use App\Services\Payments\PaymentVoucherService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -19,8 +20,7 @@ class OrderResolver
     public function __construct(
         private readonly OrderPricingService $pricingService,
         private readonly PaymentVoucherService $paymentVoucherService,
-    ) {
-    }
+    ) {}
 
     public function list($_, array $args): Builder
     {
@@ -33,17 +33,17 @@ class OrderResolver
 
                 $query->where(function (Builder $nestedQuery) use ($search) {
                     $nestedQuery
-                        ->where('order_code', 'like', '%' . $search . '%')
-                        ->orWhere('status', 'like', '%' . $search . '%')
+                        ->where('order_code', 'like', '%'.$search.'%')
+                        ->orWhere('status', 'like', '%'.$search.'%')
                         ->orWhereHas('customer', function (Builder $customerQuery) use ($search) {
                             $customerQuery
-                                ->where('name', 'like', '%' . $search . '%')
-                                ->orWhere('email', 'like', '%' . $search . '%')
-                                ->orWhere('phone', 'like', '%' . $search . '%')
-                                ->orWhere('address', 'like', '%' . $search . '%');
+                                ->where('name', 'like', '%'.$search.'%')
+                                ->orWhere('email', 'like', '%'.$search.'%')
+                                ->orWhere('phone', 'like', '%'.$search.'%')
+                                ->orWhere('address', 'like', '%'.$search.'%');
                         })
                         ->orWhereHas('creator', function (Builder $creatorQuery) use ($search) {
-                            $creatorQuery->where('name', 'like', '%' . $search . '%');
+                            $creatorQuery->where('name', 'like', '%'.$search.'%');
                         });
                 });
             })
@@ -56,7 +56,7 @@ class OrderResolver
                 $filter['created_by'],
             ))
             ->when($this->filled($filter, 'order_code'), function (Builder $query) use ($filter) {
-                $query->where('order_code', 'like', '%' . trim((string) $filter['order_code']) . '%');
+                $query->where('order_code', 'like', '%'.trim((string) $filter['order_code']).'%');
             })
             ->when($this->filled($filter, 'status'), fn (Builder $query) => $query->where(
                 'status',
@@ -86,7 +86,7 @@ class OrderResolver
             $input = $args['input'];
 
             $order = Order::create([
-                'order_code' => 'ORD-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6)),
+                'order_code' => 'ORD-'.date('Ymd').'-'.strtoupper(substr(uniqid(), -6)),
                 'customer_id' => $input['customer_id'],
                 'total_amount' => 0,
                 'product_total_cny' => 0,
@@ -343,20 +343,20 @@ class OrderResolver
             'deposit_paid_amount_vnd' => 0,
             'deposit_remaining_amount_vnd' => $depositAmount,
             'deposit_status' => 'waiting_payment',
-            'deposit_transfer_content' => 'COC ' . $lockedOrder->order_code,
+            'deposit_transfer_content' => 'COC '.$lockedOrder->order_code,
             'deposit_requested_at' => now(),
         ])->save();
 
         return $lockedOrder->fresh('items');
     }
 
-    private function parseDateTime(mixed $value): ?\Illuminate\Support\Carbon
+    private function parseDateTime(mixed $value): ?Carbon
     {
         if (! $value) {
             return null;
         }
         try {
-            return \Illuminate\Support\Carbon::parse($value);
+            return Carbon::parse($value);
         } catch (\Throwable) {
             return null;
         }
@@ -471,15 +471,15 @@ class OrderResolver
         $seller = $this->normalizeOptionalString($item->seller);
 
         if ($shopId !== null) {
-            return 'shop-id:' . $shopId;
+            return 'shop-id:'.$shopId;
         }
 
         if ($shopName !== null) {
-            return 'shop-name:' . mb_strtolower($shopName);
+            return 'shop-name:'.mb_strtolower($shopName);
         }
 
         if ($seller !== null) {
-            return 'seller:' . mb_strtolower($seller);
+            return 'seller:'.mb_strtolower($seller);
         }
 
         return 'unknown-seller';

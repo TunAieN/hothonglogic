@@ -9,7 +9,7 @@ class OrderPricingServiceTest extends TestCase
 {
     public function test_converts_single_item_cny_to_vnd(): void
     {
-        $service = new OrderPricingService();
+        $service = new OrderPricingService;
 
         $this->assertSame(177336, $service->convertCnyToVnd('49.26', '3600'));
         $this->assertSame('49.26', $service->multiplyCnyByQuantity('49.26', 1));
@@ -17,7 +17,7 @@ class OrderPricingServiceTest extends TestCase
 
     public function test_converts_multiple_items_without_losing_cny_decimals(): void
     {
-        $service = new OrderPricingService();
+        $service = new OrderPricingService;
 
         $firstSubtotal = $service->multiplyCnyByQuantity('49.26', 2);
         $secondSubtotal = $service->multiplyCnyByQuantity('17.10', 1);
@@ -30,7 +30,7 @@ class OrderPricingServiceTest extends TestCase
 
     public function test_rounds_vnd_to_nearest_dong(): void
     {
-        $service = new OrderPricingService();
+        $service = new OrderPricingService;
 
         $this->assertSame(177336, $service->convertCnyToVnd('49.26', '3600.0000'));
         $this->assertSame(177361, $service->convertCnyToVnd('49.26', '3600.5000'));

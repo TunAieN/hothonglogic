@@ -7,10 +7,15 @@ use Illuminate\Database\Eloquent\Model;
 class VnBatchReceipt extends Model
 {
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_CHECKING = 'checking';
+
     public const STATUS_MATCHED = 'matched';
+
     public const STATUS_MISMATCHED = 'mismatched';
+
     public const STATUS_CONFIRMED = 'confirmed';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     public const ACTIVE_STATUSES = [

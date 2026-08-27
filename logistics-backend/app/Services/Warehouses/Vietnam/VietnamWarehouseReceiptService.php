@@ -39,7 +39,7 @@ class VietnamWarehouseReceiptService
         $batch->loadMissing($this->batchRelations());
         $expectedPackages = $batch->packages()->with($this->expectedPackageRelations())->get();
         $loadedReceipt = $receipt?->loadMissing($this->receiptRelations());
-        $receivedPackages = $loadedReceipt?->packages ?? new Collection();
+        $receivedPackages = $loadedReceipt?->packages ?? new Collection;
         $summary = $this->enrichSummary(
             $this->calculateSummary($expectedPackages, $receivedPackages),
             $batch,
@@ -477,8 +477,7 @@ class VietnamWarehouseReceiptService
         $receivedPackages = $receipt->packages()->get();
         $summary = $this->calculateSummary($expectedPackages, $receivedPackages);
 
-        $errorPackages = $receivedPackages->filter(fn (VnPackage $package) =>
-            $package->received_at === null
+        $errorPackages = $receivedPackages->filter(fn (VnPackage $package) => $package->received_at === null
             && (in_array($package->inspection_status, [
                 VnPackage::STATUS_DAMAGED,
                 VnPackage::STATUS_MISMATCHED,

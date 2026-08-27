@@ -4,8 +4,6 @@ namespace App\Services\Reports;
 
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
-use App\Models\PaymentTransaction;
-use App\Models\PaymentVoucher;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 class RevenueReportService
 {
     private const VALID_INVOICE_STATUSES = ['issued', 'confirmed'];
+
     private const EXCLUDED_VOUCHER_TYPES = ['deposit'];
 
     public function getReport(array $input): array
@@ -87,7 +86,7 @@ class RevenueReportService
             ->leftJoin('customers', 'customers.id', '=', 'invoices.customer_id')
             ->leftJoin('payment_voucher_packages', 'payment_voucher_packages.payment_voucher_id', '=', 'payment_vouchers.id')
             ->leftJoin('orders', 'orders.id', '=', 'payment_voucher_packages.order_id')
-            ->whereRaw($dateExpression . ' = ?', [$periodKey])
+            ->whereRaw($dateExpression.' = ?', [$periodKey])
             ->groupBy([
                 'invoices.id',
                 'invoices.invoice_code',
@@ -216,7 +215,7 @@ class RevenueReportService
     {
         $dateExpression = $this->dateExpression($groupBy);
         $query = $this->baseRevenueQuery($from, $to, $warehouseId, $revenueType)
-            ->selectRaw($dateExpression . ' as period_key')
+            ->selectRaw($dateExpression.' as period_key')
             ->selectRaw('COUNT(DISTINCT COALESCE(payment_voucher_packages.order_id, payment_vouchers.id)) as order_count')
             ->selectRaw('COALESCE(SUM(invoice_items.amount), 0) as revenue')
             ->selectRaw("COALESCE(SUM(CASE WHEN invoice_items.item_type = 'shipping_fee' THEN invoice_items.amount ELSE 0 END), 0) as shipping_fee")
@@ -224,7 +223,7 @@ class RevenueReportService
             ->groupBy('period_key');
 
         $paidByPeriod = $this->baseInvoiceQuery($from, $to, $warehouseId, $revenueType)
-            ->selectRaw($dateExpression . ' as period_key')
+            ->selectRaw($dateExpression.' as period_key')
             ->selectRaw('COALESCE(SUM(invoices.paid_amount), 0) as paid')
             ->groupBy('period_key')
             ->pluck('paid', 'period_key');
@@ -263,7 +262,7 @@ class RevenueReportService
         $dateExpression = $this->dateExpression($groupBy);
 
         return $this->baseRevenueQuery($from, $to, $warehouseId, $revenueType)
-            ->selectRaw($dateExpression . ' as period_key')
+            ->selectRaw($dateExpression.' as period_key')
             ->selectRaw('COALESCE(SUM(invoice_items.amount), 0) as revenue')
             ->groupBy('period_key')
             ->orderBy('period_key')
@@ -308,7 +307,7 @@ class RevenueReportService
             'MONTH' => "DATE_FORMAT(invoices.issued_at, '%Y-%m')",
             'QUARTER' => "CONCAT(YEAR(invoices.issued_at), '-Q', QUARTER(invoices.issued_at))",
             'YEAR' => "DATE_FORMAT(invoices.issued_at, '%Y')",
-            default => "DATE(invoices.issued_at)",
+            default => 'DATE(invoices.issued_at)',
         };
     }
 
@@ -322,7 +321,7 @@ class RevenueReportService
             $key = match ($groupBy) {
                 'WEEK' => $cursor->isoFormat('GGGG-[W]WW'),
                 'MONTH' => $cursor->format('Y-m'),
-                'QUARTER' => $cursor->format('Y') . '-Q' . $cursor->quarter,
+                'QUARTER' => $cursor->format('Y').'-Q'.$cursor->quarter,
                 'YEAR' => $cursor->format('Y'),
                 default => $cursor->toDateString(),
             };
@@ -390,12 +389,14 @@ class RevenueReportService
     private function groupBy(string $value): string
     {
         $normalized = strtoupper($value);
+
         return in_array($normalized, ['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'], true) ? $normalized : 'DAY';
     }
 
     private function revenueType(?string $value): ?string
     {
         $normalized = trim((string) $value);
+
         return $normalized === '' || $normalized === 'all' ? null : $normalized;
     }
 
