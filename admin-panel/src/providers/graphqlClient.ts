@@ -1,6 +1,7 @@
 import { GraphQLClient } from "graphql-request";
 
-export const GRAPHQL_API_URL = "http://127.0.0.1:8000/graphql";
+export const BACKEND_API_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+export const GRAPHQL_API_URL = `${BACKEND_API_URL}/graphql`;
 export const GRAPHQL_AUTH_TOKEN_STORAGE_KEY = "token";
 
 export const client = new GraphQLClient(GRAPHQL_API_URL);

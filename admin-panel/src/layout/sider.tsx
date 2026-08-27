@@ -12,6 +12,7 @@ import {
   DollarCircleOutlined,
   DownOutlined,
   FileTextOutlined,
+  ExportOutlined,
   HomeOutlined,
   InboxOutlined,
   KeyOutlined,
@@ -44,6 +45,7 @@ type SidebarItemConfig = {
 type SidebarGroupConfig = {
   key: string;
   title: string;
+  defaultPath?: string;
   items: SidebarItemConfig[];
 };
 
@@ -109,6 +111,16 @@ const menuSections: SidebarGroupConfig[] = [
     ],
   },
   {
+    key: "shipping",
+    title: "Xuất hàng",
+    defaultPath: "/shipping/queue",
+    items: [
+      { key: "/shipping/queue", icon: <ExportOutlined />, label: "Danh sách chờ xuất" },
+      { key: "/shipping/tasks", icon: <InboxOutlined />, label: "Danh sách nhiệm vụ" },
+      { key: "/shipping/slips", icon: <FileTextOutlined />, label: "Phiếu xuất hàng" },
+    ],
+  },
+  {
     key: "finance",
     title: "Tài chính",
     items: [
@@ -132,6 +144,10 @@ const menuSections: SidebarGroupConfig[] = [
 const getSelectedKey = (pathname: string) => {
   if (pathname === "/") {
     return "/";
+  }
+
+  if (pathname.startsWith("/shipping/create")) {
+    return "/shipping/queue";
   }
 
   const matchedItem = menuSections
@@ -255,18 +271,40 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({
     );
   }
 
-  return (
-    <section className="admin-sider__group" aria-label={group.title}>
+  const groupToggle = group.defaultPath ? (
+    <div
+      className={`admin-sider__group-toggle${groupHasActiveItem ? " admin-sider__group-toggle--active" : ""}`}
+    >
+      <Link to={group.defaultPath} onClick={onNavigate} className="admin-sider__group-title-link">
+        {group.title}
+      </Link>
       <button
         type="button"
+        aria-label={`${expanded ? "Thu gọn" : "Mở rộng"} menu ${group.title}`}
         aria-expanded={expanded}
         aria-controls={groupPanelId}
-        className={`admin-sider__group-toggle${groupHasActiveItem ? " admin-sider__group-toggle--active" : ""}`}
+        className="admin-sider__group-chevron-button"
         onClick={() => onToggle(group.key)}
       >
-        <span>{group.title}</span>
         <DownOutlined aria-hidden="true" className="admin-sider__group-chevron" />
       </button>
+    </div>
+  ) : (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      aria-controls={groupPanelId}
+      className={`admin-sider__group-toggle${groupHasActiveItem ? " admin-sider__group-toggle--active" : ""}`}
+      onClick={() => onToggle(group.key)}
+    >
+      <span>{group.title}</span>
+      <DownOutlined aria-hidden="true" className="admin-sider__group-chevron" />
+    </button>
+  );
+
+  return (
+    <section className="admin-sider__group" aria-label={group.title}>
+      {groupToggle}
 
       <div
         id={groupPanelId}

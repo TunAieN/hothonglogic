@@ -35,6 +35,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  SendOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
@@ -57,6 +58,9 @@ import {
 import type { BatchApiRecord, BatchEditFormValues, BatchFilters, BatchPackageRow, BatchViewModel } from "./types";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
 import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { DispatchBatchModal } from "./DispatchBatchModal";
+import type { DispatchBatchInput } from "./DispatchBatchModal";
+import { EditBatchModal } from "./EditBatchModal";
 
 const { Text } = Typography;
 const CnBatchStatsSkeleton = () => (
@@ -83,6 +87,18 @@ const CREATE_VIETNAM_INBOUND_TASK_MUTATION = `
       total_batches
       total_packages
       total_weight
+    }
+  }
+`;
+
+const DISPATCH_CN_BATCH_MUTATION = `
+  mutation DispatchCnBatch($id: ID!, $input: DispatchCnBatchInput!) {
+    dispatchCnBatch(id: $id, input: $input) {
+      id
+      status
+      departed_at
+      handed_over_at
+      carrier_name
     }
   }
 `;
@@ -227,6 +243,8 @@ export const CnBatchesPage = () => {
   const [inboundModalOpen, setInboundModalOpen] = useState(false);
   const [submittingInbound, setSubmittingInbound] = useState(false);
   const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [dispatchingBatch, setDispatchingBatch] = useState<BatchViewModel | null>(null);
+  const [submittingDispatch, setSubmittingDispatch] = useState(false);
 
   const {
     result: batchListResponse,
@@ -325,14 +343,14 @@ export const CnBatchesPage = () => {
     editForm.resetFields();
   };
 
-  const handleUpdateBatch = async () => {
+  const handleUpdateBatch = async (submittedValues?: BatchEditFormValues) => {
     if (!editingBatch) {
       return;
     }
 
     try {
       setSubmittingEdit(true);
-      const values = await editForm.validateFields();
+      const values = submittedValues ?? await editForm.validateFields();
       await updateBatch({
         resource: "cnBatches",
         id: editingBatch.id,
@@ -429,6 +447,28 @@ export const CnBatchesPage = () => {
     }
   };
 
+  const handleDispatchBatch = async (input: DispatchBatchInput) => {
+    if (!dispatchingBatch) return;
+
+    try {
+      setSubmittingDispatch(true);
+      syncGraphqlAuthToken();
+      await client.request(
+        DISPATCH_CN_BATCH_MUTATION,
+        { id: dispatchingBatch.id, input },
+        getGraphqlAuthHeaders(),
+      );
+      await batchListQuery.refetch();
+      setDispatchingBatch(null);
+      message.success("Đã bàn giao lô và chuyển sang trạng thái đang vận chuyển.");
+    } catch (error) {
+      console.error(error);
+      message.error(error instanceof Error ? error.message : "Không thể xuất kho lô hàng.");
+    } finally {
+      setSubmittingDispatch(false);
+    }
+  };
+
   const columns: ColumnsType<BatchViewModel> = [
     {
       title: "Mã lô hàng",
@@ -515,6 +555,12 @@ export const CnBatchesPage = () => {
             <Tooltip title="Xem chi tiết">
               <Button type="text" icon={<EyeOutlined />} onClick={() => setDetailBatch(record)} />
             </Tooltip>
+
+            {record.status === "pending" ? (
+              <Tooltip title="Kiểm tra và xuất kho Trung Quốc">
+                <Button type="text" icon={<SendOutlined />} onClick={() => setDispatchingBatch(record)} />
+              </Tooltip>
+            ) : null}
 
             {editState.allowed ? (
               <Tooltip title="Sửa lô hàng">
@@ -743,10 +789,43 @@ export const CnBatchesPage = () => {
               <Descriptions.Item label="Tổng số kiện">{detailBatch.totalPackages}</Descriptions.Item>
               <Descriptions.Item label="Tổng cân nặng">{formatWeight(detailBatch.totalWeight)}</Descriptions.Item>
               <Descriptions.Item label="Tổng thể tích">{formatVolume(detailBatch.totalVolume)}</Descriptions.Item>
+              {detailBatch.handedOverAt ? (
+                <>
+                  <Descriptions.Item label="Bàn giao lúc">
+                    {dayjs(detailBatch.handedOverAt).format("DD/MM/YYYY HH:mm")}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Đơn vị vận chuyển">
+                    {detailBatch.carrierName || "Chưa có"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Mã chuyến">
+                    {detailBatch.transportCode || "Chưa có"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Số bao/thùng">
+                    {detailBatch.transportContainerCount ?? "Chưa có"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="KL lô lúc xuất">
+                    {formatWeight(detailBatch.actualBatchWeight)}
+                  </Descriptions.Item>
+                </>
+              ) : null}
               <Descriptions.Item label="Ghi chú" span={2}>
                 {detailBatch.note || "Không có ghi chú"}
               </Descriptions.Item>
+              {detailBatch.dispatchNote ? (
+                <Descriptions.Item label="Ghi chú bàn giao" span={2}>
+                  {detailBatch.dispatchNote}
+                </Descriptions.Item>
+              ) : null}
             </Descriptions>
+
+            {detailBatch.status === "pending" ? (
+              <Button type="primary" icon={<SendOutlined />} onClick={() => {
+                setDetailBatch(null);
+                setDispatchingBatch(detailBatch);
+              }}>
+                Kiểm tra và xuất kho Trung Quốc
+              </Button>
+            ) : null}
 
             <Card size="small" title="Danh sách kiện trong lô">
               <Table<CnPackage>
@@ -763,9 +842,9 @@ export const CnBatchesPage = () => {
 
       <Modal
         title="Sửa thông tin lô hàng vận chuyển"
-        open={Boolean(editingBatch)}
+        open={false}
         onCancel={closeEditModal}
-        onOk={handleUpdateBatch}
+        onOk={() => void handleUpdateBatch()}
         okText="Lưu thay đổi"
         cancelText="Hủy"
         confirmLoading={submittingEdit}
@@ -802,7 +881,7 @@ export const CnBatchesPage = () => {
                 name="status"
                 rules={[{ required: true, message: "Vui lòng chọn trạng thái." }]}
               >
-                <Select options={STATUS_OPTIONS as unknown as { label: string; value: string }[]} />
+                <Select disabled options={STATUS_OPTIONS as unknown as { label: string; value: string }[]} />
               </Form.Item>
             </Col>
 
@@ -993,6 +1072,14 @@ export const CnBatchesPage = () => {
         </Form>
       </Modal>
 
+      <EditBatchModal
+        batch={editingBatch}
+        receivingWarehouseOptions={receivingWarehouseOptions}
+        loading={submittingEdit}
+        onCancel={closeEditModal}
+        onSubmit={handleUpdateBatch}
+      />
+
       <Modal
         title="Tạo nhiệm vụ nhập kho VN"
         open={inboundModalOpen}
@@ -1031,7 +1118,13 @@ export const CnBatchesPage = () => {
           </div>
         </Space>
       </Modal>
+
+      <DispatchBatchModal
+        batch={dispatchingBatch}
+        loading={submittingDispatch}
+        onCancel={() => setDispatchingBatch(null)}
+        onSubmit={handleDispatchBatch}
+      />
     </Space>
   );
 };
-

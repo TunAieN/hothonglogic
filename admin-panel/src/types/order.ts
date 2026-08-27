@@ -81,10 +81,28 @@ export interface CnBatch {
   total_packages?: number | null;
   status: CnBatchStatus;
   shipping_type: "fast" | "normal";
+  packaging_type?: "bag" | "carton" | "cardboard" | "wood" | null;
+  transport_container_count?: number | null;
   departed_at?: string | null;
   expected_arrival_at?: string | null;
   arrived_at?: string | null;
   total_weight?: number | null;
+  actual_batch_weight?: number | null;
+  package_material_weight?: number | null;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
+  actual_volume?: number | null;
+  carrier_name?: string | null;
+  transport_code?: string | null;
+  route_name?: string | null;
+  vehicle_plate?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  freight_cost?: number | null;
+  handed_over_by?: string | null;
+  handed_over_at?: string | null;
+  dispatch_note?: string | null;
   note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -110,7 +128,19 @@ export interface CnBatchCreateInput {
   status?: CnBatchStatus;
 }
 
-export interface CnBatchUpdateInput extends CnBatchCreateInput {}
+export interface CnBatchPackageUpdateInput {
+  id?: string;
+  tracking_number: string;
+  weight: number;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
+}
+
+export interface CnBatchUpdateInput extends CnBatchCreateInput {
+  freight_cost?: number | null;
+  packages?: CnBatchPackageUpdateInput[];
+}
 
 export interface CnPackage {
   id: string;

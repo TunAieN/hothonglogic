@@ -1,5 +1,7 @@
 import { ClientError } from "graphql-request";
-import { client, syncGraphqlAuthToken } from "../../providers/graphqlClient";
+import dayjs from "dayjs";
+import { GRAPHQL_API_URL, client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
+import { resolveMediaUrl } from "../../utils/mediaUrl";
 import type {
   BatchInfoFormValues,
   ExpectedBatchPackage,
@@ -12,12 +14,28 @@ import type {
   VietnamWarehouseStats,
   VietnamWarehouseStatus,
   VietnamWarehouseTableItem,
+  PackageItemDetail,
+  PackageEvidence,
+  VietnamWarehouseFilterValues,
+  VietnamWarehousePackageListItem,
+  VietnamWarehousePackagePage,
+  VietnamPackageErrorUpdateInput,
 } from "./types";
+
+type RawPackageItem = {
+  order_item_id: string | number;
+  quantity: number;
+  order_item?: { product_name?: string; size?: string | null; color?: string | null } | null;
+};
 
 type RawCnPackage = {
   id: string | number;
   tracking_number?: string | null;
   weight?: number | null;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
+  package_items?: RawPackageItem[];
   receiver_name?: string | null;
   order?: {
     order_code?: string | null;
@@ -35,6 +53,18 @@ type RawCnBatch = {
   total_weight?: number | null;
   status: string;
   arrived_at?: string | null;
+  actual_batch_weight?: number | null;
+  package_material_weight?: number | null;
+  actual_length?: number | null;
+  actual_width?: number | null;
+  actual_height?: number | null;
+  transport_container_count?: number | null;
+  packaging_type?: string | null;
+  carrier_name?: string | null;
+  transport_code?: string | null;
+  departed_at?: string | null;
+  expected_arrival_at?: string | null;
+  warehouse?: { name?: string | null } | null;
 };
 
 type RawReceipt = {
@@ -48,21 +78,44 @@ type RawReceipt = {
   total_extra_packages: number;
   total_damaged_packages: number;
   actual_batch_weight?: number | null;
+  actual_container_count?: number | null;
+  outer_condition?: string | null;
+  batch_weight_difference?: number | null;
+  requires_resolution?: boolean | null;
+  received_at?: string | null;
   package_material_weight?: number | null;
   actual_length?: number | null;
   actual_width?: number | null;
   actual_height?: number | null;
   note?: string | null;
+  batch_code?: string;
+  warehouse?: { name?: string | null } | null;
+  batch?: { batch_code?: string | null; destination_warehouse_name?: string | null } | null;
 };
 
 type RawVnPackage = {
   id: string | number;
   tracking_number_snapshot?: string | null;
   actual_weight?: number | null;
+  cn_weight_snapshot?: number | null;
+  weight_difference?: number | null;
   actual_length?: number | null;
   actual_width?: number | null;
   actual_height?: number | null;
   actual_volume?: number | null;
+  physical_condition?: string | null;
+  requires_item_inspection?: boolean | null;
+  item_inspection_status?: string | null;
+  exception_reason?: string | null;
+  error_resolution_status?: string | null;
+  resolution_note?: string | null;
+  resolution_action?: string | null;
+  resolution_result?: string | null;
+  expected_completion_at?: string | null;
+  error_detected_at?: string | null;
+  error_resolved_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   extra_fee?: number | null;
   wooden_fee?: number | null;
   other_fee?: number | null;
@@ -75,6 +128,31 @@ type RawVnPackage = {
   handler?: {
     name?: string | null;
   } | null;
+  resolver?: { name?: string | null } | null;
+  receipt?: RawReceipt | null;
+  cn_package?: RawCnPackage | null;
+  inspected_items?: Array<{
+    order_item_id?: string | number | null;
+    product_name_snapshot: string;
+    variant_snapshot?: string | null;
+    expected_quantity: number;
+    received_quantity: number;
+    condition_status: string;
+    note?: string | null;
+  }>;
+  evidences?: RawPackageEvidence[];
+};
+
+type RawPackageEvidence = {
+  id: string | number;
+  evidence_type: PackageEvidence["type"];
+  url: string;
+  thumbnail_url?: string | null;
+  original_name: string;
+  mime_type: string;
+  file_size: number;
+  created_at?: string | null;
+  creator?: { name?: string | null } | null;
 };
 
 type RawSummary = {
@@ -83,7 +161,17 @@ type RawSummary = {
   inspectedCount: number;
   extraCount: number;
   damagedCount: number;
+  mismatchCount: number;
+  weightMismatchCount: number;
+  itemInspectionPendingCount: number;
   missingCount: number;
+  storedCount: number;
+  receivableCount: number;
+  errorCount: number;
+  batchWeightMismatch: boolean;
+  containerMismatch: boolean;
+  batchResolutionPending: boolean;
+  hasIssues: boolean;
   matched: boolean;
 };
 
@@ -110,11 +198,28 @@ const RECEIPT_PAYLOAD_FIELDS = `
     total_packages
     total_weight
     status
+    actual_batch_weight
+    package_material_weight
+    actual_length
+    actual_width
+    actual_height
+    transport_container_count
+    packaging_type
+    carrier_name
+    transport_code
+    departed_at
+    expected_arrival_at
+    warehouse { name }
   }
   receipt {
     id
     status
     confirmed_at
+    received_at
+    actual_container_count
+    outer_condition
+    batch_weight_difference
+    requires_resolution
     total_expected_packages
     total_received_packages
     total_inspected_packages
@@ -132,6 +237,9 @@ const RECEIPT_PAYLOAD_FIELDS = `
     id
     tracking_number
     weight
+    actual_length
+    actual_width
+    actual_height
     receiver_name
     order {
       order_code
@@ -139,15 +247,30 @@ const RECEIPT_PAYLOAD_FIELDS = `
         name
       }
     }
+    package_items {
+      order_item_id
+      quantity
+      order_item { product_name size color }
+    }
   }
   receivedPackages {
     id
     tracking_number_snapshot
     actual_weight
+    cn_weight_snapshot
+    weight_difference
     actual_length
     actual_width
     actual_height
     actual_volume
+    physical_condition
+    requires_item_inspection
+    item_inspection_status
+    exception_reason
+    error_resolution_status
+    resolution_note
+    error_detected_at
+    error_resolved_at
     extra_fee
     wooden_fee
     other_fee
@@ -157,8 +280,26 @@ const RECEIPT_PAYLOAD_FIELDS = `
     note
     scanned_at
     received_at
+    created_at
+    updated_at
     handler {
       name
+    }
+    resolver { name }
+    cn_package {
+      id tracking_number weight actual_length actual_width actual_height
+      package_items {
+        order_item_id quantity
+        order_item { product_name size color }
+      }
+    }
+    inspected_items {
+      order_item_id product_name_snapshot variant_snapshot expected_quantity
+      received_quantity condition_status note
+    }
+    evidences {
+      id evidence_type url thumbnail_url original_name mime_type file_size created_at
+      creator { name }
     }
   }
   summary {
@@ -167,8 +308,72 @@ const RECEIPT_PAYLOAD_FIELDS = `
     inspectedCount
     extraCount
     damagedCount
+    mismatchCount
+    weightMismatchCount
+    itemInspectionPendingCount
     missingCount
+    storedCount
+    receivableCount
+    errorCount
+    batchWeightMismatch
+    containerMismatch
+    batchResolutionPending
+    hasIssues
     matched
+  }
+`;
+
+const VN_PACKAGE_LIST_FIELDS = `
+  id
+  tracking_number_snapshot
+  cn_weight_snapshot
+  actual_weight
+  weight_difference
+  actual_length
+  actual_width
+  actual_height
+  physical_condition
+  requires_item_inspection
+  item_inspection_status
+  exception_reason
+  error_resolution_status
+  resolution_note
+  resolution_action
+  resolution_result
+  expected_completion_at
+  error_detected_at
+  error_resolved_at
+  order_code_snapshot
+  customer_name_snapshot
+  inspection_status
+  note
+  scanned_at
+  received_at
+  created_at
+  updated_at
+  handler { name }
+  resolver { name }
+  receipt {
+    id
+    batch_code
+    warehouse { name }
+    batch { batch_code destination_warehouse_name }
+  }
+  cn_package {
+    id tracking_number weight actual_length actual_width actual_height
+    order { order_code customer { name } }
+    package_items {
+      order_item_id quantity
+      order_item { product_name size color }
+    }
+  }
+  inspected_items {
+    order_item_id product_name_snapshot variant_snapshot expected_quantity
+    received_quantity condition_status note
+  }
+  evidences {
+    id evidence_type url thumbnail_url original_name mime_type file_size created_at
+    creator { name }
   }
 `;
 
@@ -180,10 +385,23 @@ const OVERVIEW_BATCH_FIELDS = `
   total_weight
   status
   arrived_at
+  actual_batch_weight
+  package_material_weight
+  actual_length
+  actual_width
+  actual_height
+  transport_container_count
+  packaging_type
+  carrier_name
+  transport_code
+  departed_at
+  expected_arrival_at
+  warehouse { name }
   packages {
     id
     tracking_number
     weight
+    actual_length actual_width actual_height
     receiver_name
     order {
       order_code
@@ -191,11 +409,20 @@ const OVERVIEW_BATCH_FIELDS = `
         name
       }
     }
+    package_items {
+      order_item_id quantity
+      order_item { product_name size color }
+    }
   }
   vn_batch_receipt {
     id
     status
     confirmed_at
+    received_at
+    actual_container_count
+    outer_condition
+    batch_weight_difference
+    requires_resolution
     total_expected_packages
     total_received_packages
     total_inspected_packages
@@ -212,10 +439,16 @@ const OVERVIEW_BATCH_FIELDS = `
       id
       tracking_number_snapshot
       actual_weight
+      cn_weight_snapshot
+      weight_difference
       actual_length
       actual_width
       actual_height
       actual_volume
+      physical_condition
+      requires_item_inspection
+      item_inspection_status
+      exception_reason
       extra_fee
       wooden_fee
       other_fee
@@ -227,6 +460,17 @@ const OVERVIEW_BATCH_FIELDS = `
       received_at
       handler {
         name
+      }
+      cn_package {
+        id tracking_number weight actual_length actual_width actual_height
+        package_items {
+          order_item_id quantity
+          order_item { product_name size color }
+        }
+      }
+      inspected_items {
+        order_item_id product_name_snapshot variant_snapshot expected_quantity
+        received_quantity condition_status note
       }
     }
   }
@@ -255,6 +499,7 @@ const buildErrorStatusLabel = (summary: {
   missingCount: number;
   extraCount: number;
   damagedCount: number;
+  mismatchCount?: number;
 }) => {
   const parts: string[] = [];
 
@@ -267,10 +512,14 @@ const buildErrorStatusLabel = (summary: {
   }
 
   if (summary.damagedCount > 0) {
-    parts.push("Hu hong");
+    parts.push("Hư hỏng");
   }
 
-  return parts.length > 0 ? parts.join(", ") : "Khong co loi";
+  if ((summary.mismatchCount ?? 0) > 0) {
+    parts.push("Sai lệch");
+  }
+
+  return parts.length > 0 ? parts.join(", ") : "Không có lỗi";
 };
 
 const buildProcessingStatusLabel = (status?: VietnamWarehouseReceiptStatus) => {
@@ -296,7 +545,7 @@ const buildVolumetricWeight = (
   volume?: number | null,
 ) => {
   if (typeof volume === "number" && volume > 0) {
-    return volume;
+    return Math.max(weight ?? 0, (volume * 1_000_000) / 6000);
   }
 
   if (length && width && height) {
@@ -312,13 +561,36 @@ const mapBatch = (batch: RawCnBatch, receipt?: RawReceipt | null): VietnamWareho
   destinationWarehouseName: batch.destination_warehouse_name ?? "Kho Việt Nam",
   totalPackages: batch.total_packages ?? 0,
   totalWeight: Number(receipt?.actual_batch_weight ?? batch.total_weight ?? 0),
+  originWarehouseName: batch.warehouse?.name ?? "Kho Trung Quốc",
+  dispatchWeight: Number(batch.actual_batch_weight ?? batch.total_weight ?? 0),
+  transportContainerCount: Number(batch.transport_container_count ?? 0),
+  packagingType: batch.packaging_type ?? "Chưa cập nhật",
+  packageMaterialWeight: Number(batch.package_material_weight ?? 0),
+  dispatchLength: Number(batch.actual_length ?? 0),
+  dispatchWidth: Number(batch.actual_width ?? 0),
+  dispatchHeight: Number(batch.actual_height ?? 0),
+  carrierName: batch.carrier_name ?? "Chưa cập nhật",
+  transportCode: batch.transport_code ?? "Chưa cập nhật",
+  departedAt: batch.departed_at,
+  expectedArrivalAt: batch.expected_arrival_at,
   status: normalizeStatus(receipt?.status ?? batch.status),
 });
 
 const mapExpectedPackage = (item: RawCnPackage): ExpectedBatchPackage => ({
+  id: String(item.id),
   trackingCode: item.tracking_number ?? "",
   orderCode: item.order?.order_code ?? "",
   customerName: item.order?.customer?.name ?? item.receiver_name ?? "",
+  cnWeight: Number(item.weight ?? 0),
+  length: Number(item.actual_length ?? 0),
+  width: Number(item.actual_width ?? 0),
+  height: Number(item.actual_height ?? 0),
+  items: (item.package_items ?? []).map((packageItem): PackageItemDetail => ({
+    orderItemId: String(packageItem.order_item_id),
+    productName: packageItem.order_item?.product_name ?? `Item #${packageItem.order_item_id}`,
+    variant: [packageItem.order_item?.size, packageItem.order_item?.color].filter(Boolean).join(" / ") || undefined,
+    expectedQuantity: packageItem.quantity,
+  })),
 });
 
 const mapReceivedPackage = (item: RawVnPackage): ReceivedPackageDraft => ({
@@ -336,14 +608,145 @@ const mapReceivedPackage = (item: RawVnPackage): ReceivedPackageDraft => ({
   ),
   status: normalizeStatus(item.inspection_status) as ReceivedPackageDraft["status"],
   weight: Number(item.actual_weight ?? 0),
+  cnWeight: Number(item.cn_weight_snapshot ?? item.cn_package?.weight ?? 0),
+  weightDifference: Number(item.weight_difference ?? 0),
   length: Number(item.actual_length ?? 0),
   width: Number(item.actual_width ?? 0),
   height: Number(item.actual_height ?? 0),
-  extraFeeRmb: Number(item.extra_fee ?? 0),
-  declaredValue: Number(item.wooden_fee ?? 0),
-  surcharge: Number(item.other_fee ?? 0),
+  physicalCondition: item.physical_condition ?? "normal",
+  requiresItemInspection: Boolean(item.requires_item_inspection),
+  itemInspectionStatus: item.item_inspection_status ?? "not_required",
+  items: (item.inspected_items?.length
+    ? item.inspected_items.map((inspected) => ({
+        orderItemId: String(inspected.order_item_id ?? ""),
+        productName: inspected.product_name_snapshot,
+        variant: inspected.variant_snapshot ?? undefined,
+        expectedQuantity: inspected.expected_quantity,
+        receivedQuantity: inspected.received_quantity,
+        conditionStatus: inspected.condition_status,
+        note: inspected.note ?? undefined,
+      }))
+    : (item.cn_package?.package_items ?? []).map((packageItem) => ({
+        orderItemId: String(packageItem.order_item_id),
+        productName: packageItem.order_item?.product_name ?? `Item #${packageItem.order_item_id}`,
+        variant: [packageItem.order_item?.size, packageItem.order_item?.color].filter(Boolean).join(" / ") || undefined,
+        expectedQuantity: packageItem.quantity,
+      }))),
+  evidences: (item.evidences ?? []).map(mapPackageEvidence),
   note: item.note ?? undefined,
 });
+
+const mapPackageEvidence = (evidence: RawPackageEvidence): PackageEvidence => ({
+  id: String(evidence.id),
+  type: evidence.evidence_type,
+  url: resolveMediaUrl(evidence.url),
+  thumbnailUrl: resolveMediaUrl(evidence.thumbnail_url || evidence.url),
+  originalName: evidence.original_name,
+  mimeType: evidence.mime_type,
+  fileSize: Number(evidence.file_size),
+  createdAt: evidence.created_at ?? undefined,
+  createdBy: evidence.creator?.name ?? undefined,
+});
+
+const buildPackageItems = (item: RawVnPackage): PackageItemDetail[] => item.inspected_items?.length
+  ? item.inspected_items.map((inspected) => ({
+      orderItemId: String(inspected.order_item_id ?? ""),
+      productName: inspected.product_name_snapshot,
+      variant: inspected.variant_snapshot ?? undefined,
+      expectedQuantity: inspected.expected_quantity,
+      receivedQuantity: inspected.received_quantity,
+      conditionStatus: inspected.condition_status,
+      note: inspected.note ?? undefined,
+    }))
+  : (item.cn_package?.package_items ?? []).map((packageItem) => ({
+      orderItemId: String(packageItem.order_item_id),
+      productName: packageItem.order_item?.product_name ?? `Item #${packageItem.order_item_id}`,
+      variant: [packageItem.order_item?.size, packageItem.order_item?.color].filter(Boolean).join(" / ") || undefined,
+      expectedQuantity: packageItem.quantity,
+    }));
+
+const getPackageErrorType = (item: RawVnPackage) => {
+  if (item.requires_item_inspection) return "Chờ kiểm item";
+  if (item.inspection_status === "extra") return "Kiện ngoài lô";
+  if (item.inspection_status === "damaged") return "Hư hỏng";
+  if (item.inspection_status === "mismatched") {
+    return Math.abs(Number(item.weight_difference ?? 0)) > 0 ? "Sai lệch cân nặng" : "Sai lệch item";
+  }
+  return "Không có lỗi";
+};
+
+const mapWarehousePackage = (item: RawVnPackage): VietnamWarehousePackageListItem => ({
+  id: String(item.id),
+  receiptId: item.receipt?.id ? String(item.receipt.id) : undefined,
+  trackingCode: item.tracking_number_snapshot ?? "",
+  orderCode: item.order_code_snapshot ?? item.cn_package?.order?.order_code ?? "",
+  batchCode: item.receipt?.batch_code ?? item.receipt?.batch?.batch_code ?? "",
+  customerName: item.customer_name_snapshot ?? item.cn_package?.order?.customer?.name ?? "",
+  warehouseName: item.receipt?.warehouse?.name ?? item.receipt?.batch?.destination_warehouse_name ?? "Kho Việt Nam",
+  handlerName: item.handler?.name ?? "—",
+  resolverName: item.resolver?.name ?? undefined,
+  cnWeight: Number(item.cn_weight_snapshot ?? item.cn_package?.weight ?? 0),
+  actualWeight: Number(item.actual_weight ?? 0),
+  weightDifference: Number(item.weight_difference ?? 0),
+  length: Number(item.actual_length ?? 0),
+  width: Number(item.actual_width ?? 0),
+  height: Number(item.actual_height ?? 0),
+  physicalCondition: item.physical_condition ?? "normal",
+  itemInspectionStatus: item.item_inspection_status ?? "not_required",
+  requiresItemInspection: Boolean(item.requires_item_inspection),
+  inspectionStatus: item.inspection_status,
+  errorType: getPackageErrorType(item),
+  errorResolutionStatus: item.error_resolution_status ?? undefined,
+  exceptionReason: item.exception_reason ?? undefined,
+  resolutionNote: item.resolution_note ?? undefined,
+  resolutionAction: item.resolution_action ?? undefined,
+  resolutionResult: item.resolution_result ?? undefined,
+  expectedCompletionAt: item.expected_completion_at ?? undefined,
+  note: item.note ?? undefined,
+  scannedAt: item.scanned_at ?? undefined,
+  errorDetectedAt: item.error_detected_at ?? undefined,
+  errorResolvedAt: item.error_resolved_at ?? undefined,
+  receivedAt: item.received_at ?? undefined,
+  createdAt: item.created_at ?? undefined,
+  updatedAt: item.updated_at ?? undefined,
+  items: buildPackageItems(item),
+  evidences: (item.evidences ?? []).map(mapPackageEvidence),
+});
+
+const EVIDENCE_API_URL = GRAPHQL_API_URL.replace(/\/graphql\/?$/, "/api");
+
+const parseEvidenceApiError = async (response: Response) => {
+  const payload = await response.json().catch(() => null) as { message?: string; errors?: Record<string, string[]> } | null;
+  const validationMessage = payload?.errors ? Object.values(payload.errors).flat()[0] : undefined;
+  return validationMessage || payload?.message || `Không thể xử lý ảnh minh chứng (${response.status}).`;
+};
+
+export const uploadVietnamPackageEvidences = async (
+  packageId: string,
+  files: File[],
+  type: PackageEvidence["type"] = "reconciliation",
+) => {
+  if (!files.length) return [];
+  const formData = new FormData();
+  formData.append("evidence_type", type);
+  files.forEach((file) => formData.append("images[]", file, file.name));
+  const response = await fetch(`${EVIDENCE_API_URL}/vietnam-warehouse/packages/${packageId}/evidences`, {
+    method: "POST",
+    headers: { ...getGraphqlAuthHeaders(), Accept: "application/json" },
+    body: formData,
+  });
+  if (!response.ok) throw new Error(await parseEvidenceApiError(response));
+  const payload = await response.json() as { data: RawPackageEvidence[] };
+  return payload.data.map(mapPackageEvidence);
+};
+
+export const deleteVietnamPackageEvidence = async (packageId: string, evidenceId: string) => {
+  const response = await fetch(`${EVIDENCE_API_URL}/vietnam-warehouse/packages/${packageId}/evidences/${evidenceId}`, {
+    method: "DELETE",
+    headers: { ...getGraphqlAuthHeaders(), Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(await parseEvidenceApiError(response));
+};
 
 const mapReceipt = (receipt: RawReceipt | null): VietnamWarehouseReceiptRecord | null => {
   if (!receipt) {
@@ -354,6 +757,11 @@ const mapReceipt = (receipt: RawReceipt | null): VietnamWarehouseReceiptRecord |
     id: String(receipt.id),
     status: normalizeReceiptStatus(receipt.status),
     confirmedAt: receipt.confirmed_at,
+    receivedAt: receipt.received_at,
+    actualContainerCount: Number(receipt.actual_container_count ?? 0),
+    outerCondition: receipt.outer_condition ?? "normal",
+    batchWeightDifference: Number(receipt.batch_weight_difference ?? 0),
+    requiresResolution: Boolean(receipt.requires_resolution),
     totalExpectedPackages: receipt.total_expected_packages,
     totalReceivedPackages: receipt.total_received_packages,
     totalInspectedPackages: receipt.total_inspected_packages,
@@ -417,6 +825,82 @@ export const fetchVietnamWarehouseReceipt = async (batchCode: string) => {
   return mapReceiptPayload(response.vietnamWarehouseReceipt);
 };
 
+export const fetchVietnamWarehousePackages = async (
+  scope: "stored" | "error",
+  filters: VietnamWarehouseFilterValues = {},
+  page = 1,
+  first = 10,
+): Promise<VietnamWarehousePackagePage> => {
+  const query = `
+    query VietnamWarehousePackages($filter: VietnamWarehousePackageFilterInput, $page: Int!, $first: Int!) {
+      vietnamWarehousePackages(filter: $filter, page: $page, first: $first) {
+        data { ${VN_PACKAGE_LIST_FIELDS} }
+        paginatorInfo { total currentPage lastPage perPage }
+      }
+    }
+  `;
+  const response = await requestGraphql<{
+    vietnamWarehousePackages: {
+      data: RawVnPackage[];
+      paginatorInfo: { total: number; currentPage: number; lastPage: number; perPage: number };
+    };
+  }, { filter: Record<string, unknown>; page: number; first: number }>(query, {
+    filter: {
+      scope,
+      tracking_number: filters.trackingCode?.trim() || undefined,
+      batch_code: filters.batchCode?.trim() || undefined,
+      customer_name: filters.customerName?.trim() || undefined,
+      warehouse_id: filters.warehouseId || undefined,
+      warehouse_name: filters.warehouseName?.trim() || undefined,
+      handled_by: filters.handlerId || undefined,
+      handler_name: filters.receiverName?.trim() || undefined,
+      error_type: filters.errorType || undefined,
+      resolution_status: filters.resolutionStatus || undefined,
+      date_from: filters.receivedFrom?.startOf("day").format("YYYY-MM-DD HH:mm:ss"),
+      date_to: filters.receivedTo?.endOf("day").format("YYYY-MM-DD HH:mm:ss"),
+    },
+    page,
+    first,
+  });
+  const result = response.vietnamWarehousePackages;
+  return { items: result.data.map(mapWarehousePackage), ...result.paginatorInfo };
+};
+
+export const fetchVietnamWarehousePackage = async (id: string) => {
+  const query = `
+    query VietnamWarehousePackage($id: ID!) {
+      vietnamWarehousePackage(id: $id) { ${VN_PACKAGE_LIST_FIELDS} }
+    }
+  `;
+  const response = await requestGraphql<
+    { vietnamWarehousePackage: RawVnPackage },
+    { id: string }
+  >(query, { id });
+  return mapWarehousePackage(response.vietnamWarehousePackage);
+};
+
+export const updateVietnamPackageError = async (packageId: string, input: VietnamPackageErrorUpdateInput) => {
+  const mutation = `
+    mutation UpdateVietnamPackageError($input: UpdateVietnamPackageErrorInput!) {
+      updateVietnamPackageError(input: $input) { ${VN_PACKAGE_LIST_FIELDS} }
+    }
+  `;
+  const response = await requestGraphql<
+    { updateVietnamPackageError: RawVnPackage },
+    { input: Record<string, unknown> }
+  >(mutation, {
+    input: {
+      package_id: packageId,
+      resolution_status: input.resolutionStatus,
+      resolution_action: input.resolutionAction || null,
+      resolution_result: input.resolutionResult || null,
+      expected_completion_at: input.expectedCompletionAt || null,
+      note: input.note || null,
+    },
+  });
+  return mapWarehousePackage(response.updateVietnamPackageError);
+};
+
 export const startVietnamWarehouseReceipt = async (values: BatchInfoFormValues) => {
   const mutation = `
     mutation StartVietnamWarehouseReceipt($input: StartVietnamWarehouseReceiptInput!) {
@@ -431,29 +915,31 @@ export const startVietnamWarehouseReceipt = async (values: BatchInfoFormValues) 
     {
       input: {
         batch_code: string;
+        actual_container_count: number;
         actual_batch_weight: number;
-        package_material_weight: number;
-        actual_length: number;
-        actual_width: number;
-        actual_height: number;
-        actual_volume: number;
-        wooden_fee: number;
-        other_fee: number;
-        note: string;
+        actual_length?: number;
+        actual_width?: number;
+        actual_height?: number;
+        actual_volume?: number;
+        outer_condition: string;
+        received_at: string;
+        note?: string;
       };
     }
   >(mutation, {
     input: {
       batch_code: values.batchCode,
-      actual_batch_weight: values.batchWeight,
-      package_material_weight: values.packagingWeight,
-      actual_length: values.length,
-      actual_width: values.width,
-      actual_height: values.height,
-      actual_volume: Number(((values.length * values.width * values.height) / 1000000).toFixed(3)),
-      wooden_fee: values.packagingType === "Đóng gỗ" ? values.packagingWeight : 0,
-      other_fee: 0,
-      note: values.packagingType,
+      actual_container_count: values.actualContainerCount,
+      actual_batch_weight: values.actualBatchWeight,
+      actual_length: values.remeasureDimensions ? values.length : undefined,
+      actual_width: values.remeasureDimensions ? values.width : undefined,
+      actual_height: values.remeasureDimensions ? values.height : undefined,
+      actual_volume: values.remeasureDimensions && values.length && values.width && values.height
+        ? Number(((values.length * values.width * values.height) / 1_000_000).toFixed(4))
+        : undefined,
+      outer_condition: values.outerCondition,
+      received_at: values.receivedAt.format("YYYY-MM-DD HH:mm:ss"),
+      note: values.note,
     },
   });
 
@@ -468,11 +954,9 @@ export const scanVietnamPackage = async (
     length: number;
     width: number;
     height: number;
-    orderCode?: string;
-    customerName?: string;
-    extraFeeRmb?: number;
-    declaredValue?: number;
-    surcharge?: number;
+    physicalCondition: string;
+    requiresItemInspection?: boolean;
+    exceptionReason?: string;
     note?: string;
     inspectionStatus?: "inspected" | "damaged";
   },
@@ -496,11 +980,9 @@ export const scanVietnamPackage = async (
         actual_width: number;
         actual_height: number;
         actual_volume: number;
-        extra_fee: number;
-        wooden_fee: number;
-        other_fee: number;
-        order_code_snapshot?: string;
-        customer_name_snapshot?: string;
+        physical_condition: string;
+        requires_item_inspection: boolean;
+        exception_reason?: string;
         note?: string;
         inspection_status?: string;
       };
@@ -513,18 +995,74 @@ export const scanVietnamPackage = async (
       actual_length: values.length,
       actual_width: values.width,
       actual_height: values.height,
-      actual_volume: Number(((values.length * values.width * values.height) / 6000).toFixed(3)),
-      extra_fee: values.extraFeeRmb ?? 0,
-      wooden_fee: values.declaredValue ?? 0,
-      other_fee: values.surcharge ?? 0,
-      order_code_snapshot: values.orderCode,
-      customer_name_snapshot: values.customerName,
+      actual_volume: Number(((values.length * values.width * values.height) / 1_000_000).toFixed(4)),
+      physical_condition: values.physicalCondition,
+      requires_item_inspection: Boolean(values.requiresItemInspection),
+      exception_reason: values.exceptionReason,
       note: values.note,
       inspection_status: values.inspectionStatus,
     },
   });
 
   return mapReceiptPayload(response.scanVietnamPackage);
+};
+
+export const inspectVietnamPackageItems = async (
+  packageId: string,
+  items: PackageItemDetail[],
+) => {
+  const mutation = `
+    mutation InspectVietnamPackageItems($packageId: ID!, $items: [VietnamPackageItemInspectionInput!]!) {
+      inspectVietnamPackageItems(package_id: $packageId, items: $items) {
+        ${RECEIPT_PAYLOAD_FIELDS}
+      }
+    }
+  `;
+
+  const response = await requestGraphql<
+    { inspectVietnamPackageItems: RawReceiptPayload },
+    { packageId: string; items: Array<Record<string, unknown>> }
+  >(mutation, {
+    packageId,
+    items: items.map((item) => ({
+      order_item_id: item.orderItemId,
+      received_quantity: item.receivedQuantity ?? 0,
+      condition_status: item.conditionStatus ?? "normal",
+      note: item.note,
+    })),
+  });
+
+  return mapReceiptPayload(response.inspectVietnamPackageItems);
+};
+
+export const resolveVietnamReceiptDiscrepancy = async (receiptId: string, resolutionNote: string) => {
+  const mutation = `
+    mutation ResolveVietnamReceiptDiscrepancy($receiptId: ID!, $resolutionNote: String!) {
+      resolveVietnamReceiptDiscrepancy(receipt_id: $receiptId, resolution_note: $resolutionNote) {
+        ${RECEIPT_PAYLOAD_FIELDS}
+      }
+    }
+  `;
+  const response = await requestGraphql<
+    { resolveVietnamReceiptDiscrepancy: RawReceiptPayload },
+    { receiptId: string; resolutionNote: string }
+  >(mutation, { receiptId, resolutionNote });
+  return mapReceiptPayload(response.resolveVietnamReceiptDiscrepancy);
+};
+
+export const resolveVietnamPackageDiscrepancy = async (packageId: string, resolutionNote: string) => {
+  const mutation = `
+    mutation ResolveVietnamPackageDiscrepancy($packageId: ID!, $resolutionNote: String!) {
+      resolveVietnamPackageDiscrepancy(package_id: $packageId, resolution_note: $resolutionNote) {
+        ${RECEIPT_PAYLOAD_FIELDS}
+      }
+    }
+  `;
+  const response = await requestGraphql<
+    { resolveVietnamPackageDiscrepancy: RawReceiptPayload },
+    { packageId: string; resolutionNote: string }
+  >(mutation, { packageId, resolutionNote });
+  return mapReceiptPayload(response.resolveVietnamPackageDiscrepancy);
 };
 
 export const removeVietnamPackage = async (packageId: string, batchCode: string) => {
@@ -660,12 +1198,15 @@ export const buildBatchInfoDefaults = (
   payload: VietnamWarehouseReceiptData,
 ): BatchInfoFormValues => ({
   batchCode: payload.batch.batchCode,
-  batchWeight: payload.receipt?.actualBatchWeight || payload.batch.totalWeight || 0,
-  packagingWeight: payload.receipt?.packageMaterialWeight || 0,
-  packagingType: payload.receipt?.note || "Dong go",
-  length: payload.receipt?.actualLength || 0,
-  width: payload.receipt?.actualWidth || 0,
-  height: payload.receipt?.actualHeight || 0,
+  actualBatchWeight: payload.receipt?.actualBatchWeight || payload.batch.dispatchWeight || 0,
+  actualContainerCount: payload.receipt?.actualContainerCount || payload.batch.transportContainerCount || 1,
+  outerCondition: payload.receipt?.outerCondition || "normal",
+  receivedAt: payload.receipt?.receivedAt ? dayjs(payload.receipt.receivedAt) : dayjs(),
+  remeasureDimensions: Boolean(payload.receipt?.actualLength),
+  length: payload.receipt?.actualLength || undefined,
+  width: payload.receipt?.actualWidth || undefined,
+  height: payload.receipt?.actualHeight || undefined,
+  note: payload.receipt?.note ?? undefined,
 });
 
 export const buildStatsFromTableData = (
@@ -707,9 +1248,7 @@ export const fetchVietnamWarehouseOverview = async () => {
     (item: RawOverviewBatch) => Boolean(item.vn_batch_receipt),
   );
 
-  const listedBatches = batchesWithReceipt.filter((item: RawOverviewBatch) =>
-    ["confirmed", "mismatched"].includes(item.vn_batch_receipt?.status ?? ""),
-  );
+  const listedBatches = batchesWithReceipt;
 
   const tableData = listedBatches.flatMap(mapOverviewBatchToTableData);
   const totalBatches = batchesWithReceipt.length;

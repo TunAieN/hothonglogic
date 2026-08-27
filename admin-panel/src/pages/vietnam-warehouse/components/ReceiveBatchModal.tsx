@@ -1,595 +1,212 @@
-import { useEffect, useMemo } from "react";
-import type { CSSProperties } from "react";
-import {
-  Alert,
-  Button,
-  Col,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from "antd";
-import {
-  CheckCircleOutlined,
-  CloseOutlined,
-  DeleteOutlined,
-  ExclamationCircleOutlined,
-} from "@ant-design/icons";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Form, Image, Input, InputNumber, Modal, Popconfirm, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from "antd";
+import { CameraOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, OrderedListOutlined, ScanOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import type {
-  BatchInfoFormValues,
-  ComparisonSummary,
-  ExpectedBatchPackage,
-  ReceivePackageFormValues,
-  ReceivedPackageDraft,
-  VietnamWarehouseReceiptSummary,
-} from "../types";
+import type { UploadFile } from "antd/es/upload/interface";
+import type { ExpectedBatchPackage, PackageEvidence, PackageItemDetail, ReceivePackageFormValues, ReceivedPackageDraft, VietnamWarehouseBatch, VietnamWarehouseReceiptSummary } from "../types";
+import { PackageEvidenceUpload } from "./PackageEvidenceUpload";
+import { MEDIA_IMAGE_FALLBACK } from "../../../utils/mediaUrl";
 
 const { Text, Title } = Typography;
-
 type Props = {
-  open: boolean;
-  expectedPackages: ExpectedBatchPackage[];
-  batchInfo: BatchInfoFormValues;
-  receivedPackages: ReceivedPackageDraft[];
-  summary: VietnamWarehouseReceiptSummary;
-  loading?: boolean;
-  onCancel: () => void;
-  onRefresh: () => Promise<void> | void;
-  onAddPackage: (
-    values: ReceivePackageFormValues & { inspectionStatus?: "inspected" | "damaged" },
-  ) => Promise<void>;
-  onRemovePackage: (record: ReceivedPackageDraft) => Promise<void>;
+  open: boolean; batch: VietnamWarehouseBatch; expectedPackages: ExpectedBatchPackage[];
+  receivedPackages: ReceivedPackageDraft[]; summary: VietnamWarehouseReceiptSummary; loading?: boolean;
+  onCancel: () => void; onRefresh: () => Promise<void> | void; onAddPackage: (values: ReceivePackageFormValues, evidenceFiles: File[]) => Promise<void>;
+  onRemovePackage: (record: ReceivedPackageDraft) => Promise<void>; onInspectItems: (record: ReceivedPackageDraft, items: PackageItemDetail[]) => Promise<void>;
+  onAddEvidence: (record: ReceivedPackageDraft, files: File[]) => Promise<void>;
+  onDeleteEvidence: (record: ReceivedPackageDraft, evidence: PackageEvidence) => Promise<void>;
+  onResolveBatchDiscrepancy: (resolutionNote: string) => Promise<void>;
+  onResolvePackageDiscrepancy: (record: ReceivedPackageDraft, resolutionNote: string) => Promise<void>;
   onMoveToErrorQueue: () => Promise<void>;
   onConfirm: () => Promise<void>;
 };
+const conditionOptions = [
+  { label: "Nguyên vẹn", value: "normal" }, { label: "Móp méo", value: "dented" }, { label: "Rách", value: "torn" },
+  { label: "Ướt", value: "wet" }, { label: "Vỡ/hỏng", value: "broken" }, { label: "Đã mở", value: "opened" }, { label: "Khác", value: "other" },
+];
+const conditionLabel: Record<string, string> = { normal: "Nguyên vẹn", dented: "Móp", torn: "Rách", wet: "Ướt", broken: "Vỡ/hỏng", opened: "Đã mở", other: "Khác" };
+const evidenceRules = { requiredPhysicalConditions: new Set<string>() };
 
-const sectionStyle = {
-  border: "1px solid #d9e2f1",
-  borderRadius: 8,
-  background: "#fff",
+const statusTag = (record: ReceivedPackageDraft) => {
+  if (record.status === "missing") return <Tag color="orange">Chưa quét</Tag>;
+  if (record.status === "extra") return <Tag color="red">Ngoài lô</Tag>;
+  if (record.status === "damaged") return <Tag color="volcano">Hư hỏng</Tag>;
+  if (record.status === "mismatched") return <Tag color="gold">Sai lệch</Tag>;
+  if (record.requiresItemInspection) return <Tag color="purple">Chờ kiểm item</Tag>;
+  return <Tag color="green">Đã khớp</Tag>;
 };
 
-const labelStyle: CSSProperties = {
-  display: "block",
-  marginBottom: 8,
-  fontSize: 13,
-  color: "#344054",
-  fontWeight: 500,
-};
-
-const infoCellStyle: CSSProperties = {
-  borderRight: "1px solid #e5e7eb",
-  borderBottom: "1px solid #e5e7eb",
-  padding: "10px 12px",
-  minHeight: 52,
-};
-
-const buildSummary = (
-  expectedPackages: ExpectedBatchPackage[],
-  receivedPackages: ReceivedPackageDraft[],
-  apiSummary: VietnamWarehouseReceiptSummary,
-): ComparisonSummary => {
-  const missingTrackingCodes = expectedPackages
-    .filter(
-      (item) =>
-        !receivedPackages.some(
-          (received) =>
-            received.trackingCode === item.trackingCode &&
-            (received.status === "checked" || received.status === "damaged"),
-        ),
-    )
-    .map((item) => item.trackingCode);
-
-  return {
-    importedCount: apiSummary.receivedCount,
-    expectedCount: apiSummary.expectedCount,
-    matchedCount: apiSummary.inspectedCount,
-    missingCount: apiSummary.missingCount,
-    extraCount: apiSummary.extraCount,
-    missingTrackingCodes,
-  };
-};
-
-const getStatusTag = (status: ReceivedPackageDraft["status"]) => {
-  if (status === "checked") {
-    return <Tag color="green">Da kiem</Tag>;
-  }
-
-  if (status === "missing") {
-    return <Tag color="orange">Thieu kien</Tag>;
-  }
-
-  if (status === "damaged") {
-    return <Tag color="gold">Hu hong</Tag>;
-  }
-
-  return <Tag color="red">Thua kien</Tag>;
-};
-
-const formatWeight = (value: number) => `${value.toFixed(1)}kg`;
-
-export const ReceiveBatchModal = ({
-  open,
-  expectedPackages,
-  batchInfo,
-  receivedPackages,
-  summary: apiSummary,
-  loading,
-  onCancel,
-  onRefresh,
-  onAddPackage,
-  onRemovePackage,
-  onMoveToErrorQueue,
-  onConfirm,
-}: Props) => {
-  const [packageForm] = Form.useForm<ReceivePackageFormValues & { inspectionStatus?: "inspected" | "damaged" }>();
-
-  const watchedWeight = Form.useWatch("weight", packageForm) ?? 0;
-  const watchedLength = Form.useWatch("length", packageForm) ?? 0;
-  const watchedWidth = Form.useWatch("width", packageForm) ?? 0;
-  const watchedHeight = Form.useWatch("height", packageForm) ?? 0;
-
-  const volumetricWeight = useMemo(() => {
-    if (!watchedLength || !watchedWidth || !watchedHeight) {
-      return 0;
-    }
-
-    return Math.max(watchedWeight, (watchedLength * watchedWidth * watchedHeight) / 6000);
-  }, [watchedHeight, watchedLength, watchedWeight, watchedWidth]);
+export const ReceiveBatchModal = ({ open, batch, expectedPackages, receivedPackages, summary, loading, onCancel, onRefresh, onAddPackage, onRemovePackage, onInspectItems, onAddEvidence, onDeleteEvidence, onResolveBatchDiscrepancy, onResolvePackageDiscrepancy, onMoveToErrorQueue, onConfirm }: Props) => {
+  const [form] = Form.useForm<ReceivePackageFormValues>();
+  const [itemForm] = Form.useForm<{ items: PackageItemDetail[] }>();
+  const [inspectionRecord, setInspectionRecord] = useState<ReceivedPackageDraft | null>(null);
+  const [resolutionOpen, setResolutionOpen] = useState(false);
+  const [resolutionNote, setResolutionNote] = useState("");
+  const [packageResolutionRecord, setPackageResolutionRecord] = useState<ReceivedPackageDraft | null>(null);
+  const [packageResolutionNote, setPackageResolutionNote] = useState("");
+  const [evidenceFiles, setEvidenceFiles] = useState<UploadFile[]>([]);
+  const [evidenceRecord, setEvidenceRecord] = useState<ReceivedPackageDraft | null>(null);
+  const [additionalEvidenceFiles, setAdditionalEvidenceFiles] = useState<UploadFile[]>([]);
+  const trackingCode = Form.useWatch("trackingCode", form)?.trim().toUpperCase() ?? "";
+  const physicalCondition = Form.useWatch("physicalCondition", form) ?? "normal";
+  const requiresItemInspection = Form.useWatch("requiresItemInspection", form);
+  const actualWeight = Form.useWatch("weight", form);
+  const matchedExpected = useMemo(() => expectedPackages.find((item) => item.trackingCode.toUpperCase() === trackingCode), [expectedPackages, trackingCode]);
+  const scannedCodes = useMemo(() => new Set(receivedPackages.map((item) => item.trackingCode.toUpperCase())), [receivedPackages]);
+  const progress = summary.expectedCount ? Math.min(100, Math.round((summary.receivedCount / summary.expectedCount) * 100)) : 0;
+  const weightTolerance = matchedExpected?.cnWeight ? Math.max(0.5, matchedExpected.cnWeight * 0.02) : Number.POSITIVE_INFINITY;
+  const hasWeightMismatch = Boolean(matchedExpected && actualWeight && Math.abs(actualWeight - matchedExpected.cnWeight) > weightTolerance);
+  const showEvidence = physicalCondition !== "normal" || Boolean(requiresItemInspection) || hasWeightMismatch;
 
   useEffect(() => {
-    if (!open) {
+    if (open) form.setFieldsValue({ trackingCode: "", weight: undefined, length: undefined, width: undefined, height: undefined, physicalCondition: "normal", requiresItemInspection: false, exceptionReason: "", note: "" });
+  }, [form, open]);
+
+  useEffect(() => {
+    if (!matchedExpected) return;
+    form.setFieldsValue({
+      weight: matchedExpected.cnWeight || undefined,
+      length: matchedExpected.length || undefined,
+      width: matchedExpected.width || undefined,
+      height: matchedExpected.height || undefined,
+    });
+  }, [form, matchedExpected]);
+
+  const activeEvidenceRecord = evidenceRecord?.receiptPackageId
+    ? receivedPackages.find((record) => record.receiptPackageId === evidenceRecord.receiptPackageId) ?? evidenceRecord
+    : evidenceRecord;
+
+  const missingRows = useMemo<ReceivedPackageDraft[]>(() => expectedPackages.filter((item) => !scannedCodes.has(item.trackingCode.toUpperCase())).map((item) => ({
+    id: `missing-${item.id}`, trackingCode: item.trackingCode, orderCode: item.orderCode, customerName: item.customerName,
+    volumetricWeight: 0, status: "missing", weight: 0, cnWeight: item.cnWeight, weightDifference: 0,
+    length: item.length, width: item.width, height: item.height, physicalCondition: "normal", requiresItemInspection: false,
+    itemInspectionStatus: "not_required", items: item.items, evidences: [],
+  })), [expectedPackages, scannedCodes]);
+  const tableData = [...receivedPackages, ...missingRows];
+
+  const handleScan = async () => {
+    const values = await form.validateFields();
+    if (evidenceRules.requiredPhysicalConditions.has(values.physicalCondition) && evidenceFiles.length === 0) {
+      message.error("Vui lòng thêm ít nhất 1 ảnh minh chứng.");
       return;
     }
-
-    packageForm.setFieldsValue({
-      trackingCode: "",
-      weight: undefined,
-      length: undefined,
-      width: undefined,
-      height: undefined,
-      orderCode: "",
-      customerName: "",
-      extraFeeRmb: 0,
-      declaredValue: 0,
-      surcharge: 0,
-      note: "",
-      inspectionStatus: "inspected",
-    });
-  }, [open, packageForm]);
-
-  const summary = useMemo(
-    () => buildSummary(expectedPackages, receivedPackages, apiSummary),
-    [apiSummary, expectedPackages, receivedPackages],
-  );
-  const hasIssues =
-    summary.missingCount > 0 || summary.extraCount > 0 || apiSummary.damagedCount > 0;
-
-  const checkedPackages = useMemo(
-    () => receivedPackages.filter((item) => item.status === "checked" || item.status === "damaged"),
-    [receivedPackages],
-  );
-
-  const checkedWeight = useMemo(
-    () => checkedPackages.reduce((total, item) => total + item.weight, 0),
-    [checkedPackages],
-  );
-
-  const chargeablePackages = useMemo(
-    () => receivedPackages.filter((item) => item.extraFeeRmb > 0),
-    [receivedPackages],
-  );
-
-  const totalExtraFee = useMemo(
-    () => chargeablePackages.reduce((total, item) => total + item.extraFeeRmb, 0),
-    [chargeablePackages],
-  );
-
-  const woodPackagingCount = batchInfo.packagingType === "Dong go" ? checkedPackages.length : 0;
-  const cardboardPackagingCount = batchInfo.packagingType === "Nep bia" ? checkedPackages.length : 0;
-
-  const tableData = useMemo(() => {
-    const missingRows: ReceivedPackageDraft[] = summary.missingTrackingCodes.map((trackingCode, index) => {
-      const matchedExpected = expectedPackages.find((item) => item.trackingCode === trackingCode);
-
-      return {
-        id: `missing-${trackingCode}-${index}`,
-        trackingCode,
-        orderCode: matchedExpected?.orderCode ?? "Chưa xác định",
-        customerName: matchedExpected?.customerName ?? "Chưa xác định",
-        volumetricWeight: 0,
-        status: "missing",
-        weight: 0,
-        length: 0,
-        width: 0,
-        height: 0,
-        extraFeeRmb: 0,
-        declaredValue: 0,
-        surcharge: 0,
-        note: "Chưa nhập tại kho Việt Nam",
-      };
-    });
-
-    return [...receivedPackages, ...missingRows];
-  }, [expectedPackages, receivedPackages, summary.missingTrackingCodes]);
-
-  const handleAddPackage = async () => {
-    try {
-      const values = await packageForm.validateFields();
-      await onAddPackage(values);
-      const matchedExpected = expectedPackages.find(
-        (item) => item.trackingCode === values.trackingCode.trim(),
-      );
-
-      packageForm.resetFields();
-      packageForm.setFieldsValue({
-        extraFeeRmb: 0,
-        declaredValue: 0,
-        surcharge: 0,
-        inspectionStatus: "inspected",
-        orderCode: matchedExpected?.orderCode ?? "",
-        customerName: matchedExpected?.customerName ?? "",
-      });
-      message.success(
-        matchedExpected
-          ? "Da them kien va so khop voi lo Trung Quoc."
-          : "Da them kien thua khong nam trong lo Trung Quoc.",
-      );
-    } catch (error) {
-      if (error instanceof Error && "errorFields" in error) {
-        message.error("Vui lòng nhập đủ thông tin kiện hàng trước khi tiếp tục.");
-      }
-    }
+    const files = evidenceFiles.map((file) => file.originFileObj).filter((file): file is NonNullable<typeof file> => Boolean(file));
+    await onAddPackage({ ...values, trackingCode: values.trackingCode.trim().toUpperCase() }, files);
+    form.resetFields();
+    form.setFieldsValue({ physicalCondition: "normal", requiresItemInspection: false });
+    setEvidenceFiles([]);
+    message.success(matchedExpected ? "Đã quét và đối chiếu kiện trong lô." : "Đã ghi nhận kiện ngoài lô để xử lý.");
   };
 
-  const handleRemove = async (record: ReceivedPackageDraft) => {
-    if (record.status === "missing") {
-      return;
-    }
-
-    await onRemovePackage(record);
-    message.success("Da xoa kien khoi danh sach nhap kho.");
+  const openItemInspection = (record: ReceivedPackageDraft) => {
+    setInspectionRecord(record);
+    itemForm.setFieldsValue({ items: record.items.map((item) => ({ ...item, receivedQuantity: item.receivedQuantity ?? item.expectedQuantity, conditionStatus: item.conditionStatus ?? "normal" })) });
   };
 
-  const handleConfirm = async () => {
-    await onConfirm();
+  const submitItemInspection = async () => {
+    if (!inspectionRecord) return;
+    const values = await itemForm.validateFields();
+    await onInspectItems(inspectionRecord, values.items);
+    setInspectionRecord(null);
+    message.success("Đã lưu kết quả kiểm chi tiết item.");
+  };
+
+  const saveAdditionalEvidence = async () => {
+    if (!activeEvidenceRecord) return;
+    const files = additionalEvidenceFiles.map((file) => file.originFileObj).filter((file): file is NonNullable<typeof file> => Boolean(file));
+    if (files.length) await onAddEvidence(activeEvidenceRecord, files);
+    setAdditionalEvidenceFiles([]);
+    setEvidenceRecord(null);
+    message.success("Đã cập nhật ảnh minh chứng.");
   };
 
   const columns: ColumnsType<ReceivedPackageDraft> = [
-    {
-      title: "STT",
-      key: "index",
-      width: 70,
-      render: (_, __, index) => index + 1,
-    },
-    {
-      title: "Mã vận đơn",
-      dataIndex: "trackingCode",
-      key: "trackingCode",
-      width: 180,
-    },
-    {
-      title: "Ma don hang",
-      dataIndex: "orderCode",
-      key: "orderCode",
-      width: 160,
-    },
-    {
-      title: "Ten KH",
-      dataIndex: "customerName",
-      key: "customerName",
-      width: 170,
-    },
-    {
-      title: "KLQD",
-      dataIndex: "volumetricWeight",
-      key: "volumetricWeight",
-      width: 110,
-      render: (value: number) => value.toFixed(1),
-    },
-    {
-      title: "Tinh trang",
-      dataIndex: "status",
-      key: "status",
-      width: 130,
-      render: (value: ReceivedPackageDraft["status"]) => getStatusTag(value),
-    },
-    {
-      title: "Thao tac",
-      key: "actions",
-      width: 110,
-      render: (_, record) => (
-        <Button
-          type="text"
-          danger
-          size="small"
-          icon={<DeleteOutlined />}
-          disabled={record.status === "missing" || !record.receiptPackageId}
-          loading={loading}
-          onClick={() => void handleRemove(record)}
-        />
-      ),
-    },
+    { title: "Mã vận đơn", dataIndex: "trackingCode", width: 165, fixed: "left", render: (value, record) => <Space orientation="vertical" size={0}><Text strong>{value}</Text><Text type="secondary" style={{ fontSize: 12 }}>{record.orderCode}</Text></Space> },
+    { title: "Khách hàng", dataIndex: "customerName", width: 150 },
+    { title: "KL kho TQ", dataIndex: "cnWeight", width: 100, align: "right", render: (value) => `${Number(value).toFixed(2)} kg` },
+    { title: "KL kho VN", dataIndex: "weight", width: 100, align: "right", render: (value, record) => record.status === "missing" ? "—" : `${Number(value).toFixed(2)} kg` },
+    { title: "Chênh lệch", dataIndex: "weightDifference", width: 100, align: "right", render: (value, record) => record.status === "missing" ? "—" : <Text type={Math.abs(Number(value)) > 0.5 ? "danger" : undefined}>{Number(value) > 0 ? "+" : ""}{Number(value).toFixed(2)} kg</Text> },
+    { title: "Tình trạng ngoài", dataIndex: "physicalCondition", width: 125, render: (value) => conditionLabel[value] ?? value },
+    { title: "Kiểm item", width: 115, render: (_, record) => record.items.length ? <Button size="small" icon={<OrderedListOutlined />} disabled={record.status === "missing" || !record.receiptPackageId} onClick={() => openItemInspection(record)}>{record.itemInspectionStatus === "completed" ? "Xem/Sửa" : "Kiểm item"}</Button> : <Text type="secondary">Chưa có item</Text> },
+    { title: "Đối soát", width: 140, render: (_, record) => <Space orientation="vertical" size={4}>{statusTag(record)}{record.status !== "missing" ? <Button size="small" type="text" icon={<CameraOutlined />} onClick={() => { setEvidenceRecord(record); setAdditionalEvidenceFiles([]); }}>Ảnh {record.evidences.length ? `(${record.evidences.length})` : ""}</Button> : null}{["mismatched", "damaged"].includes(record.status) && !record.requiresItemInspection ? <Button size="small" type="link" onClick={() => setPackageResolutionRecord(record)}>Ghi nhận xử lý</Button> : null}</Space> },
+    { title: "", width: 55, fixed: "right", render: (_, record) => <Popconfirm title="Xóa lượt quét kiện này?" onConfirm={() => onRemovePackage(record)} disabled={record.status === "missing"}><Button type="text" danger icon={<DeleteOutlined />} disabled={record.status === "missing" || !record.receiptPackageId} /></Popconfirm> },
   ];
 
-  const headerInfoItems = [
-    { label: "KL lo hang (kg)", value: String(batchInfo.batchWeight) },
-    { label: "KL go/bao tai (kg)", value: String(batchInfo.packagingWeight) },
-    { label: "Chieu dai (cm)", value: String(batchInfo.length) },
-    { label: "Chieu rong (cm)", value: String(batchInfo.width) },
-    { label: "Chieu cao (cm)", value: String(batchInfo.height) },
-    { label: "Dong goi", value: batchInfo.packagingType },
-  ];
-
+  const hasIssues = summary.hasIssues;
+  const closeReceiveModal = () => { setEvidenceFiles([]); setEvidenceRecord(null); setAdditionalEvidenceFiles([]); onCancel(); };
   return (
-    <Modal
-      title="Nhập kho Việt Nam"
-      open={open}
-      onCancel={onCancel}
-      width={1230}
-      destroyOnClose
-      styles={{
-        body: { padding: "12px 22px 20px" },
-        footer: { padding: "14px 22px 18px", borderTop: "1px solid #f0f0f0" },
-        header: { padding: "16px 22px", borderBottom: "1px solid #f0f0f0" },
-      }}
-      footer={
-        <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button icon={<CloseOutlined />} onClick={onCancel}>
-            Hủy
-          </Button>
-          <Button loading={loading} onClick={() => void onRefresh()}>
-            Lam moi du lieu
-          </Button>
-          {hasIssues ? (
-            <Button
-              danger
-              icon={<ExclamationCircleOutlined />}
-              loading={loading}
-              onClick={() => void onMoveToErrorQueue()}
-            >
-              Chuyen cho xu ly loi
-            </Button>
-          ) : null}
-          <Button
-            type="primary"
-            icon={<CheckCircleOutlined />}
-            disabled={hasIssues}
-            loading={loading}
-            onClick={() => void handleConfirm()}
-          >
-            Xác nhận nhập kho
-          </Button>
-        </Space>
-      }
-    >
-      <Space direction="vertical" size={18} style={{ width: "100%" }}>
-        <div>
-          <Title level={5} style={{ margin: 0, fontSize: 16 }}>
-            Thông tin lô hàng: {batchInfo.batchCode}
-          </Title>
-        </div>
+    <>
+      <Modal
+        title={<Space orientation="vertical" size={0}><span>Đối soát lô {batch.batchCode}</span><Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>Bước 2/2 · Quét từng kiện và kiểm item khi có bất thường</Text></Space>}
+        open={open} onCancel={closeReceiveModal} width={1380} destroyOnClose
+        footer={<Space><Button icon={<CloseOutlined />} onClick={closeReceiveModal}>Đóng</Button><Button loading={loading} onClick={() => void onRefresh()}>Làm mới</Button>{summary.errorCount > 0 ? <Button danger loading={loading} onClick={() => void onMoveToErrorQueue()}>Chuyển {summary.errorCount} kiện sang xử lý lỗi</Button> : null}<Button type="primary" icon={<CheckCircleOutlined />} disabled={summary.receivableCount === 0 || summary.batchResolutionPending} loading={loading} onClick={() => void onConfirm()}>Xác nhận {summary.receivableCount} kiện hợp lệ</Button></Space>}
+      >
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
+          <Card size="small">
+            <Row gutter={[16, 12]} align="middle">
+              <Col xs={24} lg={7}><Text strong>Tiến độ quét kiện</Text><Progress percent={progress} status={hasIssues ? "exception" : "active"} format={() => `${summary.receivedCount}/${summary.expectedCount} kiện`} /></Col>
+              <Col xs={12} sm={6} lg={3}><Statistic title="Thiếu" value={summary.missingCount} valueStyle={{ fontSize: 21, color: summary.missingCount ? "#d48806" : undefined }} /></Col>
+              <Col xs={12} sm={6} lg={3}><Statistic title="Ngoài lô" value={summary.extraCount} valueStyle={{ fontSize: 21, color: summary.extraCount ? "#cf1322" : undefined }} /></Col>
+              <Col xs={12} sm={6} lg={3}><Statistic title="Hư hỏng" value={summary.damagedCount} valueStyle={{ fontSize: 21, color: summary.damagedCount ? "#cf1322" : undefined }} /></Col>
+              <Col xs={12} sm={6} lg={3}><Statistic title="Sai lệch" value={summary.mismatchCount} valueStyle={{ fontSize: 21, color: summary.mismatchCount ? "#d48806" : undefined }} /></Col>
+              <Col xs={12} sm={6} lg={3}><Statistic title="Chờ kiểm item" value={summary.itemInspectionPendingCount} valueStyle={{ fontSize: 21, color: summary.itemInspectionPendingCount ? "#722ed1" : undefined }} /></Col>
+            </Row>
+          </Card>
 
-        <div style={{ ...sectionStyle, padding: 16 }}>
-          <Row gutter={[14, 14]}>
-            {headerInfoItems.map((item) => (
-              <Col xs={24} md={12} xl={4} key={item.label}>
-                <div>
-                  <Text style={labelStyle}>{item.label}</Text>
-                  <Input value={item.value} readOnly />
-                </div>
-              </Col>
-            ))}
-          </Row>
-        </div>
+          {summary.batchWeightMismatch || summary.containerMismatch ? <Alert type={summary.batchResolutionPending ? "warning" : "success"} showIcon message={summary.batchResolutionPending ? "Lô có chênh lệch ở bước tiếp nhận" : "Chênh lệch lô đã được xử lý"} description={<Space><span>{summary.batchWeightMismatch ? "Khối lượng lô không khớp. " : ""}{summary.containerMismatch ? "Số bao/thùng không khớp. " : ""}</span>{summary.batchResolutionPending ? <Button size="small" type="primary" ghost onClick={() => setResolutionOpen(true)}>Ghi nhận kết quả xử lý</Button> : null}</Space>} /> : null}
 
-        <div style={{ ...sectionStyle, padding: 0 }}>
-          <div style={{ padding: "14px 16px 0" }}>
-            <Title level={5} style={{ margin: 0, fontSize: 16 }}>
-              Nhập thông số kiện hàng
-            </Title>
-          </div>
-
-          <div style={{ padding: 16 }}>
-            <Form<ReceivePackageFormValues & { inspectionStatus?: "inspected" | "damaged" }>
-              form={packageForm}
-              layout="vertical"
-            >
-              <Row gutter={[12, 12]}>
-                <Col xs={24} lg={5}>
-                  <div
-                    style={{
-                      height: 46,
-                      border: "1px solid #d9e2f1",
-                      borderRadius: 6,
-                      display: "grid",
-                      placeItems: "center",
-                      color: "#344054",
-                      fontWeight: 600,
-                      background: "#f8fbff",
-                      textAlign: "center",
-                      padding: "0 12px",
-                    }}
-                  >
-                    NHAP
-                    <br />
-                    MA VAN DON <span style={{ color: "#ff4d4f" }}>*</span>
-                  </div>
-                </Col>
-                <Col xs={24} lg={19}>
-                  <Form.Item
-                    name="trackingCode"
-                    style={{ marginBottom: 0 }}
-                    rules={[{ required: true, message: "Vui lòng nhập mã vận đơn." }]}
-                  >
-                    <Input placeholder="Nhập mã vận đơn" style={{ height: 46 }} />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item
-                    label="Khoi luong (kg)"
-                    name="weight"
-                    rules={[{ required: true, message: "Vui lòng nhập khối lượng." }]}
-                  >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập khối lượng" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item
-                    label="Chieu dai (cm)"
-                    name="length"
-                    rules={[{ required: true, message: "Vui lòng nhập chiều dài." }]}
-                  >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chiều dài" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item
-                    label="Chieu rong (cm)"
-                    name="width"
-                    rules={[{ required: true, message: "Vui lòng nhập chiều rộng." }]}
-                  >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chiều rộng" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item
-                    label="Chieu cao (cm)"
-                    name="height"
-                    rules={[{ required: true, message: "Vui lòng nhập chiều cao." }]}
-                  >
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chiều cao" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={4}>
-                  <div>
-                    <Text style={labelStyle}>KL quy doi</Text>
-                    <Input value={volumetricWeight.toFixed(1)} readOnly />
-                  </div>
-                </Col>
-
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item label="Ma don hang" name="orderCode">
-                    <Input placeholder="Nhập mã đơn hàng" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item label="Ten khach hang" name="customerName">
-                    <Input placeholder="Nhập tên khách hàng" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item label="Chi phi phat sinh (RMB)" name="extraFeeRmb">
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập chi phí" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={5}>
-                  <Form.Item label="Gia co" name="declaredValue">
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Nhập phí gia cố" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8} xl={4}>
-                  <Form.Item label="Tinh trang kien" name="inspectionStatus">
-                    <Select
-                      options={[
-                        { label: "Da kiem", value: "inspected" },
-                        { label: "Hu hong", value: "damaged" },
-                      ]}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} xl={19}>
-                  <Form.Item label="Ghi chú kho VN" name="note" style={{ marginBottom: 0 }}>
-                    <Input placeholder="Nhập ghi chú (nếu có)" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} xl={5} style={{ display: "flex", alignItems: "end" }}>
-                  <Button type="primary" block style={{ height: 38 }} loading={loading} onClick={() => void handleAddPackage()}>
-                    Tiep tuc
-                  </Button>
-                </Col>
+          <Card size="small" title={<Space><ScanOutlined /> Quét mã vận đơn</Space>}>
+            <Form<ReceivePackageFormValues> form={form} layout="vertical">
+              <Row gutter={[12, 0]}>
+                <Col xs={24} lg={8}><Form.Item label="Mã vận đơn" name="trackingCode" rules={[{ required: true, message: "Quét hoặc nhập mã vận đơn." }]}><Input autoFocus size="large" placeholder="Quét barcode / nhập mã rồi Enter" onPressEnter={() => void handleScan()} /></Form.Item></Col>
+                <Col xs={12} sm={6} lg={4}><Form.Item label="Khối lượng VN" name="weight" rules={[{ required: true, message: "Nhập khối lượng." }]}><InputNumber min={0.01} precision={2} addonAfter="kg" style={{ width: "100%" }} /></Form.Item></Col>
+                <Col xs={12} sm={6} lg={4}><Form.Item label="Dài" name="length" rules={[{ required: true }]}><InputNumber min={0.01} addonAfter="cm" style={{ width: "100%" }} /></Form.Item></Col>
+                <Col xs={12} sm={6} lg={4}><Form.Item label="Rộng" name="width" rules={[{ required: true }]}><InputNumber min={0.01} addonAfter="cm" style={{ width: "100%" }} /></Form.Item></Col>
+                <Col xs={12} sm={6} lg={4}><Form.Item label="Cao" name="height" rules={[{ required: true }]}><InputNumber min={0.01} addonAfter="cm" style={{ width: "100%" }} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item label="Tình trạng bên ngoài" name="physicalCondition" rules={[{ required: true }]}><Select options={conditionOptions} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item label="Kiểm chi tiết item" name="requiresItemInspection" valuePropName="checked"><Checkbox>Bắt buộc kiểm item trong kiện</Checkbox></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item label="Lý do bất thường" name="exceptionReason" rules={[{ validator: (_, value) => (physicalCondition !== "normal" || requiresItemInspection) && !String(value ?? "").trim() ? Promise.reject(new Error("Nhập lý do cần kiểm.")) : Promise.resolve() }]}><Input placeholder="Móp, lệch cân, nghi thiếu..." /></Form.Item></Col>
+                {showEvidence ? <Col span={24}><Form.Item label="Ảnh minh chứng" extra="JPG, PNG hoặc WEBP · tối đa 5 ảnh · 5 MB/ảnh"><PackageEvidenceUpload files={evidenceFiles} onChange={setEvidenceFiles} disabled={loading} /></Form.Item></Col> : null}
+                <Col xs={24} lg={19}><Form.Item label="Ghi chú kho VN" name="note" style={{ marginBottom: 0 }}><Input placeholder="Ghi chú bổ sung" /></Form.Item></Col>
+                <Col xs={24} lg={5} style={{ display: "flex", alignItems: "end" }}><Button type="primary" block size="large" icon={<ScanOutlined />} loading={loading} onClick={() => void handleScan()}>Ghi nhận kiện</Button></Col>
               </Row>
             </Form>
-          </div>
-        </div>
+            {trackingCode ? <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: matchedExpected ? "#f6ffed" : "#fff2f0" }}>
+              {matchedExpected ? <Descriptions size="small" column={4}><Descriptions.Item label="Kết quả"><Tag color="green">Có trong lô TQ</Tag></Descriptions.Item><Descriptions.Item label="Đơn hàng">{matchedExpected.orderCode}</Descriptions.Item><Descriptions.Item label="Khách hàng">{matchedExpected.customerName}</Descriptions.Item><Descriptions.Item label="Item">{matchedExpected.items.length} dòng / {matchedExpected.items.reduce((sum, item) => sum + item.expectedQuantity, 0)} sản phẩm</Descriptions.Item></Descriptions> : <Text type="danger">Mã này không thuộc lô {batch.batchCode}; nếu ghi nhận sẽ được đánh dấu “ngoài lô”.</Text>}
+            </div> : null}
+          </Card>
 
-        {summary.missingCount > 0 ? (
-          <Alert type="warning" showIcon message={`Thieu ${summary.missingCount} kien so voi lo Trung Quoc`} />
-        ) : null}
+          {summary.receivableCount > 0 ? <Alert type="success" showIcon message={`Có ${summary.receivableCount} kiện hợp lệ có thể nhập kho`} description={summary.errorCount ? `${summary.errorCount} kiện lỗi sẽ được giữ lại ở Chờ xử lý lỗi.` : "Tất cả kiện đã đối soát đều hợp lệ."} /> : <Alert type="info" showIcon message="Không có kiện hợp lệ mới để xác nhận" description="Các kiện lỗi vẫn được xử lý độc lập và không ảnh hưởng kiện đã nhập kho." />}
 
-        {summary.extraCount > 0 ? (
-          <Alert type="error" showIcon message="Co kien thua khong nam trong lo Trung Quoc" />
-        ) : null}
+          <div><Title level={5}>Danh sách đối soát kiện</Title><Table rowKey="id" columns={columns} dataSource={tableData} pagination={false} scroll={{ x: 1220, y: 360 }} size="small" loading={loading} /></div>
+        </Space>
+      </Modal>
+      <Modal title={`Ảnh minh chứng · ${activeEvidenceRecord?.trackingCode ?? ""}`} open={Boolean(activeEvidenceRecord)} onCancel={() => { setEvidenceRecord(null); setAdditionalEvidenceFiles([]); }} okText="Lưu ảnh" cancelText="Đóng" confirmLoading={loading} okButtonProps={{ disabled: additionalEvidenceFiles.length === 0 }} onOk={() => void saveAdditionalEvidence()}>
+        {activeEvidenceRecord?.evidences.length ? <Image.PreviewGroup><Space wrap size={12} style={{ marginBottom: 16 }}>{activeEvidenceRecord.evidences.map((evidence) => <div key={evidence.id} style={{ position: "relative" }}><Image src={evidence.thumbnailUrl || evidence.url} fallback={MEDIA_IMAGE_FALLBACK} preview={{ src: evidence.url }} width={96} height={82} style={{ objectFit: "cover", borderRadius: 6 }} /><Popconfirm title="Xóa ảnh minh chứng này?" onConfirm={() => void onDeleteEvidence(activeEvidenceRecord, evidence)}><Button danger size="small" shape="circle" icon={<DeleteOutlined />} style={{ position: "absolute", right: -7, top: -7 }} /></Popconfirm></div>)}</Space></Image.PreviewGroup> : <Text type="secondary">Chưa có ảnh minh chứng.</Text>}
+        <div style={{ marginTop: 12 }}><PackageEvidenceUpload files={additionalEvidenceFiles} onChange={setAdditionalEvidenceFiles} existingCount={activeEvidenceRecord?.evidences.length ?? 0} disabled={loading} /></div>
+      </Modal>
 
-        {apiSummary.damagedCount > 0 ? (
-          <Alert type="info" showIcon message={`Co ${apiSummary.damagedCount} kien duoc danh dau hu hong`} />
-        ) : null}
-
-        {summary.missingCount === 0 && summary.extraCount === 0 ? (
-          <Alert type="success" showIcon message="Thông tin lô hàng da khop, co the xac nhan nhap kho" />
-        ) : null}
-
-        <div style={{ ...sectionStyle, overflow: "hidden" }}>
-          <Row gutter={0}>
-            <Col xs={24} md={8}>
-              <div style={infoCellStyle}>
-                <Text strong>{`Da nhap kho: ${checkedPackages.length} kiện/${formatWeight(checkedWeight)}`}</Text>
-              </div>
-            </Col>
-            <Col xs={24} md={8}>
-              <div style={infoCellStyle}>
-                <Text strong>{`Luu tam: ${Math.max(receivedPackages.length - checkedPackages.length, 0)} kiện/0kg`}</Text>
-              </div>
-            </Col>
-            <Col xs={24} md={8}>
-              <div style={{ ...infoCellStyle, borderRight: "none" }}>
-                <Text strong>{`That lac: ${summary.missingCount} kien`}</Text>
-              </div>
-            </Col>
-            <Col xs={24} md={8}>
-              <div style={{ ...infoCellStyle, borderBottom: "none" }}>
-                <Text strong>{`Tổng kiện có CPPS: ${chargeablePackages.length} kiện/${totalExtraFee.toFixed(2)} RMB`}</Text>
-              </div>
-            </Col>
-            <Col xs={24} md={8}>
-              <div style={{ ...infoCellStyle, borderBottom: "none" }}>
-                <Text strong>{`Gia co nep bia: ${cardboardPackagingCount} kien`}</Text>
-              </div>
-            </Col>
-            <Col xs={24} md={8}>
-              <div style={{ ...infoCellStyle, borderRight: "none", borderBottom: "none" }}>
-                <Text strong>{`Gia co dong go: ${woodPackagingCount} kien`}</Text>
-              </div>
-            </Col>
-          </Row>
-        </div>
-
-        <div>
-          <Title level={5} style={{ margin: "0 0 12px", fontSize: 16 }}>
-            Danh sach kien hang da nhap kho
-          </Title>
-          <Table<ReceivedPackageDraft>
-            rowKey="id"
-            columns={columns}
-            dataSource={tableData}
-            pagination={false}
-            bordered
-            scroll={{ x: 860 }}
-            size="middle"
-            loading={loading}
-          />
-        </div>
-      </Space>
-    </Modal>
+      <Modal title={`Kiểm chi tiết item · ${inspectionRecord?.trackingCode ?? ""}`} open={Boolean(inspectionRecord)} onCancel={() => setInspectionRecord(null)} width={900} footer={<Space><Button onClick={() => setInspectionRecord(null)}>Hủy</Button><Button type="primary" loading={loading} onClick={() => void submitItemInspection()}>Lưu kết quả kiểm</Button></Space>}>
+        <Alert type="info" showIcon message="Đối chiếu từng item theo danh sách kho Trung Quốc" description="Nhân viên phải nhập số lượng thực nhận và tình trạng cho tất cả item. Hệ thống tự phát hiện thiếu/thừa hoặc hư hỏng." style={{ marginBottom: 16 }} />
+        <Form form={itemForm} component={false}>
+          <Form.List name="items">{(fields) => <Table pagination={false} rowKey="key" dataSource={fields} columns={[
+            { title: "Sản phẩm", width: 260, render: (_, field) => <><Form.Item noStyle name={[field.name, "productName"]}><Input variant="borderless" readOnly /></Form.Item><Form.Item noStyle name={[field.name, "orderItemId"]}><Input type="hidden" /></Form.Item></> },
+            { title: "Phân loại", width: 130, render: (_, field) => <Form.Item noStyle name={[field.name, "variant"]}><Input variant="borderless" readOnly /></Form.Item> },
+            { title: "SL dự kiến", width: 100, render: (_, field) => <Form.Item noStyle name={[field.name, "expectedQuantity"]}><InputNumber variant="borderless" readOnly /></Form.Item> },
+            { title: "SL thực nhận", width: 120, render: (_, field) => <Form.Item name={[field.name, "receivedQuantity"]} rules={[{ required: true }]} style={{ margin: 0 }}><InputNumber min={0} precision={0} /></Form.Item> },
+            { title: "Tình trạng", width: 150, render: (_, field) => <Form.Item name={[field.name, "conditionStatus"]} rules={[{ required: true }]} style={{ margin: 0 }}><Select options={conditionOptions} /></Form.Item> },
+            { title: "Ghi chú", render: (_, field) => <Form.Item name={[field.name, "note"]} style={{ margin: 0 }}><Input /></Form.Item> },
+          ]} />}</Form.List>
+        </Form>
+      </Modal>
+      <Modal title="Ghi nhận xử lý chênh lệch lô" open={resolutionOpen} onCancel={() => setResolutionOpen(false)} okText="Xác nhận đã xử lý" cancelText="Hủy" confirmLoading={loading} okButtonProps={{ disabled: !resolutionNote.trim() }} onOk={() => void onResolveBatchDiscrepancy(resolutionNote).then(() => { setResolutionOpen(false); setResolutionNote(""); message.success("Đã ghi nhận kết quả xử lý chênh lệch lô."); })}>
+        <Alert type="warning" showIcon message="Thao tác này xác nhận nhân viên đã kiểm tra chứng từ/biên bản và chấp nhận kết quả thực nhận." style={{ marginBottom: 16 }} />
+        <Input.TextArea rows={4} maxLength={500} showCount value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Nêu nguyên nhân chênh lệch và cách xử lý..." />
+      </Modal>
+      <Modal title={`Xử lý sai lệch kiện · ${packageResolutionRecord?.trackingCode ?? ""}`} open={Boolean(packageResolutionRecord)} onCancel={() => setPackageResolutionRecord(null)} okText="Xác nhận đã xử lý" cancelText="Hủy" confirmLoading={loading} okButtonProps={{ disabled: !packageResolutionNote.trim() }} onOk={() => packageResolutionRecord && void onResolvePackageDiscrepancy(packageResolutionRecord, packageResolutionNote).then(() => { setPackageResolutionRecord(null); setPackageResolutionNote(""); message.success("Đã ghi nhận xử lý sai lệch kiện."); })}>
+        <Alert type="warning" showIcon message="Chỉ xác nhận sau khi đã cân/kiểm tra thực tế hoặc có biên bản xử lý." style={{ marginBottom: 16 }} />
+        <Input.TextArea rows={4} maxLength={500} showCount value={packageResolutionNote} onChange={(event) => setPackageResolutionNote(event.target.value)} placeholder="Nguyên nhân sai lệch và kết quả xử lý..." />
+      </Modal>
+    </>
   );
 };

@@ -24,12 +24,16 @@ class VnBatchReceipt extends Model
         'cn_batch_id',
         'vn_warehouse_id',
         'batch_code',
+        'actual_container_count',
         'actual_batch_weight',
         'package_material_weight',
         'actual_length',
         'actual_width',
         'actual_height',
         'actual_volume',
+        'outer_condition',
+        'batch_weight_difference',
+        'requires_resolution',
         'wooden_fee',
         'other_fee',
         'status',
@@ -41,16 +45,20 @@ class VnBatchReceipt extends Model
         'total_damaged_packages',
         'note',
         'handled_by',
+        'received_at',
         'confirmed_at',
     ];
 
     protected $casts = [
         'actual_batch_weight' => 'float',
+        'actual_container_count' => 'integer',
         'package_material_weight' => 'float',
         'actual_length' => 'float',
         'actual_width' => 'float',
         'actual_height' => 'float',
         'actual_volume' => 'float',
+        'batch_weight_difference' => 'float',
+        'requires_resolution' => 'boolean',
         'wooden_fee' => 'float',
         'other_fee' => 'float',
         'total_expected_packages' => 'integer',
@@ -60,6 +68,7 @@ class VnBatchReceipt extends Model
         'total_extra_packages' => 'integer',
         'total_damaged_packages' => 'integer',
         'confirmed_at' => 'datetime',
+        'received_at' => 'datetime',
     ];
 
     public function batch()
