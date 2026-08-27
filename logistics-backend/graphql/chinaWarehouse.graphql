@@ -1,0 +1,210 @@
+# =========================
+# China Warehouse
+# =========================
+
+type CnWarehouse {
+  id: ID!
+  code: String!
+  name: String!
+  address: String
+  status: String!
+}
+
+type CnPackage {
+  id: ID!
+  warehouse_id: ID!
+  order_id: ID
+  order_tracking_id: ID
+  receiver_name: String
+  tracking_number: String
+  declared_value: Float
+  carrier: String
+  weight: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  volume: Float
+  volumetric_weight: Float
+  chargeable_weight: Float
+  note: String
+  status: String!
+  package_condition: String
+  created_by: ID
+  received_at: DateTime
+  created_at: DateTime
+  warehouse: CnWarehouse! @belongsTo
+  order: Order @belongsTo
+  order_tracking: OrderTracking @belongsTo(relation: "orderTracking")
+  current_batch_package: CnBatchPackage @hasOne(relation: "currentBatchPackage")
+  batch_packages: [CnBatchPackage!]! @hasMany(relation: "batchPackages")
+  batches: [CnBatch!]! @belongsToMany
+  package_items: [CnPackageItem!]! @hasMany(relation: "packageItems")
+}
+
+type CnPackageItem {
+  id: ID!
+  cn_package_id: ID!
+  order_item_id: ID!
+  quantity: Int!
+  order_item: OrderItem! @belongsTo(relation: "orderItem")
+}
+
+input CreateCnPackageInput {
+    warehouse_id: ID
+    warehouse_code: String
+    warehouse_name: String!
+    receiver_name: String
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    volume: Float
+    volumetric_weight: Float
+    chargeable_weight: Float
+    note: String
+    status: String!
+    package_condition: String
+    received_at: DateTime
+}
+
+input UpdateCnPackageInput {
+    warehouse_id: ID
+    warehouse_code: String
+    warehouse_name: String
+    receiver_name: String
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    volume: Float
+    volumetric_weight: Float
+    chargeable_weight: Float
+    note: String
+    status: String
+    package_condition: String
+    received_at: DateTime
+}
+
+# =========================
+# China Batches
+# =========================
+
+type CnBatch {
+  id: ID!
+  batch_code: String!
+  warehouse_id: ID!
+  destination_warehouse_name: String
+  total_packages: Int
+  status: String!
+  shipping_type: String!
+  packaging_type: String
+  transport_container_count: Int
+  departed_at: DateTime
+  expected_arrival_at: DateTime
+  arrived_at: DateTime
+  total_weight: Float
+  actual_batch_weight: Float
+  package_material_weight: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  actual_volume: Float
+  carrier_name: String
+  transport_code: String
+  route_name: String
+  vehicle_plate: String
+  driver_name: String
+  driver_phone: String
+  freight_cost: Float
+  handed_over_by: ID
+  handed_over_at: DateTime
+  dispatch_note: String
+  note: String
+  created_at: DateTime!
+  updated_at: DateTime!
+  warehouse: CnWarehouse! @belongsTo
+  batch_packages: [CnBatchPackage!]! @hasMany(relation: "batchPackages")
+  packages: [CnPackage!]! @belongsToMany
+  vn_batch_receipt: VnBatchReceipt @hasOne(relation: "vnBatchReceipt")
+}
+
+type CnBatchPackage {
+  id: ID!
+  cn_batch_id: ID!
+  cn_package_id: ID!
+  created_at: DateTime!
+  updated_at: DateTime!
+  batch: CnBatch! @belongsTo(relation: "batch")
+  package: CnPackage! @belongsTo(relation: "package")
+}
+
+input AddPackagesToCnBatchInput {
+    cn_batch_id: ID
+    cn_package_ids: [ID!]!
+    destination_warehouse_name: String
+    shipping_type: String
+    expected_arrival_at: DateTime
+    note: String
+}
+
+input UpdateCnBatchInput {
+    destination_warehouse_name: String
+    shipping_type: String
+    departed_at: DateTime
+    expected_arrival_at: DateTime
+    arrived_at: DateTime
+    note: String
+    status: String
+    freight_cost: Float
+    packages: [UpdateCnBatchPackageInput!]
+}
+
+input UpdateCnBatchPackageInput {
+    id: ID
+    tracking_number: String!
+    weight: Float!
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+}
+
+input DispatchCnBatchInput {
+    reviewed_package_ids: [ID!]!
+    destination_warehouse_name: String!
+    shipping_type: String!
+    packaging_type: String!
+    transport_container_count: Int!
+    actual_batch_weight: Float!
+    package_material_weight: Float
+    actual_length: Float!
+    actual_width: Float!
+    actual_height: Float!
+    carrier_name: String!
+    transport_code: String
+    route_name: String
+    vehicle_plate: String
+    driver_name: String
+    driver_phone: String
+    freight_cost: Float
+    departed_at: DateTime!
+    expected_arrival_at: DateTime!
+    dispatch_note: String
+}
+
+input CreateVietnamInboundTaskInput {
+    cn_batch_ids: [ID!]!
+}
+
+type VietnamInboundTaskPayload {
+  batch_ids: [ID!]!
+  total_batches: Int!
+  total_packages: Int!
+  total_weight: Float!
+  batches: [CnBatch!]!
+}

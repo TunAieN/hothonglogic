@@ -1,0 +1,57 @@
+# =========================
+# Customers
+# =========================
+
+type Customer {
+  id: ID!
+  code: String!
+  name: String!
+  vip_group: String
+  phone: String!
+  email: String
+  province: String
+  district: String
+  ward: String
+  address: String
+  note: String
+  status: String
+  created_at: DateTime
+  orders: [Order!]!
+  orders_count: Int!
+}
+
+input CustomerFilterInput {
+  search: String
+  status: String
+  vip_group: String
+  province: String
+  phone: String
+  created_from: DateTime
+  created_to: DateTime
+}
+
+input CreateCustomerInput {
+  name: String!
+  vip_group: String
+  phone: String!
+  email: String
+  province: String
+  district: String
+  ward: String
+  address: String
+  note: String
+}
+
+input UpdateCustomerInput {
+  code: String!
+  name: String!
+  vip_group: String
+  phone: String!
+  email: String
+  province: String
+  district: String
+  ward: String
+  address: String
+  note: String
+  status: String
+}

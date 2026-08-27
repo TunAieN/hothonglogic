@@ -1,0 +1,59 @@
+# =========================
+# Invoice
+# =========================
+
+type Invoice {
+  id: ID!
+  payment_voucher_id: ID
+  invoice_type: String!
+  order_id: ID
+  payment_transaction_id: ID
+  invoice_code: String!
+  customer_id: ID!
+  issued_by: ID
+  issued_at: DateTime
+  total_amount: Float!
+  paid_amount: Float!
+  status: String!
+  note: String
+  created_at: DateTime
+  updated_at: DateTime
+  customer: Customer! @belongsTo
+  issuer: User @belongsTo(relation: "issuer")
+  creator: User @belongsTo(relation: "creator")
+  confirmer: User @belongsTo(relation: "confirmer")
+  order: Order @belongsTo(relation: "order")
+  paymentTransaction: PaymentTransaction @belongsTo(relation: "paymentTransaction")
+  voucher: PaymentVoucher @belongsTo(relation: "voucher")
+  items: [InvoiceItem!]! @hasMany
+}
+
+type InvoiceItem {
+  id: ID!
+  invoice_id: ID!
+  payment_voucher_package_id: ID
+  item_type: String!
+  description: String!
+  quantity: Float!
+  unit_price: Float!
+  amount: Float!
+  metadata: String
+  created_at: DateTime
+}
+
+type InvoiceStatistics {
+  totalInvoices: Int!
+  paidInvoices: Int!
+  unpaidInvoices: Int!
+  totalRevenue: Float!
+}
+
+input InvoiceFilterInput {
+  invoice_code: String
+  invoice_type: String
+  order_id: ID
+  customer_id: ID
+  status: String
+  issued_from: DateTime
+  issued_to: DateTime
+}

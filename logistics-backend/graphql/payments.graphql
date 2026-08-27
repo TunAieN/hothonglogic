@@ -1,0 +1,199 @@
+# Payment Vouchers
+# =========================
+
+type PaymentAccount {
+  id: ID!
+  bank_name: String!
+  bank_code: String
+  account_number: String!
+  account_holder: String!
+  branch_name: String
+  is_default: Boolean!
+  is_active: Boolean!
+  note: String
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+type PaymentVoucher {
+  id: ID!
+  voucher_code: String!
+  request_uuid: String
+  voucher_type: String!
+  order_id: ID
+  customer_id: ID!
+  vn_warehouse_id: ID
+  created_by: ID
+  receiver_type: String
+  delivery_address: String
+  payment_method_expected: String
+  payment_account_id: ID
+  bank_name_snapshot: String
+  bank_code_snapshot: String
+  bank_account_number_snapshot: String
+  bank_account_holder_snapshot: String
+  bank_branch_name_snapshot: String
+  base_amount_cny: Float!
+  exchange_rate: Float
+  base_amount_vnd: Float!
+  deposit_percent: Float
+  currency: String!
+  transfer_content: String
+  status: String!
+  shipping_fee_total: Float!
+  domestic_shipping_fee: Float!
+  surcharge_total: Float!
+  total_amount: Float!
+  deposit_applied: Float!
+  customer_credit_applied: Float!
+  paid_amount: Float!
+  remaining_amount: Float!
+  note: String
+  cancelled_reason: String
+  cancelled_at: DateTime
+  expires_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  order: Order @belongsTo
+  customer: Customer! @belongsTo
+  warehouse: VnWarehouse @belongsTo(relation: "warehouse")
+  creator: User @belongsTo(relation: "creator")
+  paymentAccount: PaymentAccount @belongsTo(relation: "paymentAccount")
+  packages: [PaymentVoucherPackage!]! @hasMany
+  surcharges: [PaymentVoucherSurcharge!]! @hasMany
+  transactions: [PaymentTransaction!]! @hasMany
+  invoice: Invoice @hasOne
+}
+
+type PaymentVoucherPackage {
+  id: ID!
+  payment_voucher_id: ID!
+  vn_package_id: ID!
+  order_id: ID
+  actual_weight: Float!
+  volumetric_weight: Float!
+  chargeable_weight: Float!
+  price_per_kg: Float!
+  shipping_rate_id: ID
+  shipping_rate_detail_id: ID
+  unit_price: Float
+  price_type: String
+  rate_description: String
+  shipping_fee: Float!
+  domestic_shipping_fee: Float!
+  surcharge_amount: Float!
+  total_amount: Float!
+  vnPackage: VnPackage! @belongsTo(relation: "vnPackage")
+  order: Order @belongsTo
+}
+
+type PaymentVoucherSurcharge {
+  id: ID!
+  payment_voucher_id: ID!
+  payment_voucher_package_id: ID
+  vn_package_id: ID
+  surcharge_type: String!
+  amount: Float!
+  note: String
+  created_by: ID
+  created_at: DateTime!
+}
+
+type PaymentTransaction {
+  id: ID!
+  transaction_code: String!
+  payment_voucher_id: ID!
+  amount: Float!
+  payment_method: String!
+  bank_name: String
+  bank_transaction_code: String
+  received_at: DateTime!
+  confirmed_by: ID
+  status: String!
+  note: String
+  proof_image_path: String
+  created_at: DateTime!
+}
+
+type PaymentVoucherPreview {
+  customer: Customer!
+  packages: [PaymentVoucherPreviewPackage!]!
+  shipping_fee_total: Float!
+  domestic_shipping_fee: Float!
+  surcharge_total: Float!
+  deposit_applied: Float!
+  customer_credit_available: Float!
+  customer_credit_applied: Float!
+  total_amount: Float!
+  remaining_amount: Float!
+  payment_account: PaymentAccount
+  transfer_content: String
+}
+
+type PaymentVoucherPreviewPackage {
+  id: ID!
+  tracking_number: String
+  order_id: ID
+  order_code: String
+  customer_name: String
+  actual_weight: Float!
+  volumetric_weight: Float!
+  chargeable_weight: Float!
+  price_per_kg: Float!
+  shipping_rate_id: ID
+  shipping_rate_detail_id: ID
+  unit_price: Float
+  price_type: String
+  rate_description: String
+  shipping_fee: Float!
+  domestic_shipping_fee: Float!
+  surcharge_amount: Float!
+  total_amount: Float!
+}
+
+input EligiblePaymentPackageFilterInput {
+  search: String
+  customer_id: ID
+}
+
+input PaymentVoucherFilterInput {
+  customer_id: ID
+  voucher_code: String
+  status: String
+  created_by: ID
+  created_from: DateTime
+  created_to: DateTime
+}
+
+input PaymentVoucherSurchargeInput {
+  vn_package_id: ID
+  surcharge_type: String!
+  amount: Float!
+  note: String
+}
+
+input PreviewPaymentVoucherInput {
+  package_ids: [ID!]!
+  surcharges: [PaymentVoucherSurchargeInput!]
+}
+
+input CreatePaymentVoucherInput {
+  package_ids: [ID!]!
+  request_uuid: String
+  vn_warehouse_id: ID
+  receiver_type: String
+  delivery_address: String
+  payment_method_expected: String
+  note: String
+  surcharges: [PaymentVoucherSurchargeInput!]
+}
+
+input ConfirmPaymentTransactionInput {
+  amount: Float!
+  payment_method: String!
+  bank_name: String
+  bank_transaction_code: String
+  received_at: String
+  note: String
+  proof_image_path: String
+}

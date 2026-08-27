@@ -1,0 +1,156 @@
+# =========================
+# Orders
+# =========================
+
+type Order {
+    id: ID!
+    order_code: String!
+    customer_id: ID!
+    status: String!
+    """Legacy product total in CNY. Do not use currency to interpret this field."""
+    total_amount: Float!
+    """Locked VND/CNY exchange rate snapshot."""
+    exchange_rate: Float
+    """Product total snapshot in CNY, written only after rate lock/backfill."""
+    product_total_cny: Float!
+    """Product total snapshot in VND, written only after rate lock/backfill."""
+    product_total_vnd: Float!
+    """Preferred display currency for product snapshot fields, not for total_amount."""
+    currency: String!
+    exchange_rate_locked_at: DateTime
+    deposit_percent: Float
+    deposit_amount_vnd: Float!
+    deposit_paid_amount_vnd: Float!
+    deposit_remaining_amount_vnd: Float!
+    deposit_status: String
+    deposit_transfer_content: String
+    deposit_requested_at: DateTime
+    deposit_paid_at: DateTime
+    deposit_confirmed_by: ID
+    deposit_manual_transaction_code: String
+    deposit_note: String
+    note: String
+    creator: User!
+    created_at: DateTime!
+    customer: Customer!
+    items: [OrderItem!]!
+    order_trackings: [OrderTracking!]! @hasMany(relation: "orderTrackings")
+    cn_packages: [CnPackage!]! @hasMany(relation: "cnPackages")
+    depositVoucher: PaymentVoucher @hasOne(relation: "depositVoucher")
+}
+
+type OrderItem {
+    id: ID!
+    product_name: String!
+    product_link: String
+    price_cny: Float!
+    exchange_rate: Float
+    unit_price_vnd: Float!
+    quantity: Int!
+    subtotal_cny: Float!
+    subtotal_vnd: Float!
+    note: String
+    product_image: String
+    seller: String
+    shop_id: String
+    shop_name: String
+    size: String
+    color: String
+}
+
+type MockReceivePackagePayload {
+  order: Order!
+  package: CnPackage!
+}
+
+input OrderFilterInput {
+    search: String
+    customer_id: ID
+    created_by: ID
+    order_code: String
+    status: String
+    created_from: DateTime
+    created_to: DateTime
+}
+
+input OrderItemInput {
+    product_name: String!
+    product_link: String
+    price_cny: Float!
+    quantity: Int!
+    note: String
+    product_image: String
+    seller: String
+    shop_id: String
+    shop_name: String
+    size: String
+    color: String
+}
+
+input CreateOrderInput {
+    customer_id: ID!
+    note: String
+    items: [OrderItemInput!]!
+}
+
+input UpdateOrderInput {
+    customer_id: ID
+    account_manager_id: ID
+    status: String
+    deposit_percent: Float
+    note: String
+    items: [OrderItemInput!]
+    packages: [OrderPackageInput!]
+}
+
+input ConfirmOrderDepositPaymentInput {
+    amount_vnd: Float!
+    transaction_code: String
+    received_at: DateTime
+    note: String
+}
+
+input OrderPackageInput {
+    id: ID
+    tracking_number: String
+    declared_value: Float
+    carrier: String
+    dispatched_at: DateTime
+    note: String
+    package_items: [OrderPackageItemInput!]
+    tracking_items: [OrderPackageItemInput!]
+}
+
+input OrderPackageItemInput {
+    order_item_id: ID!
+    quantity: Int!
+}
+
+# =========================
+# Order Tracking
+# =========================
+
+type OrderTracking {
+  id: ID!
+  order_id: ID!
+  tracking_number: String!
+  carrier: String
+  declared_value: Float
+  dispatched_at: DateTime
+  note: String
+  status: String!
+  created_at: DateTime!
+  updated_at: DateTime!
+  order: Order! @belongsTo
+  tracking_items: [OrderTrackingItem!]! @hasMany(relation: "trackingItems")
+  packages: [CnPackage!]! @hasMany
+}
+
+type OrderTrackingItem {
+  id: ID!
+  order_tracking_id: ID!
+  order_item_id: ID!
+  quantity: Int!
+  order_tracking: OrderTracking! @belongsTo(relation: "orderTracking")
+  order_item: OrderItem! @belongsTo(relation: "orderItem")
+}

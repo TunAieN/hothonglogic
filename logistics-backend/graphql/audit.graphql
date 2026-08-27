@@ -1,0 +1,15 @@
+# Audit Log
+# =========================
+
+type AuditLog {
+  id: ID!
+  user_id: ID
+  action: String!
+  entity_type: String!
+  entity_id: ID
+  before_data: String
+  after_data: String
+  ip: String
+  user_agent: String
+  created_at: DateTime!
+}

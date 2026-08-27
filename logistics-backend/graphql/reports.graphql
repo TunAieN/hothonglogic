@@ -1,0 +1,108 @@
+# =========================
+# Revenue Report
+# =========================
+
+enum RevenueGroupBy {
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+}
+
+input RevenueReportInput {
+  warehouseId: ID
+  dateFrom: DateTime!
+  dateTo: DateTime!
+  groupBy: RevenueGroupBy!
+  revenueType: String
+  detailPage: Int
+  detailPageSize: Int
+  detailSortField: String
+  detailSortDirection: String
+}
+
+type RevenueMetric {
+  current: Float
+  previous: Float
+  changePercent: Float
+}
+
+type RevenueSummary {
+  revenue: RevenueMetric!
+  paid: RevenueMetric!
+  cost: RevenueMetric!
+  profit: RevenueMetric!
+  orders: RevenueMetric!
+  paidRate: Float
+  dateFrom: String!
+  dateTo: String!
+  previousDateFrom: String!
+  previousDateTo: String!
+}
+
+type RevenueTimeline {
+  periodKey: String!
+  label: String!
+  revenue: Float!
+  previousRevenue: Float!
+  changePercent: Float
+}
+
+type RevenueByWarehouse {
+  warehouseId: ID!
+  warehouseName: String!
+  revenue: Float!
+  percent: Float!
+}
+
+type RevenueByService {
+  serviceType: String!
+  serviceName: String!
+  revenue: Float!
+  percent: Float!
+}
+
+type RevenueDetailRow {
+  periodKey: String!
+  label: String!
+  orderCount: Int!
+  revenue: Float!
+  paid: Float!
+  shippingFee: Float
+  domesticShippingFee: Float
+  surcharge: Float
+  discount: Float
+  cost: Float
+  profit: Float
+}
+
+type RevenuePagination {
+  currentPage: Int!
+  perPage: Int!
+  total: Int!
+  lastPage: Int!
+}
+
+type RevenueReport {
+  summary: RevenueSummary!
+  timeline: [RevenueTimeline!]!
+  warehouses: [RevenueByWarehouse!]!
+  services: [RevenueByService!]!
+  details: [RevenueDetailRow!]!
+  detailPagination: RevenuePagination!
+  notes: [String!]!
+}
+
+type RevenueDrilldownItem {
+  invoiceId: ID!
+  invoiceCode: String!
+  voucherCode: String
+  orderId: ID
+  orderCode: String
+  customerName: String
+  issuedAt: DateTime
+  revenue: Float!
+  paid: Float!
+}
+# =========================

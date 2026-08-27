@@ -1,0 +1,88 @@
+# =========================
+# Shipping Rates
+# =========================
+
+type ShippingRate {
+  id: ID!
+  name: String!
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+  valid_from: DateTime
+  valid_to: DateTime
+  effective_from: DateTime
+  effective_to: DateTime
+  status: String!
+  note: String
+  created_by: ID
+  created_at: DateTime
+  updated_at: DateTime
+  details: [ShippingRateDetail!]! @hasMany(relation: "details")
+}
+
+type ShippingRateDetail {
+  id: ID!
+  rate_id: ID!
+  shipping_rate_id: ID
+  weight_from: Float
+  weight_to: Float
+  min_weight: Float
+  max_weight: Float
+  price_per_kg: Float
+  price: Float
+  price_type: String!
+  description: String
+  sort_order: Int
+}
+
+type ShippingFeeCalculation {
+  rate: ShippingRate!
+  detail: ShippingRateDetail!
+  unit_price: Float!
+  price_type: String!
+  shipping_fee: Float!
+  rate_description: String
+}
+
+input ShippingRateFilterInput {
+  status: String
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+}
+
+input ActiveShippingRateInput {
+  date: DateTime
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+}
+
+input CalculateShippingFeeInput {
+  weight: Float!
+  date: DateTime
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+}
+
+input ShippingRateInput {
+  name: String!
+  customer_type: String
+  route_type: String
+  warehouse_id: ID
+  effective_from: DateTime!
+  effective_to: DateTime
+  status: String
+  note: String
+  details: [ShippingRateDetailInput!]
+}
+
+input ShippingRateDetailInput {
+  min_weight: Float!
+  max_weight: Float
+  price: Float!
+  price_type: String!
+  description: String
+  sort_order: Int
+}
