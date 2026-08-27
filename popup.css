@@ -1,4 +1,4 @@
-Modern, clean styling for extension popup
+/* Modern, clean styling for extension popup */
 * {
   margin: 0;
   padding: 0;
@@ -292,30 +292,6 @@ body {
 
 /* Cart Items */
 #cartItems {
-  margin-bottom: 16px;
-}
-
-/* .cart-item {
-  display: flex;
-  align-items: flex-start;
-  background: white;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  position: relative;
-} */
-/* Cart Items */
-#cartItems {
-  margin-bottom: 16px;
-}
-
-#cartItems {
-  margin-bottom: 20px;
-}
-
-/* Cart Items */
-#cartItems {
   margin-bottom: 24px;
 }
 
@@ -542,11 +518,6 @@ body {
   .cart-item-form {
     padding: 12px;
   }
-}
-
-.btn-remove:hover {
-  background: #d32f2f;
-  transform: scale(1.1);
 }
 
 /* Cart Summary */

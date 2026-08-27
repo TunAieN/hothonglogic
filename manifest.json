@@ -24,6 +24,7 @@
         "*://*.taobao.com/*"
       ],
       "js": [
+        "extension-src/content/scraper.js",
         "content.js"
       ],
       "run_at": "document_idle"

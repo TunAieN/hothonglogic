@@ -18,5 +18,8 @@ const CUSTOMERS_QUERY = `
 
 export async function fetchCustomers({ endpoint, token }) {
   const data = await graphqlRequest({ endpoint, query: CUSTOMERS_QUERY, token });
-  return data?.customers?.data || [];
+  if (!data?.customers) {
+    throw new Error("Không thể tải khách hàng");
+  }
+  return data.customers.data || [];
 }
