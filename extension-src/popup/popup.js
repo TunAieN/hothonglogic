@@ -1,10 +1,10 @@
-import { fetchCustomers } from "./extension-src/api/customers.js";
-import { clearAuthSession, getAuthSession } from "./extension-src/auth/auth.js";
-import { MESSAGE_TYPES, STORAGE_KEYS } from "./extension-src/shared/constants.js";
-import { loadExtensionSettings, saveExtensionSettings } from "./extension-src/storage/settings.js";
-import { initializeCart } from "./extension-src/popup/cart.js";
-import { getCurrentProduct, loadCurrentProduct } from "./extension-src/popup/product.js";
-import { closeSidePanel, setupTabs, showStatus } from "./extension-src/popup/ui.js";
+import { fetchCustomers } from "../api/customers.js";
+import { clearAuthSession, getAuthSession } from "../auth/auth.js";
+import { MESSAGE_TYPES, STORAGE_KEYS } from "../shared/constants.js";
+import { loadExtensionSettings, saveExtensionSettings } from "../storage/settings.js";
+import { initializeCart } from "./cart.js";
+import { getCurrentProduct, loadCurrentProduct } from "./product.js";
+import { closeSidePanel, setupTabs, showStatus } from "./ui.js";
 
 let settings = {};
 const getSettings = () => settings;

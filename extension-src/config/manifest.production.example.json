@@ -11,10 +11,10 @@
     }
   },
   "side_panel": {
-    "default_path": "popup.html"
+    "default_path": "popup/popup.html"
   },
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "background/background.js",
     "type": "module"
   },
   "content_scripts": [
@@ -23,7 +23,7 @@
         "*://*.tmall.com/*",
         "*://*.taobao.com/*"
       ],
-      "js": ["content.js"],
+      "js": ["content/scraper.js", "content/content.js"],
       "run_at": "document_idle"
     }
   ],

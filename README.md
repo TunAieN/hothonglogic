@@ -31,12 +31,14 @@ This is a modular monolith, not a microservice architecture. Public routes, Grap
 ├── admin-panel/             # React + TypeScript admin application
 ├── logistics-backend/       # Laravel + Lighthouse GraphQL backend
 ├── docs/                    # Current setup/architecture docs and archived material
-├── icons/                   # Chrome Extension icons
-├── background.js            # Extension service worker
-├── content.js               # Taobao/Tmall content script
-├── login.html / login.js    # Extension authentication page
-├── popup.html / popup.js    # Extension side-panel UI and behavior
-└── manifest.json            # Chrome Manifest V3 definition
+├── extension-src/           # Chrome Extension source and loadable manifest
+│   ├── background/          # Service worker
+│   ├── content/             # Taobao/Tmall scraper and entrypoint
+│   ├── popup/               # Side-panel UI modules
+│   ├── login/               # Authentication page
+│   ├── api/ auth/ storage/  # GraphQL and local persistence boundaries
+│   └── manifest.json        # Chrome Manifest V3 definition
+└── scripts/                 # Repository validation helpers
 ```
 
 The long-term `apps/` layout is documented as a future migration and is not applied during the initial cleanup.
@@ -62,7 +64,7 @@ The long-term `apps/` layout is documented as a future migration and is not appl
 
 ## Development Setup
 
-Clone the repository, then configure and start the backend and admin panel in separate terminals. Load the repository root as an unpacked extension only after reviewing the extension endpoint settings.
+Clone the repository, then configure and start the backend and admin panel in separate terminals. Load `extension-src/` as the unpacked extension after reviewing the extension endpoint settings.
 
 ```bash
 git clone https://github.com/TunAiEN/hothonglogic.git
@@ -121,7 +123,7 @@ More detail: [Admin setup](docs/setup/admin.md).
 1. Start the backend and admin panel.
 2. Open `chrome://extensions/`.
 3. Enable **Developer mode**.
-4. Choose **Load unpacked** and select the repository root.
+4. Choose **Load unpacked** and select `extension-src/`.
 5. Open the extension settings and verify the GraphQL endpoint and admin order URL for the current environment.
 
 The extension remains Vanilla JavaScript. It is not bundled with the admin application. See [Extension setup and validation](docs/setup/extension.md).
@@ -161,10 +163,11 @@ php artisan test
 Extension:
 
 ```bash
-node --check background.js
-node --check content.js
-node --check login.js
-node --check popup.js
+node --check extension-src/background/background.js
+node --check extension-src/content/content.js
+node --check extension-src/content/scraper.js
+node --check extension-src/login/login.js
+node --check extension-src/popup/popup.js
 node scripts/validate-extension.mjs
 ```
 
@@ -180,7 +183,7 @@ npm ci
 npm run build
 ```
 
-The output is written to `admin-panel/dist/` and is not committed. The extension currently ships directly from its source files; package only the files referenced by `manifest.json` plus required assets.
+The output is written to `admin-panel/dist/` and is not committed. The extension ships directly from `extension-src/`; package that directory using the release manifest and production endpoint configuration.
 
 ## Git Workflow
 

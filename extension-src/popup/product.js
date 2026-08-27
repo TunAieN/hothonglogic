@@ -81,7 +81,7 @@ export async function loadCurrentProduct() {
       if (!error.message.includes("Receiving end does not exist")) throw error;
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ["extension-src/content/scraper.js", "content.js"],
+        files: ["content/scraper.js", "content/content.js"],
       });
       response = await sendExtractMessage(tab.id);
     }

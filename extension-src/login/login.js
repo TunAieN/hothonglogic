@@ -1,6 +1,6 @@
-import { loadExtensionSettings } from "./extension-src/storage/settings.js";
-import { login } from "./extension-src/api/authentication.js";
-import { saveAuthSession } from "./extension-src/auth/auth.js";
+import { loadExtensionSettings } from "../storage/settings.js";
+import { login } from "../api/authentication.js";
+import { saveAuthSession } from "../auth/auth.js";
 
 const showToast = (message, type = "success") => {
     const toast = document.getElementById("toast");

@@ -1,11 +1,11 @@
-import { initializeExtensionStorage } from "./extension-src/storage/settings.js";
+import { initializeExtensionStorage } from "../storage/settings.js";
 import {
     addCartItem,
     clearCart,
     getCart,
     removeCartItem,
-} from "./extension-src/storage/cart.js";
-import { MESSAGE_TYPES } from "./extension-src/shared/constants.js";
+} from "../storage/cart.js";
+import { MESSAGE_TYPES } from "../shared/constants.js";
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         [MESSAGE_TYPES.REMOVE_FROM_CART]: () => removeCartItem(request.index),
         [MESSAGE_TYPES.OPEN_LOGIN]: async () => {
             await chrome.windows.create({
-                url: chrome.runtime.getURL("login.html"),
+                url: chrome.runtime.getURL("login/login.html"),
                 type: "popup",
                 width: 400,
                 height: 600,
