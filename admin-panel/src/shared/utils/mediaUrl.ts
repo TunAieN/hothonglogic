@@ -1,4 +1,4 @@
-import { BACKEND_API_URL } from "../providers/graphqlClient";
+import { BACKEND_API_URL } from "../../providers/graphqlClient";
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 

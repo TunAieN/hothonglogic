@@ -26,7 +26,7 @@ import type {
   OrderCreateInput,
   OrderUpdateInput,
   User,
-} from "../types";
+} from "../shared/types";
 
 type ResourceRecordMap = {
   cnBatches: CnBatch;

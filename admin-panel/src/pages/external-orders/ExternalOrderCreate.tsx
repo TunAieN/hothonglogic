@@ -30,8 +30,7 @@ import {
   ShoppingCartOutlined,
 } from "@ant-design/icons";
 import { Link, useLocation, useNavigate } from "react-router";
-import type { ICustomer, IOrder } from "../../interfaces";
-import type { OrderCreateInput } from "../../types";
+import type { Customer as ICustomer, Order as IOrder, OrderCreateInput } from "../../shared/types";
 import { dataProvider } from "../../providers/dataProvider";
 import {
   getGraphqlAuthToken,

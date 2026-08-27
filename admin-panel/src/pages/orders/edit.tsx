@@ -17,15 +17,14 @@ import {
 import type { UploadFile } from "antd/es/upload/interface";
 
 import { useParams } from "react-router";
-import type { ICustomer, IOrder, User } from "../../interfaces";
-import type { OrderUpdateInput } from "../../types";
+import type { Customer as ICustomer, Order as IOrder, OrderUpdateInput, User } from "../../shared/types";
 import { CustomerPersonnelSection } from "./components/CustomerPersonnelSection";
 import { ReceiverInformationSection } from "./components/ReceiverInformationSection";
 import { ShippingInfoSection } from "./components/ShippingInfoSection";
 import { NotesSection } from "./components/NotesSection";
 import { AttachmentsSection } from "./components/AttachmentsSection";
 import { OrderSummaryPanel } from "./components/OrderSummaryPanel";
-import { resolveLegacyCnyTotal } from "../../utils/currency";
+import { resolveLegacyCnyTotal } from "../../shared/utils/currency";
 import {
   PACKAGING_TYPE_OPTIONS,
   SHIPPING_COMPANY_OPTIONS,

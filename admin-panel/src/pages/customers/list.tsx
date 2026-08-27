@@ -13,10 +13,10 @@ import {
     UserOutlined,
 } from "@ant-design/icons";
 import type { CrudFilter } from "@refinedev/core";
-import type { ICustomer } from "../../interfaces";
+import type { Customer as ICustomer } from "../../shared/types";
 import { CustomerFormModal } from "./components/CustomerFormModal";
-import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
+import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -460,4 +460,3 @@ export const CustomerList = () => {
         </List>
     );
 };
-

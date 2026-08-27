@@ -64,8 +64,8 @@ import {
   renderBatchTag,
 } from "./helpers";
 import { ConfirmPackageItemsModal } from "./components/ConfirmPackageItemsModal";
-import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
+import { PageHeader, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 import type {
   ChinaWarehouseApiRecord,
   ChinaWarehouseBatchRecord,
@@ -1159,4 +1159,3 @@ export const ChinaWarehousePage = () => {
     </Space>
   );
 };
-

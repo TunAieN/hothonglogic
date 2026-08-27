@@ -23,7 +23,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { CheckOutlined, EyeOutlined } from "@ant-design/icons";
-import type { CnPackage } from "../../types";
+import type { CnPackage } from "../../shared/types";
 import { formatWeight } from "./helpers";
 import type { BatchViewModel } from "./types";
 

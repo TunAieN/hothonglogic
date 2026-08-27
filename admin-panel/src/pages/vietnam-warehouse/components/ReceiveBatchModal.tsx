@@ -5,7 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
 import type { ExpectedBatchPackage, PackageEvidence, PackageItemDetail, ReceivePackageFormValues, ReceivedPackageDraft, VietnamWarehouseBatch, VietnamWarehouseReceiptSummary } from "../types";
 import { PackageEvidenceUpload } from "./PackageEvidenceUpload";
-import { MEDIA_IMAGE_FALLBACK } from "../../../utils/mediaUrl";
+import { MEDIA_IMAGE_FALLBACK } from "../../../shared/utils/mediaUrl";
 
 const { Text, Title } = Typography;
 type Props = {

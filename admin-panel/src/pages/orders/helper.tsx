@@ -1,1 +1,1 @@
-﻿export { formatCny, formatExchangeRate, formatVnd } from "../../utils/currency";
+export { formatCny, formatExchangeRate, formatVnd } from "../../shared/utils/currency";

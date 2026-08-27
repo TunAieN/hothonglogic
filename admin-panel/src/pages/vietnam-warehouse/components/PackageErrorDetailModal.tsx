@@ -5,7 +5,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import type { UploadFile } from "antd/es/upload/interface";
 import type { VietnamPackageErrorUpdateInput, VietnamWarehousePackageListItem } from "../types";
 import { PackageEvidenceUpload } from "./PackageEvidenceUpload";
-import { MEDIA_IMAGE_FALLBACK } from "../../../utils/mediaUrl";
+import { MEDIA_IMAGE_FALLBACK } from "../../../shared/utils/mediaUrl";
 import "./package-error-detail-modal.css";
 
 const { Text, Title } = Typography;

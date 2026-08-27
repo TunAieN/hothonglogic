@@ -27,7 +27,7 @@ import {
     Typography,
 } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
-import { formatCny, formatVnd, resolveLegacyCnyTotal } from "../../utils/currency";
+import { formatCny, formatVnd, resolveLegacyCnyTotal } from "../../shared/utils/currency";
 import {
     CarOutlined,
     CheckCircleOutlined,
@@ -37,12 +37,11 @@ import {
     ShoppingOutlined,
     UserOutlined,
 } from "@ant-design/icons";
-import type { ICustomer, IOrder, User } from "../../interfaces";
+import type { Customer as ICustomer, Order as IOrder, OrderUpdateInput, User } from "../../shared/types";
 import { dataProvider } from "../../providers/dataProvider";
-import { getTtlCache, setTtlCache } from "../../utils/ttlCache";
-import type { OrderUpdateInput } from "../../types";
-import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { getTtlCache, setTtlCache } from "../../shared/utils/ttlCache";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
+import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -784,4 +783,3 @@ export const OrderList = () => {
         </List>
     );
 };
-

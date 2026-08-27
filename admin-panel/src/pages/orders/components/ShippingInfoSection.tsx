@@ -21,7 +21,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { DeleteOutlined, EditOutlined, FileTextOutlined, PlusOutlined } from "@ant-design/icons";
 import { OrderEditSectionCard } from "./OrderEditSectionCard";
-import type { OrderItem } from "../../../types";
+import type { OrderItem } from "../../../shared/types";
 import type { SelectOption, ShippingEntryFormValue } from "../orderEditTypes";
 
 const { Text } = Typography;

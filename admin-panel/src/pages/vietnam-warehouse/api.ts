@@ -1,7 +1,7 @@
 import { ClientError } from "graphql-request";
 import dayjs from "dayjs";
 import { GRAPHQL_API_URL, client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
-import { resolveMediaUrl } from "../../utils/mediaUrl";
+import { resolveMediaUrl } from "../../shared/utils/mediaUrl";
 import type {
   BatchInfoFormValues,
   ExpectedBatchPackage,

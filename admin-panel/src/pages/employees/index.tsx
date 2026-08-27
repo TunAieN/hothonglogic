@@ -37,8 +37,8 @@ import {
   UnlockOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import type { Department, EmployeeCreateInput, EmployeeRecord, EmployeeRole, EmployeeStatus, EmployeeUpdateInput } from "../../types/employee";
-import type { Role } from "../../types/common";
+import type { Department, EmployeeCreateInput, EmployeeRecord, EmployeeRole, EmployeeStatus, EmployeeUpdateInput } from "../../shared/types/employee";
+import type { Role } from "../../shared/types/common";
 import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
 import "./employees.css";
 

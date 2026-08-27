@@ -25,7 +25,7 @@ import {
   UserOutlined,
   UsergroupAddOutlined,
 } from "@ant-design/icons";
-import type { User } from "../types";
+import type { User } from "../../shared/types";
 
 export const SIDEBAR_COLLAPSED_WIDTH = 72;
 export const SIDEBAR_EXPANDED_WIDTH = 256;

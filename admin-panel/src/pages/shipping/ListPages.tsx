@@ -20,7 +20,7 @@ import {
 import { formatWeight, ShippingStatusTag } from "./helpers";
 import { downloadExportSlip } from "./exportSlipDocument";
 import type { ExportSlip, ExportSlipFilter, ExportSlipPage, ShippingListPage, ShippingTask, ShippingTaskFilter, ShippingTaskOptions, ShippingTaskPage } from "./types";
-import type { User } from "../../types";
+import type { User } from "../../shared/types";
 import "./shipping.css";
 
 const emptyList = <T,>(): ShippingListPage<T> => ({

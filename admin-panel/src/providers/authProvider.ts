@@ -5,8 +5,8 @@ import {
   getGraphqlAuthToken,
   setGraphqlAuthToken,
 } from "./graphqlClient";
-import type { User } from "../types";
-import { getTtlCache, removeTtlCache, setTtlCache } from "../utils/ttlCache";
+import type { User } from "../shared/types";
+import { getTtlCache, removeTtlCache, setTtlCache } from "../shared/utils/ttlCache";
 
 export const AUTH_USER_STORAGE_KEY = "user";
 const AUTH_IDENTITY_CACHE_KEY = "auth:identity";

@@ -12,7 +12,7 @@ import {
     UserOutlined,
 } from "@ant-design/icons";
 import { ClientError } from "graphql-request";
-import type { ICustomer } from "../../../interfaces";
+import type { Customer as ICustomer } from "../../../shared/types";
 import {
     isValidCustomerPhone,
     normalizeCustomerEmail,

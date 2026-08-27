@@ -27,7 +27,7 @@ import {
   ShoppingCartOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
-import { formatVnd } from "../../utils/currency";
+import { formatVnd } from "../../shared/utils/currency";
 import {
   fetchRevenueReport,
   fetchRevenueReportDrilldown,
