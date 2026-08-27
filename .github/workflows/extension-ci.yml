@@ -1,0 +1,60 @@
+name: Extension CI
+
+on:
+  push:
+    paths:
+      - "background.js"
+      - "content.js"
+      - "login.html"
+      - "login.js"
+      - "manifest.json"
+      - "popup.css"
+      - "popup.html"
+      - "popup.js"
+      - "icons/**"
+      - "extension-src/**"
+      - "scripts/validate-extension.mjs"
+      - ".github/workflows/extension-ci.yml"
+  pull_request:
+    paths:
+      - "background.js"
+      - "content.js"
+      - "login.html"
+      - "login.js"
+      - "manifest.json"
+      - "popup.css"
+      - "popup.html"
+      - "popup.js"
+      - "icons/**"
+      - "extension-src/**"
+      - "scripts/validate-extension.mjs"
+      - ".github/workflows/extension-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check background.js
+          node --check content.js
+          node --check login.js
+          node --check popup.js
+          node --check extension-src/config/environment.js
+          node --check extension-src/storage/settings.js
+
+      - name: Validate manifest references and icons
+        run: node scripts/validate-extension.mjs
