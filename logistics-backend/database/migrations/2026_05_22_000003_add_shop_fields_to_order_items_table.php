@@ -11,11 +11,11 @@ return new class extends Migration
     {
         Schema::table('order_items', function (Blueprint $table) {
             if (! Schema::hasColumn('order_items', 'shop_id')) {
-                $table->string('shop_id', 100)->nullable()->after('seller');
+                $table->string('shop_id', 100)->nullable();
             }
 
             if (! Schema::hasColumn('order_items', 'shop_name')) {
-                $table->string('shop_name', 255)->nullable()->after('shop_id');
+                $table->string('shop_name', 255)->nullable();
             }
         });
 
