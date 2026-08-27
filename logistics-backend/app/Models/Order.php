@@ -99,6 +99,13 @@ class Order extends Model
     {
         return $this->hasMany(OrderTracking::class);
     }
+
+    public function shippingTasks()
+    {
+        return $this->belongsToMany(ShippingTask::class, 'shipping_task_orders')
+            ->withPivot(['package_count', 'total_weight', 'total_value'])
+            ->withTimestamps();
+    }
 }
 
 

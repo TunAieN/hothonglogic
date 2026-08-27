@@ -78,6 +78,12 @@ type Query {
   vietnamWarehouseReceipt(batch_code: String!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@vietnamWarehouseReceipt")
+  vietnamWarehousePackages(filter: VietnamWarehousePackageFilterInput): [VnPackage!]!
+    @guard(with: ["api"])
+    @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@packages")
+  vietnamWarehousePackage(id: ID!): VnPackage!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@package")
 
   # =========================
   # Payment Vouchers
@@ -147,6 +153,31 @@ type Query {
   vnWarehouses: [VnWarehouse!]!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\RevenueReportResolver@warehouses")
+
+  # =========================
+  # Shipping / Exports
+  # =========================
+  shippingQueueOrders(page: Int = 1, first: Int = 10, filter: ShippingQueueFilterInput): ShippingQueuePage!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@queue")
+  shippingQueueOrderOptions(order_ids: [ID!]!): [ShippingQueueOrder!]!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@queueOptions")
+  shippingTaskOptions: ShippingTaskOptions!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@options")
+  shippingTasks(page: Int = 1, first: Int = 10, filter: ShippingTaskFilterInput): ShippingTaskPage!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@tasks")
+  shippingTask(id: ID!): ShippingTask!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@task")
+  exportSlips(page: Int = 1, first: Int = 10, filter: ExportSlipFilterInput): ExportSlipPage!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@slips")
+  exportSlip(id: ID!): ExportSlip!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@slip")
 }
 
 # =========================
@@ -242,6 +273,9 @@ type Mutation {
   deleteCnBatch(id: ID!): CnBatch!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@delete")
+  dispatchCnBatch(id: ID!, input: DispatchCnBatchInput!): CnBatch!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@dispatch")
   createVietnamInboundTask(input: CreateVietnamInboundTaskInput!): VietnamInboundTaskPayload!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@createVietnamInboundTask")
@@ -256,6 +290,18 @@ type Mutation {
   scanVietnamPackage(input: ScanVietnamPackageInput!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@scanVietnamPackage")
+  inspectVietnamPackageItems(package_id: ID!, items: [VietnamPackageItemInspectionInput!]!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@inspectVietnamPackageItems")
+  resolveVietnamReceiptDiscrepancy(receipt_id: ID!, resolution_note: String!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@resolveVietnamReceiptDiscrepancy")
+  resolveVietnamPackageDiscrepancy(package_id: ID!, resolution_note: String!): VietnamWarehouseReceiptPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@resolveVietnamPackageDiscrepancy")
+  updateVietnamPackageError(input: UpdateVietnamPackageErrorInput!): VnPackage!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@updateVietnamPackageError")
   removeVietnamPackage(id: ID!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@removeVietnamPackage")
@@ -312,6 +358,268 @@ type Mutation {
   deactivateExchangeRate(id: ID!): ExchangeRate!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\ExchangeRateResolver@deactivate")
+
+  createShippingTask(input: CreateShippingTaskInput!): CreateShippingTaskPayload!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@create")
+  updateShippingTaskStatus(id: ID!, status: String!): ShippingTask!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@updateStatus")
+}
+
+# =========================
+# Shipping / Exports
+# =========================
+
+input ShippingQueueFilterInput {
+  search: String
+  status: String
+  carrier: String
+  date_from: String
+  date_to: String
+  order_ids: [ID!]
+}
+
+input ShippingTaskFilterInput {
+  search: String
+  status: String
+  carrier_code: String
+  delivery_staff_id: ID
+  date_from: String
+  date_to: String
+  sort_field: String
+  sort_direction: String
+}
+
+input ExportSlipFilterInput {
+  search: String
+  status: String
+  carrier_code: String
+  delivery_staff_id: ID
+  date_from: String
+  date_to: String
+  sort_direction: String
+}
+
+input CreateShippingTaskInput {
+  order_ids: [ID!]!
+  delivery_staff_id: ID!
+  carrier_code: String!
+  carrier_name: String
+  scheduled_delivery_date: String!
+  vn_warehouse_id: ID!
+  note: String
+  service_type: String
+  delivery_method: String
+  estimated_shipping_fee: Float
+  cod_amount: Float
+  transport_note: String
+}
+
+type ShippingPaginatorInfo {
+  currentPage: Int!
+  lastPage: Int!
+  perPage: Int!
+  total: Int!
+  firstItem: Int
+  lastItem: Int
+}
+
+type ShippingQueueStats {
+  total_orders: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+}
+
+type ShippingPackage {
+  id: ID!
+  tracking_number: String
+  order_id: ID
+  order_code: String
+  customer_name: String
+  customer_phone: String
+  length: Float!
+  width: Float!
+  height: Float!
+  weight: Float!
+  value: Float
+}
+
+type ShippingQueueOrder {
+  id: ID!
+  order_code: String!
+  tracking_numbers: [String!]!
+  customer_name: String!
+  customer_phone: String
+  customer_address: String
+  carrier: String
+  payment_date: DateTime
+  package_count: Int!
+  total_weight: Float!
+  total_value: Float!
+  status: String!
+  packages: [ShippingPackage!]!
+}
+
+type ShippingQueuePage {
+  data: [ShippingQueueOrder!]!
+  stats: ShippingQueueStats!
+  paginatorInfo: ShippingPaginatorInfo!
+}
+
+type ShippingTaskOptionUser {
+  id: ID!
+  name: String!
+  phone: String
+}
+
+type ShippingCarrierOption {
+  code: String!
+  name: String!
+}
+
+type ShippingTaskOptionWarehouse {
+  id: ID!
+  name: String!
+  address: String
+}
+
+type ShippingTaskOptions {
+  deliveryStaff: [ShippingTaskOptionUser!]!
+  warehouses: [ShippingTaskOptionWarehouse!]!
+  carriers: [ShippingCarrierOption!]!
+}
+
+type ShippingTaskStats {
+  total_tasks: Int!
+  preparing: Int!
+  in_transit: Int!
+  completed: Int!
+  cancelled: Int!
+}
+
+type ShippingTask {
+  id: ID!
+  task_code: String!
+  export_slip_id: ID
+  export_code: String
+  delivery_staff_id: ID
+  delivery_staff_name: String
+  delivery_staff_phone: String
+  carrier_name: String!
+  warehouse_name: String
+  order_count: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+  created_at: DateTime
+  scheduled_delivery_date: String
+  status: String!
+  note: String
+  service_type: String
+  delivery_method: String
+  estimated_shipping_fee: Float!
+  cod_amount: Float
+  transport_note: String
+  orders: [ExportSlipOrder!]!
+}
+
+type ShippingTaskPage {
+  data: [ShippingTask!]!
+  stats: ShippingTaskStats!
+  paginatorInfo: ShippingPaginatorInfo!
+}
+
+type ExportSlipCustomer {
+  order_code: String
+  name: String
+  phone: String
+  address: String
+}
+
+type ExportSlipOrder {
+  id: ID!
+  order_code: String
+  customer_name: String
+  package_count: Int!
+  total_weight: Float!
+  total_value: Float!
+}
+
+type ExportSlip {
+  id: ID!
+  export_code: String!
+  task_id: ID
+  task_code: String
+  status: String!
+  created_at: DateTime
+  scheduled_delivery_date: String
+  creator_name: String
+  delivery_staff_name: String
+  delivery_staff_phone: String
+  carrier_name: String
+  warehouse_name: String
+  note: String
+  service_type: String
+  delivery_method: String
+  transport_note: String
+  order_count: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+  customers: [ExportSlipCustomer!]
+  orders: [ExportSlipOrder!]
+  packages: [ShippingPackage!]
+  payment: ExportSlipPayment
+  financials: ExportSlipFinancials
+  history: [ExportSlipHistory!]
+}
+
+type ExportSlipPayment {
+  status: String!
+  paid_package_count: Int!
+  total_package_count: Int!
+  paid_at: DateTime
+  payment_method: String
+  transaction_code: String
+  bank_name: String
+  confirmed_by: String
+  paid_amount: Float!
+}
+
+type ExportSlipFinancials {
+  order_value: Float!
+  shipping_fee: Float!
+  cod_amount: Float
+  total_amount: Float!
+}
+
+type ExportSlipHistory {
+  id: ID!
+  action: String!
+  from_status: String
+  to_status: String
+  actor_name: String
+  created_at: DateTime
+}
+
+type ExportSlipPage {
+  data: [ExportSlip!]!
+  stats: ExportSlipStats!
+  paginatorInfo: ShippingPaginatorInfo!
+}
+
+type ExportSlipStats {
+  total_slips: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+}
+
+type CreateShippingTaskPayload {
+  task: ShippingTask!
+  message: String!
 }
 
 # =========================
@@ -694,10 +1002,28 @@ type CnBatch {
   total_packages: Int
   status: String!
   shipping_type: String!
+  packaging_type: String
+  transport_container_count: Int
   departed_at: DateTime
   expected_arrival_at: DateTime
   arrived_at: DateTime
   total_weight: Float
+  actual_batch_weight: Float
+  package_material_weight: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  actual_volume: Float
+  carrier_name: String
+  transport_code: String
+  route_name: String
+  vehicle_plate: String
+  driver_name: String
+  driver_phone: String
+  freight_cost: Float
+  handed_over_by: ID
+  handed_over_at: DateTime
+  dispatch_note: String
   note: String
   created_at: DateTime!
   updated_at: DateTime!
@@ -734,6 +1060,17 @@ input UpdateCnBatchInput {
     arrived_at: DateTime
     note: String
     status: String
+    freight_cost: Float
+    packages: [UpdateCnBatchPackageInput!]
+}
+
+input UpdateCnBatchPackageInput {
+    id: ID
+    tracking_number: String!
+    weight: Float!
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
 }
 
 input CreateVietnamInboundTaskInput {
@@ -766,12 +1103,16 @@ type VnBatchReceipt {
   cn_batch_id: ID!
   vn_warehouse_id: ID
   batch_code: String!
+  actual_container_count: Int
   actual_batch_weight: Float
   package_material_weight: Float
   actual_length: Float
   actual_width: Float
   actual_height: Float
   actual_volume: Float
+  outer_condition: String!
+  batch_weight_difference: Float
+  requires_resolution: Boolean!
   wooden_fee: Float
   other_fee: Float
   status: String!
@@ -783,6 +1124,7 @@ type VnBatchReceipt {
   total_damaged_packages: Int!
   note: String
   handled_by: ID
+  received_at: DateTime
   confirmed_at: DateTime
   created_at: DateTime!
   updated_at: DateTime!
@@ -798,11 +1140,25 @@ type VnPackage {
   cn_batch_id: ID
   cn_package_id: ID
   tracking_number_snapshot: String
+  cn_weight_snapshot: Float
   actual_weight: Float
+  weight_difference: Float
   actual_length: Float
   actual_width: Float
   actual_height: Float
   actual_volume: Float
+  physical_condition: String!
+  requires_item_inspection: Boolean!
+  item_inspection_status: String!
+  exception_reason: String
+  error_resolution_status: String
+  resolution_note: String
+  resolution_action: String
+  resolution_result: String
+  expected_completion_at: DateTime
+  resolved_by: ID
+  error_detected_at: DateTime
+  error_resolved_at: DateTime
   extra_fee: Float
   wooden_fee: Float
   other_fee: Float
@@ -822,7 +1178,36 @@ type VnPackage {
   receipt: VnBatchReceipt @belongsTo(relation: "receipt")
   cn_batch: CnBatch @belongsTo(relation: "cnBatch")
   cn_package: CnPackage @belongsTo(relation: "cnPackage")
+  inspected_items: [VnPackageItem!]! @hasMany(relation: "inspectedItems")
+  evidences: [VnPackageEvidence!]! @hasMany(relation: "evidences")
   handler: User @belongsTo(relation: "handler")
+  resolver: User @belongsTo(relation: "resolver")
+}
+
+type VnPackageEvidence {
+  id: ID!
+  vn_package_id: ID!
+  evidence_type: String!
+  url: String!
+  thumbnail_url: String
+  original_name: String!
+  mime_type: String!
+  file_size: Int!
+  created_at: DateTime!
+  creator: User @belongsTo(relation: "creator")
+}
+
+type VnPackageItem {
+  id: ID!
+  vn_package_id: ID!
+  order_item_id: ID
+  product_name_snapshot: String!
+  variant_snapshot: String
+  expected_quantity: Int!
+  received_quantity: Int!
+  condition_status: String!
+  note: String
+  order_item: OrderItem @belongsTo(relation: "orderItem")
 }
 
 type VietnamReceiptSummary {
@@ -831,7 +1216,17 @@ type VietnamReceiptSummary {
   inspectedCount: Int!
   extraCount: Int!
   damagedCount: Int!
+  mismatchCount: Int!
+  weightMismatchCount: Int!
+  itemInspectionPendingCount: Int!
   missingCount: Int!
+  storedCount: Int!
+  receivableCount: Int!
+  errorCount: Int!
+  batchWeightMismatch: Boolean!
+  containerMismatch: Boolean!
+  batchResolutionPending: Boolean!
+  hasIssues: Boolean!
   matched: Boolean!
 }
 
@@ -846,6 +1241,7 @@ type VietnamWarehouseReceiptPayload {
 input StartVietnamWarehouseReceiptInput {
     batch_code: String!
     vn_warehouse_id: ID
+    actual_container_count: Int
     actual_batch_weight: Float
     package_material_weight: Float
     actual_length: Float
@@ -854,6 +1250,8 @@ input StartVietnamWarehouseReceiptInput {
     actual_volume: Float
     wooden_fee: Float
     other_fee: Float
+    outer_condition: String
+    received_at: DateTime
     note: String
 }
 
@@ -865,6 +1263,9 @@ input ScanVietnamPackageInput {
     actual_width: Float
     actual_height: Float
     actual_volume: Float
+    physical_condition: String
+    requires_item_inspection: Boolean
+    exception_reason: String
     extra_fee: Float
     wooden_fee: Float
     other_fee: Float
@@ -872,6 +1273,37 @@ input ScanVietnamPackageInput {
     customer_name_snapshot: String
     note: String
     inspection_status: String
+}
+
+input VietnamWarehousePackageFilterInput {
+  scope: String!
+  tracking_number: String
+  batch_code: String
+  customer_name: String
+  warehouse_id: ID
+  warehouse_name: String
+  handled_by: ID
+  handler_name: String
+  error_type: String
+  resolution_status: String
+  date_from: DateTime
+  date_to: DateTime
+}
+
+input VietnamPackageItemInspectionInput {
+    order_item_id: ID!
+    received_quantity: Int!
+    condition_status: String!
+    note: String
+}
+
+input UpdateVietnamPackageErrorInput {
+  package_id: ID!
+  resolution_status: String!
+  resolution_action: String
+  resolution_result: String
+  expected_completion_at: DateTime
+  note: String
 }
 
 # =========================
@@ -1224,6 +1656,29 @@ type Invoice {
   paymentTransaction: PaymentTransaction @belongsTo(relation: "paymentTransaction")
   voucher: PaymentVoucher @belongsTo(relation: "voucher")
   items: [InvoiceItem!]! @hasMany
+}
+
+input DispatchCnBatchInput {
+    reviewed_package_ids: [ID!]!
+    destination_warehouse_name: String!
+    shipping_type: String!
+    packaging_type: String!
+    transport_container_count: Int!
+    actual_batch_weight: Float!
+    package_material_weight: Float
+    actual_length: Float!
+    actual_width: Float!
+    actual_height: Float!
+    carrier_name: String!
+    transport_code: String
+    route_name: String
+    vehicle_plate: String
+    driver_name: String
+    driver_phone: String
+    freight_cost: Float
+    departed_at: DateTime!
+    expected_arrival_at: DateTime!
+    dispatch_note: String
 }
 
 type InvoiceItem {

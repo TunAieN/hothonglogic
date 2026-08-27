@@ -1,0 +1,84 @@
+.batch-edit-modal .ant-modal-content {
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgb(15 23 42 / 18%);
+  overflow: hidden;
+}
+
+.batch-edit-modal .ant-modal-header {
+  margin-bottom: 20px;
+}
+
+.batch-edit-modal .ant-modal-title {
+  color: #17233d;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.batch-edit-modal .ant-form-item-label > label {
+  color: #26324a;
+  font-weight: 600;
+}
+
+.batch-edit-modal .ant-input,
+.batch-edit-modal .ant-input-number,
+.batch-edit-modal .ant-picker,
+.batch-edit-modal .ant-select-selector,
+.batch-edit-modal .ant-input-number-group-wrapper {
+  width: 100%;
+}
+
+.batch-edit-modal .ant-input:not(textarea),
+.batch-edit-modal .ant-input-number,
+.batch-edit-modal .ant-picker,
+.batch-edit-modal .ant-select-single {
+  min-height: 40px;
+}
+
+.batch-edit-modal .ant-input-number-input,
+.batch-edit-modal .ant-select-selector {
+  min-height: 40px !important;
+}
+
+.batch-edit-modal .batch-package-card {
+  border-color: #e4eaf3;
+  box-shadow: 0 4px 16px rgb(30 64 175 / 5%);
+}
+
+.batch-edit-modal .batch-package-card .ant-card-head {
+  border-bottom-color: #edf1f7;
+}
+
+.batch-edit-modal .ant-table-thead > tr > th {
+  background: #f7f9fc;
+  color: #344054;
+  font-weight: 650;
+}
+
+.batch-edit-modal .ant-table-tbody > tr:hover > td {
+  background: #f7fbff !important;
+}
+
+.batch-edit-modal .batch-total-row > td {
+  background: #f2f7ff !important;
+  color: #1677ff;
+}
+
+.batch-edit-modal .batch-row-edit,
+.batch-edit-modal .batch-row-done {
+  color: #1677ff;
+  background: #edf5ff;
+}
+
+.batch-edit-modal .ant-modal-footer {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-top: 1px solid #edf1f7;
+  padding-top: 16px;
+}
+
+@media (max-width: 991px) {
+  .batch-edit-modal {
+    max-width: calc(100vw - 24px);
+  }
+}

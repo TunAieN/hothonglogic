@@ -260,6 +260,31 @@
   transition: color 160ms ease, background-color 160ms ease;
 }
 
+.admin-sider__group-title-link {
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-sider__group-chevron-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: -5px -5px -5px 0;
+  padding: 5px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.admin-sider__group-chevron-button:hover,
+.admin-sider__group-chevron-button:focus-visible {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .admin-sider__group-toggle:hover,
 .admin-sider__group-toggle:focus-visible {
   color: #b7c7db;

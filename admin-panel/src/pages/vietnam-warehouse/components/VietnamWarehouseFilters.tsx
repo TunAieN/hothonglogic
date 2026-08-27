@@ -6,6 +6,7 @@ type Props = {
   form: ReturnType<typeof Form.useForm<VietnamWarehouseFilterValues>>[0];
   customerOptions: string[];
   receiverOptions: string[];
+  activeTab: string;
   onSearch: (values: VietnamWarehouseFilterValues) => void;
   onReset: () => void;
 };
@@ -22,6 +23,7 @@ export const VietnamWarehouseFilters = ({
   form,
   customerOptions,
   receiverOptions,
+  activeTab,
   onSearch,
   onReset,
 }: Props) => {
@@ -35,10 +37,29 @@ export const VietnamWarehouseFilters = ({
             </Form.Item>
           </Col>
           <Col xs={24} md={12} xl={8}>
-            <Form.Item label="Trạng thái" name="status">
-              <Select allowClear placeholder="Tất cả" options={STATUS_OPTIONS} />
+            <Form.Item label="Kho nhận" name="warehouseName">
+              <Input placeholder="Nhập tên kho Việt Nam" />
             </Form.Item>
           </Col>
+          {activeTab === "errors" ? <>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Loại lỗi" name="errorType">
+                <Select allowClear placeholder="Tất cả" options={[{ label: "Hư hỏng", value: "damaged" }, { label: "Sai lệch", value: "mismatched" }, { label: "Kiện ngoài lô", value: "extra" }, { label: "Chờ kiểm item", value: "item_inspection" }]} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Trạng thái xử lý" name="resolutionStatus">
+                <Select allowClear placeholder="Tất cả" options={[{ label: "Chờ xử lý", value: "pending" }, { label: "Đã xử lý", value: "resolved" }]} />
+              </Form.Item>
+            </Col>
+          </> : null}
+          {activeTab === "checking" ? (
+            <Col xs={24} md={12} xl={8}>
+              <Form.Item label="Trạng thái" name="status">
+                <Select allowClear placeholder="Tất cả" options={STATUS_OPTIONS} />
+              </Form.Item>
+            </Col>
+          ) : null}
           <Col xs={24} md={12} xl={8}>
             <Form.Item label="Mã vận đơn" name="trackingCode">
               <Input placeholder="Nhập mã vận đơn" />

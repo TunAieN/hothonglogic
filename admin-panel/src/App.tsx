@@ -80,6 +80,24 @@ const InvoiceDetailPage = lazy(() =>
 const RevenueReportPage = lazy(() =>
   import("./pages/revenue-report").then((module) => ({ default: module.RevenueReportPage })),
 );
+const ShippingQueuePage = lazy(() =>
+  import("./pages/shipping/QueuePage").then((module) => ({ default: module.ShippingQueuePage })),
+);
+const CreateShippingTaskPage = lazy(() =>
+  import("./pages/shipping/CreateTaskPage").then((module) => ({ default: module.CreateShippingTaskPage })),
+);
+const ShippingTaskListPage = lazy(() =>
+  import("./pages/shipping/ListPages").then((module) => ({ default: module.ShippingTaskListPage })),
+);
+const ShippingTaskDetailPage = lazy(() =>
+  import("./pages/shipping/TaskDetailPage").then((module) => ({ default: module.ShippingTaskDetailPage })),
+);
+const ExportSlipListPage = lazy(() =>
+  import("./pages/shipping/ListPages").then((module) => ({ default: module.ExportSlipListPage })),
+);
+const ExportSlipDetailPage = lazy(() =>
+  import("./pages/shipping/SlipDetailPage").then((module) => ({ default: module.ExportSlipDetailPage })),
+);
 
 const RouteFallback = RouteLoadingFallback;
 
@@ -165,6 +183,21 @@ function App() {
             list: "/employees",
           },
           {
+            name: "shippingQueue",
+            list: "/shipping/queue",
+            create: "/shipping/create",
+          },
+          {
+            name: "shippingTasks",
+            list: "/shipping/tasks",
+            show: "/shipping/tasks/:id",
+          },
+          {
+            name: "exportSlips",
+            list: "/shipping/slips",
+            show: "/shipping/slips/:id",
+          },
+          {
             name: "users",
           },
         ]}
@@ -218,6 +251,13 @@ function App() {
               <Route path="/shipping-rates" element={<ShippingRatesPage />} />
               <Route path="/exchange-rates" element={<ExchangeRatesPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
+              <Route path="/shipping" element={<Navigate to="/shipping/queue" replace />} />
+              <Route path="/shipping/queue" element={<ShippingQueuePage />} />
+              <Route path="/shipping/create" element={<CreateShippingTaskPage />} />
+              <Route path="/shipping/tasks" element={<ShippingTaskListPage />} />
+              <Route path="/shipping/tasks/:id" element={<ShippingTaskDetailPage />} />
+              <Route path="/shipping/slips" element={<ExportSlipListPage />} />
+              <Route path="/shipping/slips/:id" element={<ExportSlipDetailPage />} />
 
               <Route path="/fleet" element={<Navigate to="/employees" replace />} />
               <Route path="/routes" element={<DashboardPage />} />

@@ -37,4 +37,9 @@ class PaymentTransaction extends Model
     {
         return $this->hasOne(Invoice::class);
     }
+
+    public function confirmer()
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
 }
