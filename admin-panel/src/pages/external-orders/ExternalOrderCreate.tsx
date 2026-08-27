@@ -113,6 +113,20 @@ const normalizeDraft = (draft: ExternalOrderDraft | undefined) => {
   };
 };
 
+const toExternalOrderDraftItem = (item: EditableDraftItem): ExternalOrderDraftItem => ({
+  source_item_id: item.source_item_id,
+  product_name: item.product_name,
+  product_link: item.product_link,
+  product_image: item.product_image,
+  variant: item.variant,
+  quantity: item.quantity,
+  price_cny: item.price_cny,
+  note: item.note,
+  seller: item.seller,
+  size: item.size,
+  color: item.color,
+});
+
 const composeItemNote = (item: EditableDraftItem) => {
   const detailNote = item.note?.trim();
   return detailNote || "";
@@ -172,7 +186,10 @@ export const ExternalOrderCreate = () => {
       },
     });
 
-  const customers = customerListResponse?.data ?? [];
+  const customers = useMemo(
+    () => customerListResponse?.data ?? [],
+    [customerListResponse?.data],
+  );
   const isCustomersLoading = customersQuery.isLoading;
   const selectedDraft = useMemo(
     () => drafts.find((draft) => draft.draft_id === selectedDraftId),
@@ -258,7 +275,7 @@ export const ExternalOrderCreate = () => {
 
   const updateItems = (nextItems: EditableDraftItem[]) => {
     patchSelectedDraft({
-      items: nextItems.map(({ rowId: _rowId, ...item }) => item),
+      items: nextItems.map(toExternalOrderDraftItem),
     });
   };
 

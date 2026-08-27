@@ -617,7 +617,7 @@ export const ChinaWarehousePage = () => {
     },
   ];
 
-  const tableColumns = useMemo<ColumnsType<ChinaWarehousePackage>>(() => {
+  const tableColumns: ColumnsType<ChinaWarehousePackage> = (() => {
     const confirmItemsColumn: ColumnsType<ChinaWarehousePackage>[number] = {
       title: "Item da xac nhan",
       key: "confirmedItems",
@@ -689,7 +689,7 @@ export const ChinaWarehousePage = () => {
 
       return [column];
     });
-  }, [columns]);
+  })();
 
   const isInitialLoading = (packageListQuery.isLoading || batchListQuery.isLoading) && !packageListResponse && !batchListResponse;
   const isRefreshing = Boolean(

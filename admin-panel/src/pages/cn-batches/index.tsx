@@ -234,7 +234,8 @@ export const CnBatchesPage = () => {
   const screens = Grid.useBreakpoint();
   const [filterForm] = Form.useForm<BatchFilters>();
   const [editForm] = Form.useForm<BatchEditFormValues>();
-  const editingPackages = Form.useWatch("packages", editForm) ?? [];
+  const watchedEditingPackages = Form.useWatch("packages", editForm);
+  const editingPackages = useMemo(() => watchedEditingPackages ?? [], [watchedEditingPackages]);
   const [filters, setFilters] = useState<BatchFilters>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [selectedRows, setSelectedRows] = useState<BatchViewModel[]>([]);

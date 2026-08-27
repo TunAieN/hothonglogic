@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteButton, List, ShowButton, useTable } from "@refinedev/antd";
 import { Button, Card, Col, DatePicker, Form, Input, Row, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
@@ -146,12 +146,12 @@ export const CustomerList = () => {
             },
         ].filter((filter) => filter.value !== undefined && filter.value !== "");
 
-    const applyCustomerFilters = (values: CustomerFilterValues) => {
+    const applyCustomerFilters = useCallback((values: CustomerFilterValues) => {
         const nextFilters = buildCustomerFilters(values);
 
         setCurrentPage(1);
         setFilters(nextFilters, "replace");
-    };
+    }, [setCurrentPage, setFilters]);
 
     const debouncedApplyCustomerFilters = useMemo(
         () => (values: CustomerFilterValues) => {
@@ -163,7 +163,7 @@ export const CustomerList = () => {
                 applyCustomerFilters(values);
             }, 500);
         },
-        [setCurrentPage, setFilters],
+        [applyCustomerFilters],
     );
 
     useEffect(() => () => {

@@ -125,9 +125,6 @@ export const DispatchBatchModal = ({ batch, loading, onCancel, onSubmit }: Props
   useEffect(() => {
     if (!batch) return;
 
-    setCurrentStep(0);
-    setItemDetailPackage(null);
-    setReviewedPackageIds([]);
     form.setFieldsValue({
       confirmedPackages: false,
       confirmedNoIssues: false,
@@ -303,6 +300,11 @@ export const DispatchBatchModal = ({ batch, loading, onCancel, onSubmit }: Props
       title={batch ? `Xuất kho Trung Quốc — ${batch.batchCode}` : "Xuất kho Trung Quốc"}
       open={Boolean(batch)}
       onCancel={onCancel}
+      afterClose={() => {
+        setCurrentStep(0);
+        setItemDetailPackage(null);
+        setReviewedPackageIds([]);
+      }}
       width={1050}
       destroyOnClose
       maskClosable={false}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CrudFilter, HttpError } from "@refinedev/core";
 import {
     DeleteButton,
@@ -222,7 +222,8 @@ export const OrderList = () => {
     const normalizedTablePagination =
         rawPagination && typeof rawPagination === "object"
             ? (() => {
-                  const { position, ...pagination } = rawPagination;
+                  const pagination = { ...rawPagination };
+                  delete pagination.position;
 
                   return pagination;
               })()
@@ -378,12 +379,12 @@ export const OrderList = () => {
             },
         ].filter((filter) => filter.value !== undefined && filter.value !== "");
 
-    const applyOrderFilters = (values: OrderFilterValues) => {
+    const applyOrderFilters = useCallback((values: OrderFilterValues) => {
         const nextFilters = buildOrderFilters(values);
 
         setCurrentPage(1);
         setFilters(nextFilters, "replace");
-    };
+    }, [setCurrentPage, setFilters]);
 
     const debouncedApplyOrderFilters = useMemo(
         () => (values: OrderFilterValues) => {
@@ -395,7 +396,7 @@ export const OrderList = () => {
                 applyOrderFilters(values);
             }, 500);
         },
-        [setCurrentPage, setFilters],
+        [applyOrderFilters],
     );
 
     useEffect(() => () => {

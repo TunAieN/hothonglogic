@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -232,7 +232,6 @@ const WarehouseDonut = ({ report, onSelectWarehouse }: { report?: RevenueReport;
   const total = data.reduce((sum, item) => sum + item.revenue, 0);
   const radius = 48;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
   const colors = ["#1677ff", "#52c783", "#f6b84f", "#9d5cff", "#ef6f6c"];
 
   if (!data.length) {
@@ -246,8 +245,13 @@ const WarehouseDonut = ({ report, onSelectWarehouse }: { report?: RevenueReport;
           <circle cx="60" cy="60" r={radius} className="revenue-report__donut-bg" />
           {data.map((item, index) => {
             const dash = total > 0 ? (item.revenue / total) * circumference : 0;
-            const currentOffset = offset;
-            offset += dash;
+            const currentOffset = data
+              .slice(0, index)
+              .reduce(
+                (sum, previousItem) =>
+                  sum + (total > 0 ? (previousItem.revenue / total) * circumference : 0),
+                0,
+              );
             return (
               <circle
                 key={item.warehouseId}
@@ -341,7 +345,7 @@ export const RevenueReportPage = () => {
     [groupBy, page, pageSize, range, revenueType, sortDirection, sortField, warehouseId],
   );
 
-  const loadReport = async () => {
+  const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -353,11 +357,11 @@ export const RevenueReportPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [input]);
 
   useEffect(() => {
     void loadReport();
-  }, [input]);
+  }, [loadReport]);
 
   const serviceOptions = useMemo(
     () => [

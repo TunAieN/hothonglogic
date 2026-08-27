@@ -492,7 +492,7 @@ export const EmployeesPage = () => {
     }
   };
 
-  const handleToggleLock = (_employeeId: string) => {
+  const handleToggleLock = () => {
     message.info("Chức năng khóa tài khoản sẽ được xử lý ở bước sau.");
   };
 
@@ -639,7 +639,7 @@ export const EmployeesPage = () => {
               }
               okText={isLocked ? "Mở khóa" : "Khóa"}
               cancelText="Hủy"
-              onConfirm={() => handleToggleLock(employee.id)}
+              onConfirm={handleToggleLock}
             >
               <Tooltip title={isLocked ? "Mở khóa tài khoản" : "Khóa tài khoản"}>
                 <Button

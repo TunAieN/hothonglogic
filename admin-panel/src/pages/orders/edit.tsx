@@ -791,8 +791,8 @@ export const OrderEdit = () => {
   const canEditTracking = isTrackingEditableStatus(order?.status);
   const canSaveChanges = canEditOrderCore || canEditTracking;
   const isLoading = query.isLoading;
-  const customers = customersResult?.data ?? [];
-  const orders = ordersResult?.data ?? [];
+  const customers = useMemo(() => customersResult?.data ?? [], [customersResult?.data]);
+  const orders = useMemo(() => ordersResult?.data ?? [], [ordersResult?.data]);
   const selectedCustomerId = Form.useWatch("customerId", form);
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === selectedCustomerId),

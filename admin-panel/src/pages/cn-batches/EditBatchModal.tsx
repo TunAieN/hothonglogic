@@ -61,7 +61,8 @@ export const EditBatchModal = ({
   onSubmit,
 }: Props) => {
   const [form] = Form.useForm<BatchEditFormValues>();
-  const packages = Form.useWatch("packages", { form, preserve: true }) ?? [];
+  const watchedPackages = Form.useWatch("packages", { form, preserve: true });
+  const packages = useMemo(() => watchedPackages ?? [], [watchedPackages]);
   const [editingRowKeys, setEditingRowKeys] = useState<Key[]>([]);
   const totals = useMemo(() => calculateBatchTotals(packages), [packages]);
 
@@ -70,7 +71,6 @@ export const EditBatchModal = ({
 
     form.resetFields();
     form.setFieldsValue(mapBatchToEditFormValues(batch));
-    setEditingRowKeys([]);
   }, [batch, form]);
 
   useEffect(() => {
@@ -114,6 +114,7 @@ export const EditBatchModal = ({
       title="Sửa thông tin lô hàng vận chuyển"
       open={Boolean(batch)}
       onCancel={onCancel}
+      afterClose={() => setEditingRowKeys([])}
       width={1400}
       className="batch-edit-modal"
       destroyOnClose
