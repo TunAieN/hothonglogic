@@ -1,6 +1,6 @@
 import { Badge, Button, Card, Space, Typography } from "antd";
 import { CheckCircleOutlined, SaveOutlined } from "@ant-design/icons";
-import { formatCny } from "../../../utils/currency";
+import { formatCny } from "../../../shared/utils/currency";
 
 const { Text } = Typography;
 

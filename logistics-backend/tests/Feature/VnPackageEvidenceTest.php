@@ -3,8 +3,8 @@
 namespace Tests\Feature;
 
 use App\GraphQL\Resolvers\VietnamWarehouseResolver;
-use App\Models\User;
 use App\Models\Role;
+use App\Models\User;
 use App\Models\VnPackage;
 use App\Models\VnPackageEvidence;
 use Illuminate\Foundation\Testing\DatabaseTransactions;

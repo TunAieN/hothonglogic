@@ -1,19 +1,20 @@
 <?php
 
 namespace App\GraphQL\Resolvers;
+
 use App\Models\Invoice;
 use Illuminate\Database\Eloquent\Builder;
 
 class InvoiceResolver
 {
-    public function list($root, array $args) : Builder
+    public function list($root, array $args): Builder
     {
         $filter = $args['filter'] ?? [];
 
-       return Invoice::query()
+        return Invoice::query()
             ->with(['customer', 'issuer', 'creator', 'confirmer', 'order', 'paymentTransaction', 'voucher.transactions', 'voucher.packages.order', 'items'])
             ->when(isset($filter['invoice_code']), function ($query) use ($filter) {
-                $query->where('invoice_code', 'like', '%' . $filter['invoice_code'] . '%');
+                $query->where('invoice_code', 'like', '%'.$filter['invoice_code'].'%');
             })
             ->when(isset($filter['customer_id']), function ($query) use ($filter) {
                 $query->where('customer_id', $filter['customer_id']);
@@ -35,14 +36,15 @@ class InvoiceResolver
             });
 
     }
-    public function show($root, array $args) : ?Invoice
+
+    public function show($root, array $args): ?Invoice
     {
         return Invoice::query()
             ->with(['customer', 'issuer', 'creator', 'confirmer', 'order', 'paymentTransaction', 'voucher.transactions', 'voucher.packages.order', 'items'])
             ->find($args['id']);
     }
 
-    public function statistics($root, array $args) : array
+    public function statistics($root, array $args): array
     {
         $baseQuery = Invoice::query();
 
@@ -57,5 +59,4 @@ class InvoiceResolver
             'totalRevenue' => (float) (clone $baseQuery)->sum('total_amount'),
         ];
     }
-    
 }

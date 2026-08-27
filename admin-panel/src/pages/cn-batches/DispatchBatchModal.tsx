@@ -23,7 +23,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import { CheckOutlined, EyeOutlined } from "@ant-design/icons";
-import type { CnPackage } from "../../types";
+import type { CnPackage } from "../../shared/types";
 import { formatWeight } from "./helpers";
 import type { BatchViewModel } from "./types";
 
@@ -125,9 +125,6 @@ export const DispatchBatchModal = ({ batch, loading, onCancel, onSubmit }: Props
   useEffect(() => {
     if (!batch) return;
 
-    setCurrentStep(0);
-    setItemDetailPackage(null);
-    setReviewedPackageIds([]);
     form.setFieldsValue({
       confirmedPackages: false,
       confirmedNoIssues: false,
@@ -303,6 +300,11 @@ export const DispatchBatchModal = ({ batch, loading, onCancel, onSubmit }: Props
       title={batch ? `Xuất kho Trung Quốc — ${batch.batchCode}` : "Xuất kho Trung Quốc"}
       open={Boolean(batch)}
       onCancel={onCancel}
+      afterClose={() => {
+        setCurrentStep(0);
+        setItemDetailPackage(null);
+        setReviewedPackageIds([]);
+      }}
       width={1050}
       destroyOnClose
       maskClosable={false}

@@ -16,7 +16,7 @@ use App\Models\ShippingTask;
 use App\Models\User;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
-use App\Services\ShippingTaskService;
+use App\Services\Shipping\ShippingTaskService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\Sanctum;
@@ -210,7 +210,7 @@ class ShippingTaskWorkflowTest extends TestCase
         [$user, $warehouse, $order, $package] = $this->shippingFixture();
         Auth::login($user);
         $voucher = PaymentVoucher::query()->create([
-            'voucher_code' => 'PT-' . uniqid(),
+            'voucher_code' => 'PT-'.uniqid(),
             'customer_id' => $order->customer_id,
             'vn_warehouse_id' => $warehouse->id,
             'created_by' => $user->id,
@@ -232,12 +232,12 @@ class ShippingTaskWorkflowTest extends TestCase
             'domestic_shipping_fee' => 5000,
         ]);
         PaymentTransaction::query()->create([
-            'transaction_code' => 'GD-' . uniqid(),
+            'transaction_code' => 'GD-'.uniqid(),
             'payment_voucher_id' => $voucher->id,
             'amount' => 40000,
             'payment_method' => 'bank_transfer',
             'bank_name' => 'Ngân hàng kiểm thử',
-            'bank_transaction_code' => 'BANK-' . uniqid(),
+            'bank_transaction_code' => 'BANK-'.uniqid(),
             'received_at' => now()->subMinute(),
             'confirmed_by' => $user->id,
             'status' => PaymentTransaction::STATUS_CONFIRMED,
@@ -273,7 +273,7 @@ class ShippingTaskWorkflowTest extends TestCase
     {
         $suffix = uniqid();
         $role = Role::query()->create([
-            'name' => 'Shipping test ' . $suffix,
+            'name' => 'Shipping test '.$suffix,
             'permissions' => ['exports.read', 'exports.create', 'exports.update', 'exports.cancel'],
         ]);
         $user = User::query()->create([
@@ -284,19 +284,19 @@ class ShippingTaskWorkflowTest extends TestCase
             'status' => 'active',
         ]);
         $customer = Customer::query()->create([
-            'code' => 'KH-' . $suffix,
+            'code' => 'KH-'.$suffix,
             'name' => 'Khách kiểm thử',
             'phone' => '0900000000',
             'address' => 'Hà Nội',
             'status' => 'active',
         ]);
         $warehouse = VnWarehouse::query()->create([
-            'code' => 'VN-' . substr($suffix, -8),
+            'code' => 'VN-'.substr($suffix, -8),
             'name' => 'Kho kiểm thử',
             'address' => 'Hà Nội',
         ]);
         $order = Order::query()->create([
-            'order_code' => 'ORD-' . $suffix,
+            'order_code' => 'ORD-'.$suffix,
             'customer_id' => $customer->id,
             'status' => 'receiving',
             'product_total_vnd' => 320000,
@@ -304,7 +304,7 @@ class ShippingTaskWorkflowTest extends TestCase
             'created_by' => $user->id,
         ]);
         $cnWarehouse = CnWarehouse::query()->create([
-            'code' => 'CN-' . substr($suffix, -8),
+            'code' => 'CN-'.substr($suffix, -8),
             'name' => 'Kho Trung Quốc kiểm thử',
             'address' => 'Quảng Châu',
             'status' => 'active',
@@ -312,7 +312,7 @@ class ShippingTaskWorkflowTest extends TestCase
         $cnPackage = CnPackage::query()->create([
             'warehouse_id' => $cnWarehouse->id,
             'order_id' => $order->id,
-            'tracking_number' => 'TRACK-' . $suffix,
+            'tracking_number' => 'TRACK-'.$suffix,
             'carrier' => 'Giao hàng nhanh',
             'status' => 'matched',
             'created_by' => $user->id,

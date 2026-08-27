@@ -17,7 +17,7 @@ import { fetchExportSlip, fetchShippingTask, shippingErrorMessage, updateShippin
 import { downloadExportSlip } from "./exportSlipDocument";
 import { formatVnd, formatWeight, taskStatusLabels } from "./helpers";
 import type { ExportSlip, ShippingTask } from "./types";
-import type { User } from "../../types";
+import type { User } from "../../shared/types";
 import "./shipping.css";
 
 type TaskOrder = ShippingTask["orders"][number];

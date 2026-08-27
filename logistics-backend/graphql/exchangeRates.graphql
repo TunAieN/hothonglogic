@@ -1,0 +1,34 @@
+# =========================
+# Exchange Rates
+# =========================
+
+type ExchangeRate {
+  id: ID!
+  from_currency: String!
+  to_currency: String!
+  rate: Float!
+  effective_from: DateTime
+  effective_to: DateTime
+  is_active: Boolean!
+  created_by: ID
+  created_at: DateTime
+  updated_at: DateTime
+  creator: User @belongsTo(relation: "creator")
+}
+
+input ExchangeRateFilterInput {
+  from_currency: String
+  to_currency: String
+  is_active: Boolean
+}
+
+input ExchangeRateInput {
+  from_currency: String
+  to_currency: String
+  rate: Float!
+  effective_from: DateTime
+  effective_to: DateTime
+  is_active: Boolean
+}
+
+# =========================

@@ -7,10 +7,15 @@ use Illuminate\Database\Eloquent\Model;
 class VnPackage extends Model
 {
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_INSPECTED = 'inspected';
+
     public const STATUS_DAMAGED = 'damaged';
+
     public const STATUS_MISSING = 'missing';
+
     public const STATUS_EXTRA = 'extra';
+
     public const STATUS_MISMATCHED = 'mismatched';
 
     public const VALID_INSPECTION_STATUSES = [
@@ -106,6 +111,7 @@ class VnPackage extends Model
     {
         return $this->hasOne(PaymentVoucherPackage::class, 'vn_package_id')->latestOfMany();
     }
+
     public function handler()
     {
         return $this->belongsTo(User::class, 'handled_by');

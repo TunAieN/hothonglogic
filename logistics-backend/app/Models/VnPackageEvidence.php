@@ -10,8 +10,11 @@ class VnPackageEvidence extends Model
     protected $table = 'vn_package_evidences';
 
     public const TYPE_RECONCILIATION = 'reconciliation';
+
     public const TYPE_INSPECTION = 'inspection';
+
     public const TYPE_RESOLUTION = 'resolution';
+
     public const TYPE_DOCUMENT = 'document';
 
     public const TYPES = [

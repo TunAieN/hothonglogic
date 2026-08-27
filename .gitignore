@@ -1,0 +1,25 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# JavaScript build and dependencies
+node_modules/
+dist/
+build/
+
+# PHP dependencies and runtime
+vendor/
+*.log
+laravel-serve*.log
+.phpunit.cache/
+.phpunit.result.cache
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/

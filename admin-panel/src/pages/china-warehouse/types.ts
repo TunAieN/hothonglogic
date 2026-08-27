@@ -7,7 +7,7 @@ import type {
   CnPackageCreateInput,
   CnPackageUpdateInput,
   OrderItem,
-} from "../../types";
+} from "../../shared/types";
 
 export type PackageMatchStatus = "matched" | "unmatched";
 

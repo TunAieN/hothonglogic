@@ -24,8 +24,8 @@ import {
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
-import type { CnBatch, CnPackage, Customer, OrderSummary } from "../../types";
-import { formatVnd, toNumber } from "../../utils/currency";
+import type { CnBatch, CnPackage, Customer, OrderSummary } from "../../shared/types";
+import { formatVnd, toNumber } from "../../shared/utils/currency";
 import "./dashboard.css";
 
 const { RangePicker } = DatePicker;

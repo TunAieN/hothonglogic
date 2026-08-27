@@ -51,13 +51,13 @@ import {
 import dayjs from "dayjs";
 import { Link } from "react-router";
 import { Modal, Radio, InputNumber } from "antd";
-import type { IOrder, IOrderItem } from "../../interfaces";
+import type { Order as IOrder, OrderItem as IOrderItem } from "../../shared/types";
 import {
   formatCny,
   formatVnd,
   hasPositiveMoney,
   resolveLegacyCnyTotal,
-} from "../../utils/currency";
+} from "../../shared/utils/currency";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;

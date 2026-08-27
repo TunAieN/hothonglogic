@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -36,38 +36,31 @@ type Props = {
 const getVariantLabel = (color?: string | null, size?: string | null) =>
   [color, size].filter(Boolean).join(" / ") || "-";
 
-export const ConfirmPackageItemsModal = ({
+const buildSelectionRows = (packageRecord: ChinaWarehousePackage | null): SelectionRow[] =>
+  packageRecord?.orderItems.map((item) => {
+    const confirmed = packageRecord.packageItems.find(
+      (packageItem) => String(packageItem.order_item_id) === String(item.id),
+    );
+
+    return {
+      orderItemId: String(item.id),
+      productName: item.product_name,
+      variant: getVariantLabel(item.color, item.size),
+      orderedQuantity: Number(item.quantity),
+      shopLabel: item.shop_name ?? item.seller ?? "-",
+      checked: Boolean(confirmed),
+      quantity: Number(confirmed?.quantity ?? 1),
+    };
+  }) ?? [];
+
+const ConfirmPackageItemsModalContent = ({
   open,
   loading,
   packageRecord,
   onCancel,
   onSubmit,
 }: Props) => {
-  const [rows, setRows] = useState<SelectionRow[]>([]);
-
-  useEffect(() => {
-    if (!open || !packageRecord) {
-      return;
-    }
-
-    setRows(
-      packageRecord.orderItems.map((item) => {
-        const confirmed = packageRecord.packageItems.find(
-          (packageItem) => String(packageItem.order_item_id) === String(item.id),
-        );
-
-        return {
-          orderItemId: String(item.id),
-          productName: item.product_name,
-          variant: getVariantLabel(item.color, item.size),
-          orderedQuantity: Number(item.quantity),
-          shopLabel: item.shop_name ?? item.seller ?? "-",
-          checked: Boolean(confirmed),
-          quantity: Number(confirmed?.quantity ?? 1),
-        };
-      }),
-    );
-  }, [open, packageRecord]);
+  const [rows, setRows] = useState<SelectionRow[]>(() => buildSelectionRows(packageRecord));
 
   const selectedCount = useMemo(
     () => rows.filter((row) => row.checked).length,
@@ -211,3 +204,10 @@ export const ConfirmPackageItemsModal = ({
     </Modal>
   );
 };
+
+export const ConfirmPackageItemsModal = (props: Props) => (
+  <ConfirmPackageItemsModalContent
+    key={`${props.open}:${props.packageRecord?.id ?? "none"}`}
+    {...props}
+  />
+);

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tmall Product Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h2>🛒 Tmall Product Scraper</h2>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="auth-wrapper">
+          <div id="authBtn" class="auth-btn">🔐 Đăng nhập</div>
+          <div id="openExternalOrderFormBtn" class="auth-btn">📦 Mở form đơn hàng</div>
+          <div id="dropdownMenu" class="dropdown-menu" style="display: none;">
+            <div id="logoutBtn" class="dropdown-item">🚪 Đăng xuất</div>
+          </div>
+        </div>
+        <div class="cart-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M6 7V6a6 6 0 0 1 12 0v1" stroke="white" stroke-width="2" />
+            <rect x="4" y="7" width="16" height="13" rx="2" stroke="white" stroke-width="2" />
+          </svg>
+          <span id="cartBadge" class="cart-count">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="product">Sản phẩm</button>
+      <button class="tab" data-tab="cart">Giỏ hàng</button>
+      <button class="tab" data-tab="settings">Cài đặt</button>
+    </div>
+
+    <!-- Product Tab -->
+    <div class="tab-content active" id="productTab">
+      <div id="productInfo" style="position: relative;">
+
+        <!-- Loading overlay — appears on top of existing content -->
+        <div id="loadingOverlay" style="display:none; position:absolute; inset:0; background:rgba(245,247,250,0.88); z-index:10; align-items:center; justify-content:center; flex-direction:column; gap:10px; border-radius:8px;">
+          <div class="spinner"></div>
+          <p style="color:#667eea; font-weight:500; margin:0;">Đang tải sản phẩm...</p>
+        </div>
+
+        <!-- Product details — always visible, content updates in-place -->
+        <div id="productDetails">
+          <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap;">
+            <div class="product-image" style="margin-bottom: 0; flex-shrink: 0; width: 160px; margin: 0 auto;">
+              <img id="productImage" src="" alt="Product" style="width: 100%; height: auto; border-radius: 8px; display:none;">
+            </div>
+
+            <div class="product-info" style="margin-bottom: 0; flex: 1; min-width: 250px;">
+              <h3 id="productTitle">Mời bạn mở trang sản phẩm...</h3>
+              <div class="price-info">
+                <span class="label">Giá:</span>
+                <span class="price" id="productPrice" style="color:#ccc;">–</span>
+                <span class="currency" style="color:#ccc;">¥</span>
+              </div>
+
+              <div id="original-price-info" style="display:none;">
+                <span class="label">Giá gốc:</span>
+                <span class="original-price" id="productOriginalPrice">–</span>
+                <span class="currency">¥</span>
+              </div>
+              <div id="productSize" style="display:none;">
+                <span class="label">Kích thước:</span>
+                <span id="productSizeValue">–</span>
+              </div>
+              <div id="productColor" style="display:none;">
+                <span class="label">Màu sắc:</span>
+                <span id="productColorValue">–</span>
+              </div>
+              <div class="seller-info">
+                <span class="label">Shop:</span>
+                <span id="productSeller" style="color:#ccc;">–</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px;">
+            <div class="form-group" style="margin-bottom: 0; width: 80px; flex-shrink: 0;">
+              <label for="quantity">Số lượng:</label>
+              <input type="number" id="quantity" class="quantity-input" min="1" value="1"
+                style="width: 100% !important; box-sizing: border-box;">
+            </div>
+            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 0;">
+              <label for="productLink">Link sản phẩm:</label>
+              <input type="text" id="productLink" readonly
+                style="width: 100%; box-sizing: border-box; text-overflow: ellipsis;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="note">Ghi chú:</label>
+            <textarea id="note" rows="2" placeholder="Thêm ghi chú về sản phẩm..."></textarea>
+          </div>
+
+          <button class="btn btn-primary" id="addToCartBtn" disabled style="opacity:0.5;">
+            ➕ Thêm vào giỏ
+          </button>
+
+          <button class="btn btn-secondary" id="refreshBtn">
+            🔄 Làm mới
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Cart Tab -->
+    <div class="tab-content" id="cartTab">
+      <div class="cart-toolbar" style="margin-bottom: 12px;">
+        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+          <input type="checkbox" id="selectAllProducts" style="width: 16px; height: 16px; cursor: pointer;">
+          Chọn tất cả
+        </label>
+      </div>
+      <div id="cartItems"></div>
+
+      <div class="cart-summary" id="cartSummary" style="display: none;">
+        <div class="summary-row">
+          <span>Tổng số sản phẩm:</span>
+          <span id="totalItems">0</span>
+        </div>
+        <div class="summary-row">
+          <span>Tổng tiền (¥):</span>
+          <span id="totalAmount">0</span>
+        </div>
+
+        <div class="form-group">
+          <label for="customerSelect">Khách hàng:</label>
+          <select id="customerSelect">
+            <option value="">-- Chọn khách hàng --</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" id="createOrderBtn">
+          📦 Tạo đơn hàng
+        </button>
+        <button class="btn btn-danger" id="clearCartBtn">
+          🗑️ Xóa giỏ hàng
+        </button>
+      </div>
+
+      <div id="emptyCart" style="display: none;">
+        <p class="info-message">🛒 Giỏ hàng trống</p>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content" id="settingsTab">
+      <div class="form-group">
+        <label for="apiEndpoint">API Endpoint:</label>
+        <input type="text" id="apiEndpoint" placeholder="http://127.0.0.1:8000/graphql">
+      </div>
+
+      <div class="form-group">
+        <label for="frontendOrderUrl">Frontend Order Form URL:</label>
+        <input type="text" id="frontendOrderUrl" placeholder="http://localhost:5173/orders/external/create">
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="autoExtract">
+          Tự động trích xuất khi tải trang
+        </label>
+      </div>
+
+      <button class="btn btn-primary" id="saveSettingsBtn">
+        💾 Lưu cài đặt
+      </button>
+
+      <div class="info-section">
+        <h4>Hướng dẫn sử dụng:</h4>
+        <ol>
+          <li>Truy cập trang chi tiết sản phẩm trên Tmall/Taobao</li>
+          <li>Click vào icon extension để xem thông tin</li>
+          <li>Điều chỉnh số lượng và thêm ghi chú nếu cần</li>
+          <li>Click "Thêm vào giỏ" để lưu sản phẩm</li>
+          <li>Chuyển sang tab "Giỏ hàng" để tạo đơn</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Status messages -->
+    <div id="statusMessage" class="status-message"></div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+
+</html>

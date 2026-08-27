@@ -1,6 +1,6 @@
 import { Tag } from "antd";
 import dayjs from "dayjs";
-import type { CnBatchStatus, CnPackage } from "../../types";
+import type { CnBatchStatus, CnPackage } from "../../shared/types";
 import type { BatchApiRecord, BatchEditFormValues, BatchPackageRow, BatchShippingType, BatchUpdateInput, BatchViewModel } from "./types";
 
 const DEFAULT_RECEIVING_WAREHOUSE = "Kho Hà Nội (VN)";

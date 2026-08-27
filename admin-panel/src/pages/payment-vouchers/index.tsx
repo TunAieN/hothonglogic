@@ -136,23 +136,27 @@ const calculatePaymentBreakdown = (selectedPackages: EligiblePaymentPackage[], p
   });
 
   const orderRows = Array.from(ordersById.values());
-  const productAmount = orderRows.reduce((sum, order) => sum + toMoneyNumber(order.product_total_vnd), 0);
+  const fallbackProductAmount = orderRows.reduce((sum, order) => sum + toMoneyNumber(order.product_total_vnd), 0);
+  const productAmount = preview ? toMoneyNumber(preview.product_total) : fallbackProductAmount;
   const purchaseFee = 0;
   const foreignDomesticFee = 0;
   const orderSurcharge = 0;
-  const orderTotal = productAmount + purchaseFee + foreignDomesticFee + orderSurcharge;
+  const orderTotal = preview ? toMoneyNumber(preview.order_total) : productAmount + purchaseFee + foreignDomesticFee + orderSurcharge;
 
   const weightShippingFee = toMoneyNumber(preview?.shipping_fee_total);
   const localShippingFee = toMoneyNumber(preview?.domestic_shipping_fee);
   const shippingSurcharge = toMoneyNumber(preview?.surcharge_total);
   const shippingTotal = weightShippingFee + localShippingFee + shippingSurcharge;
 
-  const totalPayable = orderTotal + shippingTotal;
-  const depositPaid = orderRows.reduce((sum, order) => sum + toMoneyNumber(order.deposit_paid_amount_vnd), 0);
+  const totalPayable = preview ? toMoneyNumber(preview.gross_total) : orderTotal + shippingTotal;
+  const fallbackDepositPaid = orderRows.reduce((sum, order) => sum + toMoneyNumber(order.deposit_paid_amount_vnd), 0);
+  const depositPaid = preview ? toMoneyNumber(preview.deposit_applied) : fallbackDepositPaid;
   const previousPaidAmount = 0;
   const balanceApplied = toMoneyNumber(preview?.customer_credit_applied);
   const discountAmount = 0;
-  const remainingAmount = Math.max(totalPayable - depositPaid - previousPaidAmount - balanceApplied - discountAmount, 0);
+  const remainingAmount = preview
+    ? toMoneyNumber(preview.remaining_amount)
+    : Math.max(totalPayable - depositPaid - previousPaidAmount - balanceApplied - discountAmount, 0);
 
   return {
     productAmount,
@@ -1050,7 +1054,11 @@ export const PaymentVouchersPage = () => {
       <Result status="success" title="Tạo phiếu thanh toán thành công!" subTitle={successVoucher?.voucher_code} extra={<Space direction="vertical" style={{ width: "100%" }}>
         <Descriptions column={1} size="small">
           <Descriptions.Item label="Khách hàng">{successVoucher?.customer.name}</Descriptions.Item>
-          <Descriptions.Item label="Tổng phải trả">{money(successVoucher?.total_amount)}</Descriptions.Item>
+          <Descriptions.Item label="Tổng giá trị đơn hàng">{money(successVoucher?.base_amount_vnd)}</Descriptions.Item>
+          <Descriptions.Item label="Tổng trước khấu trừ">{money(toMoneyNumber(successVoucher?.base_amount_vnd) + toMoneyNumber(successVoucher?.shipping_fee_total) + toMoneyNumber(successVoucher?.domestic_shipping_fee) + toMoneyNumber(successVoucher?.surcharge_total))}</Descriptions.Item>
+          <Descriptions.Item label="Tiền cọc được khấu trừ">{money(successVoucher?.deposit_applied)}</Descriptions.Item>
+          <Descriptions.Item label="Tiền dư áp dụng">{money(successVoucher?.customer_credit_applied)}</Descriptions.Item>
+          <Descriptions.Item label="Số tiền cần thanh toán">{money(successVoucher?.total_amount)}</Descriptions.Item>
           <Descriptions.Item label="Đã thanh toán">{money(successVoucher?.paid_amount)}</Descriptions.Item>
           <Descriptions.Item label="Còn phải trả">{money(successVoucher?.remaining_amount)}</Descriptions.Item>
           <Descriptions.Item label="Trạng thái"><Tag color="gold">Chờ thanh toán</Tag></Descriptions.Item>

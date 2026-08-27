@@ -1,0 +1,254 @@
+# =========================
+# Shipping / Exports
+# =========================
+
+input ShippingQueueFilterInput {
+  search: String
+  status: String
+  carrier: String
+  date_from: String
+  date_to: String
+  order_ids: [ID!]
+}
+
+input ShippingTaskFilterInput {
+  search: String
+  status: String
+  carrier_code: String
+  delivery_staff_id: ID
+  date_from: String
+  date_to: String
+  sort_field: String
+  sort_direction: String
+}
+
+input ExportSlipFilterInput {
+  search: String
+  status: String
+  carrier_code: String
+  delivery_staff_id: ID
+  date_from: String
+  date_to: String
+  sort_direction: String
+}
+
+input CreateShippingTaskInput {
+  order_ids: [ID!]!
+  delivery_staff_id: ID!
+  carrier_code: String!
+  carrier_name: String
+  scheduled_delivery_date: String!
+  vn_warehouse_id: ID!
+  note: String
+  service_type: String
+  delivery_method: String
+  estimated_shipping_fee: Float
+  cod_amount: Float
+  transport_note: String
+}
+
+type ShippingPaginatorInfo {
+  currentPage: Int!
+  lastPage: Int!
+  perPage: Int!
+  total: Int!
+  firstItem: Int
+  lastItem: Int
+}
+
+type ShippingQueueStats {
+  total_orders: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+}
+
+type ShippingPackage {
+  id: ID!
+  tracking_number: String
+  order_id: ID
+  order_code: String
+  customer_name: String
+  customer_phone: String
+  length: Float!
+  width: Float!
+  height: Float!
+  weight: Float!
+  value: Float
+}
+
+type ShippingQueueOrder {
+  id: ID!
+  order_code: String!
+  tracking_numbers: [String!]!
+  customer_name: String!
+  customer_phone: String
+  customer_address: String
+  carrier: String
+  payment_date: DateTime
+  package_count: Int!
+  total_weight: Float!
+  total_value: Float!
+  status: String!
+  packages: [ShippingPackage!]!
+}
+
+type ShippingQueuePage {
+  data: [ShippingQueueOrder!]!
+  stats: ShippingQueueStats!
+  paginatorInfo: ShippingPaginatorInfo!
+}
+
+type ShippingTaskOptionUser {
+  id: ID!
+  name: String!
+  phone: String
+}
+
+type ShippingCarrierOption {
+  code: String!
+  name: String!
+}
+
+type ShippingTaskOptionWarehouse {
+  id: ID!
+  name: String!
+  address: String
+}
+
+type ShippingTaskOptions {
+  deliveryStaff: [ShippingTaskOptionUser!]!
+  warehouses: [ShippingTaskOptionWarehouse!]!
+  carriers: [ShippingCarrierOption!]!
+}
+
+type ShippingTaskStats {
+  total_tasks: Int!
+  preparing: Int!
+  in_transit: Int!
+  completed: Int!
+  cancelled: Int!
+}
+
+type ShippingTask {
+  id: ID!
+  task_code: String!
+  export_slip_id: ID
+  export_code: String
+  delivery_staff_id: ID
+  delivery_staff_name: String
+  delivery_staff_phone: String
+  carrier_name: String!
+  warehouse_name: String
+  order_count: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+  created_at: DateTime
+  scheduled_delivery_date: String
+  status: String!
+  note: String
+  service_type: String
+  delivery_method: String
+  estimated_shipping_fee: Float!
+  cod_amount: Float
+  transport_note: String
+  orders: [ExportSlipOrder!]!
+}
+
+type ShippingTaskPage {
+  data: [ShippingTask!]!
+  stats: ShippingTaskStats!
+  paginatorInfo: ShippingPaginatorInfo!
+}
+
+type ExportSlipCustomer {
+  order_code: String
+  name: String
+  phone: String
+  address: String
+}
+
+type ExportSlipOrder {
+  id: ID!
+  order_code: String
+  customer_name: String
+  package_count: Int!
+  total_weight: Float!
+  total_value: Float!
+}
+
+type ExportSlip {
+  id: ID!
+  export_code: String!
+  task_id: ID
+  task_code: String
+  status: String!
+  created_at: DateTime
+  scheduled_delivery_date: String
+  creator_name: String
+  delivery_staff_name: String
+  delivery_staff_phone: String
+  carrier_name: String
+  warehouse_name: String
+  note: String
+  service_type: String
+  delivery_method: String
+  transport_note: String
+  order_count: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+  customers: [ExportSlipCustomer!]
+  orders: [ExportSlipOrder!]
+  packages: [ShippingPackage!]
+  payment: ExportSlipPayment
+  financials: ExportSlipFinancials
+  history: [ExportSlipHistory!]
+}
+
+type ExportSlipPayment {
+  status: String!
+  paid_package_count: Int!
+  total_package_count: Int!
+  paid_at: DateTime
+  payment_method: String
+  transaction_code: String
+  bank_name: String
+  confirmed_by: String
+  paid_amount: Float!
+}
+
+type ExportSlipFinancials {
+  order_value: Float!
+  shipping_fee: Float!
+  cod_amount: Float
+  total_amount: Float!
+}
+
+type ExportSlipHistory {
+  id: ID!
+  action: String!
+  from_status: String
+  to_status: String
+  actor_name: String
+  created_at: DateTime
+}
+
+type ExportSlipPage {
+  data: [ExportSlip!]!
+  stats: ExportSlipStats!
+  paginatorInfo: ShippingPaginatorInfo!
+}
+
+type ExportSlipStats {
+  total_slips: Int!
+  total_packages: Int!
+  total_weight: Float!
+  total_value: Float!
+}
+
+type CreateShippingTaskPayload {
+  task: ShippingTask!
+  message: String!
+}

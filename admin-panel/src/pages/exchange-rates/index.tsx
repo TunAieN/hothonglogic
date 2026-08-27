@@ -11,7 +11,7 @@ import {
   fetchExchangeRates,
   type ExchangeRate,
 } from "./api";
-import { formatExchangeRate } from "../../utils/currency";
+import { formatExchangeRate } from "../../shared/utils/currency";
 
 const { Title, Text } = Typography;
 

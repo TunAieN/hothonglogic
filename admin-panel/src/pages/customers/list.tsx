@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteButton, List, ShowButton, useTable } from "@refinedev/antd";
 import { Button, Card, Col, DatePicker, Form, Input, Row, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType, TableProps } from "antd/es/table";
@@ -13,10 +13,10 @@ import {
     UserOutlined,
 } from "@ant-design/icons";
 import type { CrudFilter } from "@refinedev/core";
-import type { ICustomer } from "../../interfaces";
+import type { Customer as ICustomer } from "../../shared/types";
 import { CustomerFormModal } from "./components/CustomerFormModal";
-import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
+import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -146,12 +146,12 @@ export const CustomerList = () => {
             },
         ].filter((filter) => filter.value !== undefined && filter.value !== "");
 
-    const applyCustomerFilters = (values: CustomerFilterValues) => {
+    const applyCustomerFilters = useCallback((values: CustomerFilterValues) => {
         const nextFilters = buildCustomerFilters(values);
 
         setCurrentPage(1);
         setFilters(nextFilters, "replace");
-    };
+    }, [setCurrentPage, setFilters]);
 
     const debouncedApplyCustomerFilters = useMemo(
         () => (values: CustomerFilterValues) => {
@@ -163,7 +163,7 @@ export const CustomerList = () => {
                 applyCustomerFilters(values);
             }, 500);
         },
-        [setCurrentPage, setFilters],
+        [applyCustomerFilters],
     );
 
     useEffect(() => () => {
@@ -460,4 +460,3 @@ export const CustomerList = () => {
         </List>
     );
 };
-

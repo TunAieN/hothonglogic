@@ -15,6 +15,7 @@ use Throwable;
 class VnPackageEvidenceController extends Controller
 {
     public const MAX_IMAGES = 5;
+
     public const MAX_FILE_KILOBYTES = 5120;
 
     public function store(Request $request, VnPackage $vnPackage): JsonResponse

@@ -2,14 +2,13 @@
 
 namespace App\GraphQL\Resolvers;
 
-use App\Services\ShippingRateService;
+use App\Services\Shipping\ShippingRateService;
 
 class ShippingRateResolver
 {
     public function __construct(
         private readonly ShippingRateService $service,
-    ) {
-    }
+    ) {}
 
     public function list($_, array $args)
     {

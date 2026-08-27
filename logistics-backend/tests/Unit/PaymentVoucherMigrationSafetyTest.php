@@ -8,7 +8,7 @@ class PaymentVoucherMigrationSafetyTest extends TestCase
 {
     public function test_payment_voucher_migration_is_non_destructive_on_rollback(): void
     {
-        $migration = file_get_contents(dirname(__DIR__, 2) . '/database/migrations/2026_06_30_000019_create_payment_voucher_domain.php');
+        $migration = file_get_contents(dirname(__DIR__, 2).'/database/migrations/2026_06_30_000019_create_payment_voucher_domain.php');
         $downBody = $this->extractMethodBody($migration, 'down');
 
         $this->assertStringNotContainsString('dropIfExists', $downBody);
@@ -19,7 +19,7 @@ class PaymentVoucherMigrationSafetyTest extends TestCase
 
     public function test_payment_voucher_migration_declares_expected_tables_and_columns(): void
     {
-        $migration = file_get_contents(dirname(__DIR__, 2) . '/database/migrations/2026_06_30_000019_create_payment_voucher_domain.php');
+        $migration = file_get_contents(dirname(__DIR__, 2).'/database/migrations/2026_06_30_000019_create_payment_voucher_domain.php');
 
         foreach ([
             'payment_vouchers',
@@ -46,7 +46,7 @@ class PaymentVoucherMigrationSafetyTest extends TestCase
 
     private function extractMethodBody(string $source, string $method): string
     {
-        $start = strpos($source, 'function ' . $method);
+        $start = strpos($source, 'function '.$method);
         $this->assertNotFalse($start);
 
         return substr($source, $start);

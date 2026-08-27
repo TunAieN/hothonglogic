@@ -40,7 +40,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
-import type { CnPackage } from "../../types";
+import type { CnPackage } from "../../shared/types";
 import {
   calculateBatchTotals,
   calculatePackageVolume,
@@ -56,8 +56,8 @@ import {
   mapEditFormValuesToInput,
 } from "./helpers";
 import type { BatchApiRecord, BatchEditFormValues, BatchFilters, BatchPackageRow, BatchViewModel } from "./types";
-import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../components/admin-loading";
-import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
+import { PageHeader, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 import { DispatchBatchModal } from "./DispatchBatchModal";
 import type { DispatchBatchInput } from "./DispatchBatchModal";
 import { EditBatchModal } from "./EditBatchModal";
@@ -234,7 +234,8 @@ export const CnBatchesPage = () => {
   const screens = Grid.useBreakpoint();
   const [filterForm] = Form.useForm<BatchFilters>();
   const [editForm] = Form.useForm<BatchEditFormValues>();
-  const editingPackages = Form.useWatch("packages", editForm) ?? [];
+  const watchedEditingPackages = Form.useWatch("packages", editForm);
+  const editingPackages = useMemo(() => watchedEditingPackages ?? [], [watchedEditingPackages]);
   const [filters, setFilters] = useState<BatchFilters>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [selectedRows, setSelectedRows] = useState<BatchViewModel[]>([]);

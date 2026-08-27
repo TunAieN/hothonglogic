@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class PaymentVoucher extends Model
 {
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_WAITING_PAYMENT = 'waiting_payment';
+
     public const STATUS_PARTIAL_PAID = 'partial_paid';
+
     public const STATUS_PAID = 'paid';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     public const ACTIVE_STATUSES = [

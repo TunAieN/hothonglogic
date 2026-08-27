@@ -3,17 +3,16 @@
 namespace App\GraphQL\Resolvers;
 
 use App\Models\Customer;
-use Illuminate\Database\Eloquent\Builder;
 use App\Services\Customers\CustomerInputService;
+use Illuminate\Database\Eloquent\Builder;
 
 class CustomerResolver
 {
     public function __construct(
         private readonly CustomerInputService $customerInputService
-    ) {
-    }
+    ) {}
 
-     public function list($_, array $args): Builder
+    public function list($_, array $args): Builder
     {
         $filter = $args['filter'] ?? [];
 
@@ -39,14 +38,14 @@ class CustomerResolver
 
                 $query->where(function (Builder $nestedQuery) use ($search) {
                     $nestedQuery
-                        ->where('code', 'like', '%' . $search . '%')
-                        ->orWhere('name', 'like', '%' . $search . '%')
-                        ->orWhere('phone', 'like', '%' . $search . '%')
-                        ->orWhere('email', 'like', '%' . $search . '%')
-                        ->orWhere('province', 'like', '%' . $search . '%')
-                        ->orWhere('district', 'like', '%' . $search . '%')
-                        ->orWhere('ward', 'like', '%' . $search . '%')
-                        ->orWhere('address', 'like', '%' . $search . '%');
+                        ->where('code', 'like', '%'.$search.'%')
+                        ->orWhere('name', 'like', '%'.$search.'%')
+                        ->orWhere('phone', 'like', '%'.$search.'%')
+                        ->orWhere('email', 'like', '%'.$search.'%')
+                        ->orWhere('province', 'like', '%'.$search.'%')
+                        ->orWhere('district', 'like', '%'.$search.'%')
+                        ->orWhere('ward', 'like', '%'.$search.'%')
+                        ->orWhere('address', 'like', '%'.$search.'%');
                 });
             })
             ->when($this->filled($filter, 'status'), fn (Builder $query) => $query->where(
@@ -54,13 +53,13 @@ class CustomerResolver
                 $filter['status'],
             ))
             ->when($this->filled($filter, 'vip_group'), function (Builder $query) use ($filter) {
-                $query->where('vip_group', 'like', '%' . trim((string) $filter['vip_group']) . '%');
+                $query->where('vip_group', 'like', '%'.trim((string) $filter['vip_group']).'%');
             })
             ->when($this->filled($filter, 'province'), function (Builder $query) use ($filter) {
-                $query->where('province', 'like', '%' . trim((string) $filter['province']) . '%');
+                $query->where('province', 'like', '%'.trim((string) $filter['province']).'%');
             })
             ->when($this->filled($filter, 'phone'), function (Builder $query) use ($filter) {
-                $query->where('phone', 'like', '%' . trim((string) $filter['phone']) . '%');
+                $query->where('phone', 'like', '%'.trim((string) $filter['phone']).'%');
             })
             ->when($this->filled($filter, 'created_from'), fn (Builder $query) => $query->where(
                 'created_at',
@@ -75,13 +74,13 @@ class CustomerResolver
             ->latest('created_at')
             ->latest('id');
     }
-     public function show($_, array $args): Customer
+
+    public function show($_, array $args): Customer
     {
         return Customer::query()
             ->withCount('orders')
             ->findOrFail($args['id']);
     }
-
 
     public function create($_, array $args): Customer
     {

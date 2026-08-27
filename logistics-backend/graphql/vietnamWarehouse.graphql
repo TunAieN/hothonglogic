@@ -1,0 +1,220 @@
+# =========================
+# Vietnam Warehouse
+# =========================
+
+type VnWarehouse {
+  id: ID!
+  code: String!
+  name: String!
+  address: String
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+type VnBatchReceipt {
+  id: ID!
+  cn_batch_id: ID!
+  vn_warehouse_id: ID
+  batch_code: String!
+  actual_container_count: Int
+  actual_batch_weight: Float
+  package_material_weight: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  actual_volume: Float
+  outer_condition: String!
+  batch_weight_difference: Float
+  requires_resolution: Boolean!
+  wooden_fee: Float
+  other_fee: Float
+  status: String!
+  total_expected_packages: Int!
+  total_received_packages: Int!
+  total_inspected_packages: Int!
+  total_missing_packages: Int!
+  total_extra_packages: Int!
+  total_damaged_packages: Int!
+  note: String
+  handled_by: ID
+  received_at: DateTime
+  confirmed_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  batch: CnBatch! @belongsTo(relation: "batch")
+  warehouse: VnWarehouse @belongsTo(relation: "warehouse")
+  packages: [VnPackage!]! @hasMany(relation: "packages")
+  handler: User @belongsTo(relation: "handler")
+}
+
+type VnPackage {
+  id: ID!
+  vn_batch_receipt_id: ID
+  cn_batch_id: ID
+  cn_package_id: ID
+  tracking_number_snapshot: String
+  cn_weight_snapshot: Float
+  actual_weight: Float
+  weight_difference: Float
+  actual_length: Float
+  actual_width: Float
+  actual_height: Float
+  actual_volume: Float
+  physical_condition: String!
+  requires_item_inspection: Boolean!
+  item_inspection_status: String!
+  exception_reason: String
+  error_resolution_status: String
+  resolution_note: String
+  resolution_action: String
+  resolution_result: String
+  expected_completion_at: DateTime
+  resolved_by: ID
+  error_detected_at: DateTime
+  error_resolved_at: DateTime
+  extra_fee: Float
+  wooden_fee: Float
+  other_fee: Float
+  order_code_snapshot: String
+  customer_name_snapshot: String
+  inspection_status: String!
+  payment_status: String
+  payment_voucher_id: ID
+  payment_locked_at: DateTime
+  delivery_status: String
+  note: String
+  handled_by: ID
+  scanned_at: DateTime
+  received_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  receipt: VnBatchReceipt @belongsTo(relation: "receipt")
+  cn_batch: CnBatch @belongsTo(relation: "cnBatch")
+  cn_package: CnPackage @belongsTo(relation: "cnPackage")
+  inspected_items: [VnPackageItem!]! @hasMany(relation: "inspectedItems")
+  evidences: [VnPackageEvidence!]! @hasMany(relation: "evidences")
+  handler: User @belongsTo(relation: "handler")
+  resolver: User @belongsTo(relation: "resolver")
+}
+
+type VnPackageEvidence {
+  id: ID!
+  vn_package_id: ID!
+  evidence_type: String!
+  url: String!
+  thumbnail_url: String
+  original_name: String!
+  mime_type: String!
+  file_size: Int!
+  created_at: DateTime!
+  creator: User @belongsTo(relation: "creator")
+}
+
+type VnPackageItem {
+  id: ID!
+  vn_package_id: ID!
+  order_item_id: ID
+  product_name_snapshot: String!
+  variant_snapshot: String
+  expected_quantity: Int!
+  received_quantity: Int!
+  condition_status: String!
+  note: String
+  order_item: OrderItem @belongsTo(relation: "orderItem")
+}
+
+type VietnamReceiptSummary {
+  expectedCount: Int!
+  receivedCount: Int!
+  inspectedCount: Int!
+  extraCount: Int!
+  damagedCount: Int!
+  mismatchCount: Int!
+  weightMismatchCount: Int!
+  itemInspectionPendingCount: Int!
+  missingCount: Int!
+  storedCount: Int!
+  receivableCount: Int!
+  errorCount: Int!
+  batchWeightMismatch: Boolean!
+  containerMismatch: Boolean!
+  batchResolutionPending: Boolean!
+  hasIssues: Boolean!
+  matched: Boolean!
+}
+
+type VietnamWarehouseReceiptPayload {
+  batch: CnBatch!
+  receipt: VnBatchReceipt
+  expectedPackages: [CnPackage!]!
+  receivedPackages: [VnPackage!]!
+  summary: VietnamReceiptSummary!
+}
+
+input StartVietnamWarehouseReceiptInput {
+    batch_code: String!
+    vn_warehouse_id: ID
+    actual_container_count: Int
+    actual_batch_weight: Float
+    package_material_weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    actual_volume: Float
+    wooden_fee: Float
+    other_fee: Float
+    outer_condition: String
+    received_at: DateTime
+    note: String
+}
+
+input ScanVietnamPackageInput {
+    receipt_id: ID!
+    tracking_number: String!
+    actual_weight: Float
+    actual_length: Float
+    actual_width: Float
+    actual_height: Float
+    actual_volume: Float
+    physical_condition: String
+    requires_item_inspection: Boolean
+    exception_reason: String
+    extra_fee: Float
+    wooden_fee: Float
+    other_fee: Float
+    order_code_snapshot: String
+    customer_name_snapshot: String
+    note: String
+    inspection_status: String
+}
+
+input VietnamWarehousePackageFilterInput {
+  scope: String!
+  tracking_number: String
+  batch_code: String
+  customer_name: String
+  warehouse_id: ID
+  warehouse_name: String
+  handled_by: ID
+  handler_name: String
+  error_type: String
+  resolution_status: String
+  date_from: DateTime
+  date_to: DateTime
+}
+
+input VietnamPackageItemInspectionInput {
+    order_item_id: ID!
+    received_quantity: Int!
+    condition_status: String!
+    note: String
+}
+
+input UpdateVietnamPackageErrorInput {
+  package_id: ID!
+  resolution_status: String!
+  resolution_action: String
+  resolution_result: String
+  expected_completion_at: DateTime
+  note: String
+}

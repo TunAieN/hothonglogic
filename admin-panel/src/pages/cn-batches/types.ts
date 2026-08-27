@@ -1,5 +1,5 @@
 import type { Dayjs } from "dayjs";
-import type { CnBatch, CnBatchStatus, CnBatchUpdateInput, CnPackage } from "../../types";
+import type { CnBatch, CnBatchStatus, CnBatchUpdateInput, CnPackage } from "../../shared/types";
 
 export type BatchShippingType = "fast" | "normal";
 

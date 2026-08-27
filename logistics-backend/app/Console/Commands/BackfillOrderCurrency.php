@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
-use App\Services\OrderPricingService;
+use App\Services\Orders\OrderPricingService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -31,16 +31,19 @@ class BackfillOrderCurrency extends Command
 
         if (! $productCnyOnly && ($rate === '' || ! is_numeric($rate) || (float) $rate <= 0)) {
             $this->error('Please provide --exchange-rate with a value greater than 0, for example --exchange-rate=3600, or use --product-cny-only.');
+
             return self::FAILURE;
         }
 
         if ($apply && $orderIds === []) {
             $this->error('--apply requires one or more explicit --order-id values. Bulk apply is not allowed by this command.');
+
             return self::FAILURE;
         }
 
         if ($allowPaymentVoucher && $orderIds === []) {
             $this->error('--allow-payment-voucher is only allowed together with one or more explicit --order-id values. It cannot run in bulk.');
+
             return self::FAILURE;
         }
 
@@ -183,6 +186,7 @@ class BackfillOrderCurrency extends Command
                             $locked->forceFill([
                                 'product_total_cny' => $totals['product_total_cny'],
                             ])->save();
+
                             return;
                         }
 
@@ -197,7 +201,7 @@ class BackfillOrderCurrency extends Command
                     $summary['updated']++;
                     $ids['updated'][] = $order->id;
                     $after = $this->snapshot(Order::query()->findOrFail($order->id));
-                    $this->info('UPDATED order_id=' . $order->id . ' before=' . json_encode($before, JSON_UNESCAPED_UNICODE) . ' after=' . json_encode($after, JSON_UNESCAPED_UNICODE) . ' payment_voucher_changed=no total_amount_changed=no status_changed=no');
+                    $this->info('UPDATED order_id='.$order->id.' before='.json_encode($before, JSON_UNESCAPED_UNICODE).' after='.json_encode($after, JSON_UNESCAPED_UNICODE).' payment_voucher_changed=no total_amount_changed=no status_changed=no');
                 } catch (Throwable $exception) {
                     $summary['errors']++;
                     $ids['failed'][] = $order->id;
@@ -211,8 +215,8 @@ class BackfillOrderCurrency extends Command
             $ids[$key] = array_values(array_unique($value));
         }
 
-        $this->info('Summary: ' . json_encode($summary, JSON_UNESCAPED_UNICODE));
-        $this->info('IDs: ' . json_encode($ids, JSON_UNESCAPED_UNICODE));
+        $this->info('Summary: '.json_encode($summary, JSON_UNESCAPED_UNICODE));
+        $this->info('IDs: '.json_encode($ids, JSON_UNESCAPED_UNICODE));
 
         return $summary['errors'] > 0 ? self::FAILURE : self::SUCCESS;
     }

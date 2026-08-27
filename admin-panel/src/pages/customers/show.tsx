@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
-import { formatCny, formatVnd, resolveLegacyCnyTotal, toNumber } from "../../utils/currency";
+import { formatCny, formatVnd, resolveLegacyCnyTotal, toNumber } from "../../shared/utils/currency";
 import { Show } from "@refinedev/antd";
 import { useShow } from "@refinedev/core";
 import {
@@ -36,8 +36,7 @@ import {
     UserOutlined,
     WalletOutlined,
 } from "@ant-design/icons";
-import type { ICustomer } from "../../interfaces";
-import type { CustomerStatus, OrderSummary } from "../../types";
+import type { Customer as ICustomer, CustomerStatus, OrderSummary } from "../../shared/types";
 import { CustomerFormModal } from "./components/CustomerFormModal";
 import "./customer-show.css";
 

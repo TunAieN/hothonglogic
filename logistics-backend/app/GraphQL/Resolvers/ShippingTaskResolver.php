@@ -2,13 +2,11 @@
 
 namespace App\GraphQL\Resolvers;
 
-use App\Services\ShippingTaskService;
+use App\Services\Shipping\ShippingTaskService;
 
 class ShippingTaskResolver
 {
-    public function __construct(private readonly ShippingTaskService $service)
-    {
-    }
+    public function __construct(private readonly ShippingTaskService $service) {}
 
     public function queue($_, array $args): array
     {

@@ -1,0 +1,59 @@
+# =========================
+# Auth / Users / Roles / Employees
+# =========================
+
+type AuthPayload {
+  access_token: String!
+  token_type: String!
+  user: User!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  role_id: ID
+  role: Role @belongsTo
+  phone: String
+  address: String
+  status: String
+  email_verified_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+}
+
+type Role {
+  id: ID!
+  name: String!
+  permissions: [String!]
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+input EmployeeFilterInput {
+  search: String
+  role_id: ID
+  status: String
+  created_from: DateTime
+  created_to: DateTime
+}
+
+input CreateEmployeeInput {
+  name: String!
+  email: String!
+  password: String!
+  role_id: ID!
+  phone: String
+  address: String
+  status: String
+}
+
+input UpdateEmployeeInput {
+  name: String!
+  email: String!
+  password: String
+  role_id: ID!
+  phone: String
+  address: String
+  status: String!
+}

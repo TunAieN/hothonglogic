@@ -9,7 +9,7 @@ import { ReceiveBatchModal } from "./components/ReceiveBatchModal";
 import { StoredPackageDetailModal } from "./components/StoredPackageDetailModal";
 import { PackageErrorDetailModal } from "./components/PackageErrorDetailModal";
 import { VietnamWarehouseFilters } from "./components/VietnamWarehouseFilters";
-import { PageHeader, StatCard, StatsGrid } from "../../components/admin-page-summary";
+import { PageHeader, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 import {
   buildBatchInfoDefaults, confirmVietnamWarehouseReceipt, fetchVietnamWarehouseOverview,
   fetchVietnamWarehousePackage, fetchVietnamWarehousePackages, fetchVietnamWarehouseReceipt,
