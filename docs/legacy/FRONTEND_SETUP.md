@@ -1,5 +1,7 @@
 # Frontend Setup Guide
 
+> **Legacy:** Frontend hiện tại là React + TypeScript tại `admin-panel/`, không phải Vue trong `frontend/`.
+
 The frontend is built with **Vue 3** and uses **Vanilla CSS** for styling.
 
 ## Prerequisites

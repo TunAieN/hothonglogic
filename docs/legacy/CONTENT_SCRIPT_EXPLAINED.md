@@ -1,5 +1,7 @@
 # GIẢI MÃ CONTENT SCRIPT (content.js)
 
+> **Legacy:** Giải thích này có thể không phản ánh toàn bộ selector và fallback đang dùng trong `content.js` hiện tại.
+
 File `content.js` là "trái tim" của Extension, chịu trách nhiệm chạy trực tiếp trên trang Taobao/Tmall để đọc mã nguồn HTML và trích xuất dữ liệu sản phẩm.
 
 Dưới đây là giải thích chi tiết từng hàm và logic hoạt động:

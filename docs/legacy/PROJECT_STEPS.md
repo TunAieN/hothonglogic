@@ -1,5 +1,7 @@
 # HỒ SƠ CHI TIẾT CÁC BƯỚC PHÁT TRIỂN DỰ ÁN LOGISTICS
 
+> **Legacy:** Tài liệu này mô tả kiến trúc cũ và không còn là hướng dẫn cài đặt hiện hành. Xem `README.md` ở root và `docs/setup/`.
+
 Tài liệu này mô tả chi tiết từng bước đã thực hiện để xây dựng hệ thống quản lý Logistics và Extension đặt hàng Tmall/Taobao, bao gồm **các câu lệnh thực thi** cụ thể.
 
 ---

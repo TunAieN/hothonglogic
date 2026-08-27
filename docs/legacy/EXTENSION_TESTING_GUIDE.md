@@ -1,5 +1,7 @@
 # Chrome Extension Testing Guide - Taobao Product
 
+> **Legacy:** URL, endpoint và trạng thái backend trong tài liệu này có thể đã lỗi thời. Dùng `docs/setup/extension.md` cho quy trình hiện tại.
+
 ## Test URL
 ```
 https://item.taobao.com/item.htm?id=988769064897

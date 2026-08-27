@@ -1,7 +1,8 @@
 {
-  "name": "admin-panel",
+  "name": "hothonglogic-admin",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Operations admin panel for the Hothonglogic logistics platform",
   "type": "module",
   "scripts": {
     "dev": "vite",

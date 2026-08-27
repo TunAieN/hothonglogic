@@ -155,6 +155,10 @@ CREATE TABLE cn_package_items (
     UNIQUE KEY uniq_cn_package_item (cn_package_id, order_item_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- LEGACY REFERENCE ONLY. DO NOT USE TO INITIALIZE OR UPDATE A CURRENT DATABASE.
+-- Laravel migrations in logistics-backend/database/migrations are the schema source of truth.
+-- Demo credentials have been removed from this archived snapshot.
+
 -- =============================================
 -- CHINA BATCHES
 -- =============================================
@@ -321,10 +325,6 @@ INSERT INTO roles (name, permissions) VALUES
 ('Customer Service', '["orders.create", "orders.update", "orders.read", "customers.all"]'),
 ('Accountant', '["invoices.all", "payments.all", "shipping_rates.all"]'),
 ('Delivery Staff', '["exports.read", "exports.update"]');
-
--- Insert default admin user (password: admin123)
-INSERT INTO users (name, email, password, role_id, phone, address, status) VALUES
-('Admin', 'admin@logistics.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, '0123456789', 'Admin Address', 'active');
 
 -- Insert default Guangzhou warehouse
 INSERT INTO cn_warehouses (code, name, address) VALUES

@@ -1,5 +1,7 @@
 # Logistics System Backend - Laravel API
 
+> **Legacy:** Backend Laravel hiện đã tồn tại tại `logistics-backend/`. Không sử dụng hướng dẫn này để cài đặt hệ thống hiện tại.
+
 This directory will contain the Laravel backend API for the logistics system.
 
 ## Setup Instructions

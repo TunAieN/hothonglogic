@@ -1,186 +1,205 @@
-# Logistics System - Chrome Extension + Backend
+# Hothonglogic Logistics Platform
 
-A comprehensive logistics management system for order processing, warehouse management (China & Vietnam), shipping, invoicing, and delivery tracking.
+Hothonglogic is a monorepo for a logistics workflow spanning product capture from Taobao/Tmall, order administration, China and Vietnam warehouse operations, payments, invoicing, shipping, and reporting.
 
-## 📁 Project Structure
+The repository contains three applications that are deployed independently but share the same business domain and GraphQL contract. The current structure is intentionally retained while the codebase is cleaned up and modularized incrementally.
 
+## Project Overview
+
+- **Chrome Extension** — Vanilla JavaScript, Chrome Manifest V3; captures product data and starts external orders.
+- **Admin Panel** — React, TypeScript, Vite, Refine, and Ant Design; provides the operational user interface.
+- **Backend** — Laravel 10, PHP 8.1+, Lighthouse GraphQL, and Sanctum; owns business workflows and persistence.
+- **Database** — MySQL. Laravel migrations in `logistics-backend/database/migrations/` are the only schema source of truth.
+
+## Architecture
+
+```text
+Taobao/Tmall pages
+       │
+       ▼
+Chrome Extension ───────► Admin Panel ───────► Laravel GraphQL API ───────► MySQL
+                             │                         │
+                             └──── Sanctum token ─────┘
 ```
-extention/
-├── manifest.json           # Chrome extension manifest
-├── content.js             # Tmall product scraper
-├── background.js          # Service worker
-├── popup.html             # Extension UI
-├── popup.js               # Extension logic
-├── popup.css              # Extension styling
-├── icons/                 # Extension icons
-├── database_schema.sql   # Complete database schema
-├── BACKEND_SETUP.md       # Backend setup instructions
-└── backend/              # Laravel API (to be created)
+
+This is a modular monolith, not a microservice architecture. Public routes, GraphQL operations, and database history should remain backward compatible during structural work. See [Architecture overview](docs/architecture/overview.md).
+
+## Folder Structure
+
+```text
+.
+├── admin-panel/             # React + TypeScript admin application
+├── logistics-backend/       # Laravel + Lighthouse GraphQL backend
+├── docs/                    # Current setup/architecture docs and archived material
+├── icons/                   # Chrome Extension icons
+├── background.js            # Extension service worker
+├── content.js               # Taobao/Tmall content script
+├── login.html / login.js    # Extension authentication page
+├── popup.html / popup.js    # Extension side-panel UI and behavior
+└── manifest.json            # Chrome Manifest V3 definition
 ```
 
-## 🚀 Quick Start
+The long-term `apps/` layout is documented as a future migration and is not applied during the initial cleanup.
 
-### 1. Prerequisites
-- **Laragon**: Full, WAMP, or XAMPP (for MySQL & PHP)
-- **Node.js**: v18+ (for Frontend)
-- **Google Chrome**: For the extension
+## Tech Stack
 
-### 2. Backend API Setup
-1. **Import Database**:
-   - Open HeidiSQL or MySQL client.
-   - Create database `logistics_system`.
-   - Run script: `c:\laragon\www\extention\database_schema.sql`.
-2. **Setup API**:
-   - The system works with standalone PHP API out-of-the-box (`api/` folder).
-   - Ensure you can access: `http://localhost/extention/api/customers.php`.
+| Area | Technology |
+| --- | --- |
+| Extension | Vanilla JavaScript, HTML, CSS, Chrome Manifest V3 |
+| Admin | React 19, TypeScript, Vite, Refine, Ant Design |
+| API | Laravel 10, Lighthouse GraphQL, Sanctum |
+| Database | MySQL, Laravel migrations |
+| Quality | ESLint, TypeScript, PHPUnit, Laravel Pint |
 
-### 3. Frontend Setup
-1. Open terminal in `frontend/` folder.
-2. Run `npm install` to install dependencies.
-3. Run `npm run dev` to start the dashboard at `http://localhost:3000`.
+## Requirements
 
-### 4. Chrome Extension Setup
-1. Open Chrome -> `chrome://extensions/`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked** -> Select `c:\laragon\www\extention` folder.
-5. The extension will now be active when visiting Tmall/Taobao
+- PHP 8.1 or newer
+- Composer 2
+- MySQL 8-compatible server
+- Node.js `^20.19.0` or `>=22.12.0` (required by the installed Vite version)
+- npm
+- Google Chrome or another Chromium browser with Manifest V3 support
 
-**Usage:**
-- Visit any Tmall/Taobao product page
-- Click the extension icon
-- Review extracted product information
-- Add to cart with quantity and notes
-- Switch to "Giỏ hàng" tab to create orders
+## Development Setup
 
-### 2. Database Setup
-
-Import the database schema into MySQL:
+Clone the repository, then configure and start the backend and admin panel in separate terminals. Load the repository root as an unpacked extension only after reviewing the extension endpoint settings.
 
 ```bash
-# Using MySQL command line
-mysql -u root -p < database_schema.sql
-
-# Or using Laragon's HeidiSQL
-# 1. Open HeidiSQL from Laragon
-# 2. File → Run SQL file
-# 3. Select database_schema.sql
-# 4. Execute
+git clone https://github.com/TunAiEN/hothonglogic.git
+cd hothonglogic
 ```
 
-This creates:
-- Database: `logistics_system`
-- 15 tables with relationships
-- Default admin user: `admin@logistics.com` / `admin123`
-- Default warehouses and shipping rates
+Terminal 1:
 
-### 3. Backend API
-
-See [BACKEND_SETUP.md](./BACKEND_SETUP.md) for Laravel installation instructions.
-
-## 📦 Features  
-
-### Phase 1 (Current)
-
-✅ **Chrome Extension**
-- Product scraping from Tmall/Taobao
-- Shopping cart management
-- Order creation interface
-
-✅ **Database Schema**
-- Complete relational database design
-- User roles & permissions
-- Order management
-- Warehouse tracking (CN & VN)  
-- Invoicing & payments
-- Shipping rates
-- Delivery tracking
-
-🔨 **In Progress**
-- Laravel backend API
-- Vue 3 frontend application
-
-### Phase 1 Modules (Planned)
-
-1. **User Management** - Role-based access control
-2. **Customer Management** - Customer database
-3. **Order Management** - Order approval workflow
-4. **China Warehouse** - Package tracking and matching
-5. **China Batches** - Batch creation and management
-6. **Vietnam Warehouse** - 2-step import verification
-7. **Shipping Rates** - Rate table management
-8. **Invoicing** - Invoice generation and payments
-9. **Delivery** - Export and delivery tracking
-10. **Reports & Analytics**
-
-## 🔐 User Roles
-
-- **Admin**: Full system access
-- **Customer Service**: Order and customer management
-- **Accountant**: Invoice and payment management
-- **Delivery Staff**: Delivery management
-
-## 💾 Database Tables
-
-| Category | Tables |
-|----------|--------|
-| Auth | roles, users |
-| Customers | customers |
-| Orders | orders, order_items |
-| CN Warehouse | cn_warehouses, cn_packages, cn_batches|
-| VN Warehouse | vn_warehouses, vn_packages |
-| Shipping | shipping_rates, shipping_rate_details |
-| Finance | invoices, invoice_items, payments |
-| Delivery | exports, export_items |
-
-## 🛠️ Tech Stack
-
-- **Extension**: Vanilla JavaScript (Manifest V3)
-- **Backend**: Laravel 10+ (PHP 8.0+)
-- **Frontend**: Vue 3 + Composition API
-- **Database**: MySQL 8.0
-- **Dev Environment**: Laragon
-
-## 📝 API Documentation
-
-See `implementation_plan.md` for complete API endpoint specifications.
-
-## 🧪 Testing
-
-### Extension Testing
-1. Visit https://www.tmall.com
-2. Navigate to any product page
-3. Click extension icon
-4. Verify product data extraction
-5. Test cart functionality
-
-### Backend Testing (After Laravel setup)
 ```bash
-cd backend
+cd logistics-backend
+php artisan serve
+```
+
+Terminal 2:
+
+```bash
+cd admin-panel
+npm run dev
+```
+
+## Backend Setup
+
+```bash
+cd logistics-backend
+composer install
+cp .env.example .env
+php artisan key:generate
+```
+
+Create a MySQL database, set the `DB_*` values in `.env`, then run:
+
+```bash
+php artisan migrate
+php artisan serve
+```
+
+Do not import `docs/legacy/database_schema.sql` to initialize a current environment. It is retained only for historical reference.
+
+More detail: [Backend setup](docs/setup/backend.md).
+
+## Frontend Setup
+
+```bash
+cd admin-panel
+npm ci
+cp .env.example .env
+npm run dev
+```
+
+The Vite development server prints its local URL. Configure `VITE_API_BASE_URL` to point to the Laravel origin; the GraphQL client appends `/graphql`.
+
+More detail: [Admin setup](docs/setup/admin.md).
+
+## Extension Setup
+
+1. Start the backend and admin panel.
+2. Open `chrome://extensions/`.
+3. Enable **Developer mode**.
+4. Choose **Load unpacked** and select the repository root.
+5. Open the extension settings and verify the GraphQL endpoint and admin order URL for the current environment.
+
+The extension remains Vanilla JavaScript. It is not bundled with the admin application. See [Extension setup and validation](docs/setup/extension.md).
+
+## Environment Variables
+
+Never commit a real `.env` file. Copy the provided examples and keep credentials local.
+
+| Application | Variable | Purpose |
+| --- | --- | --- |
+| Admin | `VITE_API_BASE_URL` | Laravel base URL, for example `http://127.0.0.1:8000` |
+| Backend | `APP_URL` | Public backend origin |
+| Backend | `APP_KEY` | Generated Laravel application key |
+| Backend | `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | MySQL connection |
+| Backend | `LIGHTHOUSE_*` | Optional GraphQL cache/security overrides |
+
+Extension development endpoints are stored through `chrome.storage.local`; production packages must be configured with production HTTPS origins and matching `host_permissions`.
+
+## Testing
+
+Admin:
+
+```bash
+cd admin-panel
+npm run lint
+npm run build
+```
+
+Backend:
+
+```bash
+cd logistics-backend
 php artisan test
+./vendor/bin/pint --test
 ```
 
-## 📸 Screenshots
+Extension:
 
-The extension includes a modern purple-gradient UI with:
-- Product information display
-- Cart management
-- Settings configuration
-- Status notifications
+```bash
+node --check background.js
+node --check content.js
+node --check login.js
+node --check popup.js
+```
 
-## 🤝 Contributing
+Then follow the manual checks in [Extension setup and validation](docs/setup/extension.md).
 
-This is Phase 1 of development. Future phases include:
-- Customer portal
-- GraphQL API
-- Mobile app
-- Real-time notifications
+## Build
 
-## 📄 License
+Build the admin production assets with:
 
-Proprietary - FGC Techlution
+```bash
+cd admin-panel
+npm ci
+npm run build
+```
 
----
+The output is written to `admin-panel/dist/` and is not committed. The extension currently ships directly from its source files; package only the files referenced by `manifest.json` plus required assets.
 
-**Created:** 27/01/2025  
-**Version:** 1.0.0  
-**Status:** Phase 1 Development
+## Git Workflow
+
+- Branch from the intended integration branch and keep changes scoped to one concern.
+- Prefer conventional commit prefixes such as `docs:`, `chore:`, `refactor:`, `fix:`, and `ci:`.
+- Do not combine folder migrations with business-logic changes.
+- Run the checks for every application touched by a commit.
+- Never rewrite or delete an applied Laravel migration.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the review checklist.
+
+## Deployment Notes
+
+- Run Laravel migrations as a controlled deployment step; take an appropriate database backup before production migrations.
+- Configure production secrets outside Git and run Laravel with `APP_DEBUG=false`.
+- Serve the admin build behind HTTPS and set `VITE_API_BASE_URL` at build time.
+- Configure the extension with production HTTPS endpoints and limit `host_permissions` to origins it actually calls.
+- Clear and rebuild Laravel caches after environment or GraphQL schema changes as required by the deployment platform.
+- The archived SQL schema and archived setup documents must not be used as production runbooks.
+
+## License
+
+Proprietary software. See [LICENSE](LICENSE).
