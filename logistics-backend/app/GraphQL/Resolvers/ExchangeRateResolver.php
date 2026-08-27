@@ -2,7 +2,7 @@
 
 namespace App\GraphQL\Resolvers;
 
-use App\Services\OrderPricingService;
+use App\Services\Orders\OrderPricingService;
 
 class ExchangeRateResolver
 {

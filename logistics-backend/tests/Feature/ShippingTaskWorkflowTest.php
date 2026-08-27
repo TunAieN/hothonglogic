@@ -16,7 +16,7 @@ use App\Models\ShippingTask;
 use App\Models\User;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
-use App\Services\ShippingTaskService;
+use App\Services\Shipping\ShippingTaskService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\Sanctum;

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Orders;
 
 use App\Models\ExchangeRate;
 use App\Models\Order;

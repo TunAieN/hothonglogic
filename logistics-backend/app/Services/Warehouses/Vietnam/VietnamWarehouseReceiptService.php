@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Warehouses\Vietnam;
 
 use App\Models\CnBatch;
 use App\Models\CnPackage;

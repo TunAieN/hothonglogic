@@ -2,7 +2,7 @@
 
 namespace App\GraphQL\Resolvers;
 
-use App\Services\VietnamWarehouseReceiptService;
+use App\Services\Warehouses\Vietnam\VietnamWarehouseReceiptService;
 use App\Models\VnPackage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;

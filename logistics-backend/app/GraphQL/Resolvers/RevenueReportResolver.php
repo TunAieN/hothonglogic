@@ -3,7 +3,7 @@
 namespace App\GraphQL\Resolvers;
 
 use App\Models\VnWarehouse;
-use App\Services\RevenueReportService;
+use App\Services\Reports\RevenueReportService;
 
 class RevenueReportResolver
 {

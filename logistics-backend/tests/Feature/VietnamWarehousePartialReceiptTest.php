@@ -8,7 +8,7 @@ use App\Models\CnPackage;
 use App\Models\CnWarehouse;
 use App\Models\VnBatchReceipt;
 use App\Models\VnPackage;
-use App\Services\VietnamWarehouseReceiptService;
+use App\Services\Warehouses\Vietnam\VietnamWarehouseReceiptService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 

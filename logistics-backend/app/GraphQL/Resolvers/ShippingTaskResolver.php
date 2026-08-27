@@ -2,7 +2,7 @@
 
 namespace App\GraphQL\Resolvers;
 
-use App\Services\ShippingTaskService;
+use App\Services\Shipping\ShippingTaskService;
 
 class ShippingTaskResolver
 {

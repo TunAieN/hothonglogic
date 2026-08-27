@@ -6,7 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Invoice;
 use App\Models\PaymentTransaction;
 use App\Models\PaymentVoucher;
-use App\Services\PaymentVoucherService;
+use App\Services\Payments\PaymentVoucherService;
 use Illuminate\Support\Facades\DB;
 
 class PaymentVoucherResolver

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Payments;
 
 use App\Models\AuditLog;
 use App\Models\CustomerBalanceLedger;
@@ -12,7 +12,7 @@ use App\Models\PaymentVoucher;
 use App\Models\PaymentVoucherPackage;
 use App\Models\PaymentVoucherSurcharge;
 use App\Models\Order;
-use App\Services\OrderPricingService;
+use App\Services\Orders\OrderPricingService;
 use App\Models\VnPackage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;

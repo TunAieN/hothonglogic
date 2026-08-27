@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\OrderPricingService;
+use App\Services\Orders\OrderPricingService;
 use PHPUnit\Framework\TestCase;
 
 class OrderPricingServiceTest extends TestCase
