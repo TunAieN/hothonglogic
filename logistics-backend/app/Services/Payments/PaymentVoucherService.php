@@ -14,6 +14,7 @@ use App\Models\PaymentVoucherPackage;
 use App\Models\PaymentVoucherSurcharge;
 use App\Models\VnPackage;
 use App\Services\Orders\OrderPricingService;
+use App\Services\Shipping\ShippingRateService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,10 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PaymentVoucherService
 {
+    public function __construct(
+        private readonly ShippingRateService $shippingRateService,
+    ) {}
+
     public function eligiblePackages(array $filter = [])
     {
         return VnPackage::query()
@@ -791,7 +796,7 @@ class PaymentVoucherService
             if ($chargeableWeight <= 0) {
                 throw new HttpException(422, 'Vận đơn '.$package->tracking_number_snapshot.' chưa có cân tính phí.');
             }
-            $rateResult = app(ShippingRateService::class)->calculateFee($chargeableWeight, [
+            $rateResult = $this->shippingRateService->calculateFee($chargeableWeight, [
                 'date' => now()->toDateString(),
                 'warehouse_id' => $package->receipt?->vn_warehouse_id,
                 'customer_type' => $package->cnPackage?->order?->customer?->vip_group,
