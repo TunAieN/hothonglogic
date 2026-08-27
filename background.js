@@ -1,20 +1,12 @@
-// Background service worker for managing extension state
-console.log("Tmall Product Scraper - Background service worker initialized");
+import { initializeExtensionStorage } from "./extension-src/storage/settings.js";
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
-    console.log("Extension installed successfully");
-
     // Enable Side Panel to open on action click
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
-    // Initialize default settings
-    chrome.storage.local.set({
-        cart: [],
-        autoExtract: true,
-        apiEndpoint: 'http://127.0.0.1:8000/graphql',
-        token: null
-    });
+    // Initialize only missing values so updates do not erase user state.
+    void initializeExtensionStorage();
 });
 
 // Listen for messages from content script or popup

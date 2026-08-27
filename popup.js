@@ -1,3 +1,8 @@
+import {
+    loadExtensionSettings,
+    saveExtensionSettings,
+} from './extension-src/storage/settings.js';
+
 // Popup script for managing UI and interactions
 let currentProduct = null;
 let cart = [];
@@ -28,52 +33,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 });
 
-// Load customers from API or use demo data
-// async function loadCustomers() {
-//     const customerSelect = document.getElementById('customerSelect');
-
-//     // API endpoints to try (in order)
-//     const apiEndpoints = [
-//         `${settings.apiEndpoint}/customers`,           // Laravel API
-//         'http://extention.test/api/customers.php',     // Laragon virtual host
-//         'http://localhost/extention/api/customers.php' // Direct localhost
-//     ];
-
-//     for (const endpoint of apiEndpoints) {
-//         try {
-//             console.log('Trying API endpoint:', endpoint);
-//             const response = await fetch(endpoint);
-
-//             if (response.ok) {
-//                 const result = await response.json();
-//                 const customers = result.data || result;
-
-//                 if (Array.isArray(customers) && customers.length > 0) {
-//                     customerSelect.innerHTML = '<option value="">-- Chọn khách hàng --</option>';
-//                     customers.forEach(customer => {
-//                         const option = document.createElement('option');
-//                         option.value = customer.id;
-//                         option.textContent = `${customer.code} - ${customer.name} (${customer.phone})`;
-//                         customerSelect.appendChild(option);
-//                     });
-//                     console.log('Loaded customers from API:', customers.length);
-//                     return; // Success, stop trying
-//                 }
-//             }
-//         } catch (error) {
-//             console.log('API endpoint failed:', endpoint, error.message);
-//         }
-//     }
-
-//     // Use demo data if all APIs failed
-//     console.log('All APIs failed, loading demo customers');
-//     loadDemoCustomers();
-// }
-
 async function loadCustomers() {
     const customerSelect = document.getElementById('customerSelect');
+    customerSelect.disabled = true;
+    customerSelect.innerHTML = '<option value="">-- Đang tải khách hàng --</option>';
 
-    const endpoint = settings.apiEndpoint; //  http://localhost:8000/graphql
+    if (!settings.token) {
+        customerSelect.innerHTML = '<option value="">-- Đăng nhập để tải khách hàng --</option>';
+        return;
+    }
 
     const query = `
         query {
@@ -92,11 +60,11 @@ async function loadCustomers() {
     `;
 
     try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(settings.apiEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${settings.token}`
+                'Authorization': `Bearer ${settings.token}`,
             },
             body: JSON.stringify({
                 query: query
@@ -104,10 +72,7 @@ async function loadCustomers() {
         });
 
         const result = await response.json();
-        console.log('GraphQL response:', result);
-        console.log('GraphQL data:', result.data);
-        console.log('GraphQL customer:', result.data.customers.data);
-        if (result.data && result.data.customers) {
+        if (response.ok && result.data?.customers) {
             const customers = result.data.customers.data;
 
             customerSelect.innerHTML = '<option value="">-- Chọn khách hàng --</option>';
@@ -119,14 +84,14 @@ async function loadCustomers() {
                 customerSelect.appendChild(option);
             });
 
-            console.log('Loaded customers:', customers.length);
+            customerSelect.disabled = false;
         } else {
-            throw new Error('No data');
+            throw new Error(result.errors?.[0]?.message || 'Không thể tải khách hàng');
         }
 
     } catch (error) {
         console.error('GraphQL error:', error);
-        loadDemoCustomers(); // fallback
+        customerSelect.innerHTML = '<option value="">-- Không thể tải khách hàng --</option>';
     }
 }
 // login
@@ -162,7 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes.token) {
+        settings.token = changes.token.newValue || null;
         updateAuthUI();
+        void loadCustomers();
     }
 });
 
@@ -175,38 +142,9 @@ document.getElementById("logoutBtn").addEventListener("click", () => {
     }
 });
 
-// Load demo customers when API is not available
-function loadDemoCustomers() {
-    const customerSelect = document.getElementById('customerSelect');
-
-    const demoCustomers = [
-        { id: 1, code: 'KH001', name: 'Nguyễn Văn A', phone: '0901234567' },
-        { id: 2, code: 'KH002', name: 'Trần Thị B', phone: '0912345678' },
-        { id: 3, code: 'KH003', name: 'Lê Văn C', phone: '0923456789' },
-        { id: 4, code: 'KH004', name: 'Phạm Thị D', phone: '0934567890' },
-        { id: 5, code: 'KH005', name: 'Hoàng Văn E', phone: '0945678901' }
-    ];
-
-    customerSelect.innerHTML = '<option value="">-- Chọn khách hàng --</option>';
-    demoCustomers.forEach(customer => {
-        const option = document.createElement('option');
-        option.value = customer.id;
-        option.textContent = `${customer.code} - ${customer.name} (${customer.phone})`;
-        customerSelect.appendChild(option);
-    });
-
-    console.log('Loaded demo customers:', demoCustomers.length);
-}
-
 // Load settings from storage
 async function loadSettings() {
-    const result = await chrome.storage.local.get(['apiEndpoint', 'autoExtract', 'frontendOrderUrl', 'token']);
-    settings = {
-        apiEndpoint: result.apiEndpoint || 'http://127.0.0.1:8000/graphql',
-        autoExtract: result.autoExtract !== false,
-        frontendOrderUrl: result.frontendOrderUrl || 'http://localhost:5173/orders/external/create',
-        token: result.token || null
-    };
+    settings = await loadExtensionSettings();
 
     document.getElementById('apiEndpoint').value = settings.apiEndpoint;
     document.getElementById('autoExtract').checked = settings.autoExtract;
@@ -268,9 +206,7 @@ function setupEventListeners() {
 
 async function openExternalOrderForm() {
 
-    const url =
-        settings.frontendOrderUrl ||
-        'http://localhost:5173/orders/external/create';
+    const url = settings.frontendOrderUrl;
 
     try {
 
@@ -327,7 +263,6 @@ async function loadCurrentProduct() {
         } catch (error) {
             // If connection fails, try injecting the content script dynamically
             if (error.message.includes('Receiving end does not exist')) {
-                console.log('Content script not active, injecting dynamically...');
                 await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     files: ['content.js']
@@ -717,88 +652,6 @@ async function clearCart() {
     }
 }
 
-// Create order from cart
-async function createOrderLegacy() {
-    
-    // Lọc ra các sản phẩm đã chọn
-    const selectedItems = cart.filter(item => item.selected !== false);
-
-    if (cart.length === 0) {
-        showStatus('⚠️ Giỏ hàng trống', 'error');
-        return;
-    }
-
-    if (selectedItems.length === 0) {
-        showStatus('⚠️ Vui lòng chọn ít nhất 1 sản phẩm để đặt hàng', 'error');
-        return;
-    }
-
-    const customerSelect = document.getElementById('customerSelect');
-    const customerId = customerSelect.value;
-
-    if (!customerId) {
-        showStatus('⚠️ Vui lòng chọn khách hàng', 'error');
-        return;
-    }
-
-    const orderData = {
-        customer_id: customerId,
-        items: selectedItems.map(item => ({
-            product_name: item.title,
-            product_link: item.url,
-            price_cny: parseFloat(item.price) || 0,
-            quantity: item.quantity || 1,
-            note: item.note || '',
-            product_image: item.img || '' // Lấy từ img thay vì image nếu image undef
-        }))
-    };
-
-    try {
-        showStatus('⏳ Đang tạo đơn hàng...', 'info');
-
-        const response = await chrome.runtime.sendMessage({
-            action: 'submitOrder_legacy_disabled',
-            data: orderData
-        });
-
-        if (response.success) {
-            showStatus('✅ Đã tạo đơn hàng thành công!', 'success');
-
-            // Xóa dần các item đã order khỏi giỏ (xóa từ cuối để không bị lệch index)
-            for (let i = cart.length - 1; i >= 0; i--) {
-                if (cart[i].selected !== false) {
-                    await chrome.runtime.sendMessage({ action: 'removeFromCart', index: i });
-                }
-            }
-
-            await loadCart();
-        } else {
-            showStatus(`❌ Lỗi: ${response.error}`, 'error');
-        }
-    } catch (error) {
-        showStatus('❌ Không thể kết nối với server', 'error');
-        console.error(error);
-    }
-}
-
-// Save settings
-async function saveSettingsLegacy() {
-    const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
-    const autoExtract = document.getElementById('autoExtract').checked;
-
-    try {
-        await chrome.storage.local.set({
-            apiEndpoint,
-            autoExtract
-        });
-
-        settings = { apiEndpoint, autoExtract };
-        showStatus('✅ Đã lưu cài đặt', 'success');
-    } catch (error) {
-        showStatus('❌ Lỗi khi lưu cài đặt', 'error');
-    }
-}
-
 // Update cart badge
 function updateCartBadge() {
     const badge = document.getElementById('cartBadge');
@@ -878,8 +731,7 @@ async function createOrder() {
     try {
          showStatus('Đang chuyển sang form tạo đơn hàng...', 'info');
 
-        const frontendOrderUrl =
-            settings.frontendOrderUrl || 'http://localhost:5173/orders/external/create';
+        const frontendOrderUrl = settings.frontendOrderUrl;
 
         const encodedPayload = encodeURIComponent(JSON.stringify(draftPayload));
         const separator = frontendOrderUrl.includes('?') ? '&' : '?';
@@ -897,16 +749,14 @@ async function createOrder() {
 async function saveSettings() {
     const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
     const autoExtract = document.getElementById('autoExtract').checked;
-    const frontendOrderUrl = document.getElementById('frontendOrderUrl')?.value.trim() || 'http://localhost:5173/orders/external/create';
+    const frontendOrderUrl = document.getElementById('frontendOrderUrl')?.value.trim();
 
     try {
-        await chrome.storage.local.set({
+        settings = await saveExtensionSettings({
             apiEndpoint,
             autoExtract,
             frontendOrderUrl
         });
-
-        settings = { ...settings, apiEndpoint, autoExtract, frontendOrderUrl };
         showStatus('Đã lưu cài đặt', 'success');
     } catch (error) {
         showStatus('Lỗi khi lưu cài đặt', 'error');

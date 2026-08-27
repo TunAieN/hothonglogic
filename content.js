@@ -1,5 +1,4 @@
 // Content script for extracting product information from Tmall/Taobao
-console.log("Tmall Product Scraper - Content script loaded");
 
 // Helper function to extract element using XPath
 function getElementByXPath(xpath) {
@@ -109,7 +108,6 @@ function extractProductInfo() {
         const element = getElementByXPath(xpath);
         if (element && element.textContent) {
             productData.title = element.textContent.trim();
-            console.log("Product title:", productData.title);
             if (productData.title) break;
         }
     }
@@ -201,42 +199,13 @@ function extractProductInfo() {
                         break;
                     }
                 }
-            } catch (e) {
-                console.log("Error querying selector", selector);
-            }
+            } catch {}
         }
     }
-    console.log("Original Price:", productData.originalPrice);
 
     // Extract size information if available
     productData.size = extractSkuOption(matchesSizeLabel);
-    console.log("Size:", productData.size);
-    // const sizeSelectors = [
-    //    '#skuOptionsArea > div > div.skuValueWrap--aEfxuhNr > div > div > div:nth-child(1) > span.valueItemText--T7YrR8tO.f-els-1',
-    //    '#skuOptionsArea > div:nth-child(1) > div.skuValueWrap--aEfxuhNr > div > div > div.valueItem--smR4pNt4.isSelected--_a9zOp7C > span'
-    // ];
-    // for (const selector of sizeSelectors) {
-    //     const element = document.querySelector(selector);
-    //     if (element) {
-    //         productData.size = element.textContent.trim();
-    //         break;
-    //     }
-    // }
-    // console.log("Size:", productData.size);
 
-    //    const sizeXPaths = [
-    //         '//*[@id="skuOptionsArea"]/div/div[2]/div/div/div[1]/span[1]', // User-verified working XPath for size
-    //     ];
-    //     if (!productData.size) {
-    //         for (const xpath of sizeXPaths) {
-    //         const element = getElementByXPath(xpath);
-    //         if (element) {
-    //             productData.size = element.textContent.trim();
-    //             break;
-    //         }
-    //         }
-    //     }
-    //     console.log("Size:", productData.size);
     // Extract quantity information if available
     const quantitySelectors = [
         '#tbpcDetail_SkuPanelBody > div.body--FO6TDxA0 > div > div.root--uHUOEAcH > div.content--mUAk6rrf > div.countWrapper--EEYLrWjn > div.countValueWrapper--NsSDP4ir > input'
@@ -248,24 +217,9 @@ function extractProductInfo() {
             break;
         }
     }
-    console.log("Quantity:", productData.quantity);
-
     // Extract color information if available
     productData.color = extractSkuOption(matchesColorLabel);
-    console.log("Color:", productData.color);
-    // const colorSelectors = [
-    //     '#skuOptionsArea > div:nth-child(2) > div.skuValueWrap--aEfxuhNr > div > div > div.valueItem--smR4pNt4.isSelected--_a9zOp7C.hasImg--K82HLg1O > span.valueItemText--T7YrR8tO.f-els-1',
-    //     '#skuOptionsArea > div:nth-child(2) > div.skuValueWrap--aEfxuhNr > div > div > div.valueItem--smR4pNt4.isSelected--_a9zOp7C.hasImg--K82HLg1O > span',
-    //     '#skuOptionsArea > div > div.skuValueWrap--aEfxuhNr > div > div > div > span.valueItemText--T7YrR8tO.f-els-1'
-    // ];      
-    // for (const selector of colorSelectors) {
-    //     const element = document.querySelector(selector);
-    //     if (element) {
-    //         productData.color = element.textContent.trim();
-    //         break;
-    //     }
-    // }
-    // console.log("Color:", productData.color);
+
     // Extract img - Try XPath first (more reliable for Taobao), then CSS selectors
     const imgXPaths = [
         '//*[@id="mainPicImageEl"]', // User-verified working XPath
@@ -295,25 +249,6 @@ function extractProductInfo() {
             }
         }
     }
-
-    console.log("Product image:", productData.img);
-
-
-    // // Extract main product image
-    // const imageSelectors = [
-    //     '#J_ImgBooth',
-    //     '.tb-booth-seller img',
-    //     '[class*="MainPic"] img',
-    //     '.tb-pic img'
-    // ];
-
-    // for (const selector of imageSelectors) {
-    //     const element = document.querySelector(selector);
-    //     if (element) {
-    //         productData.image = element.src || element.getAttribute('data-src');
-    //         break;
-    //     }
-    // }
 
     // Extract all product images
     const imageGallerySelectors = [

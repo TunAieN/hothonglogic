@@ -165,6 +165,7 @@ node --check background.js
 node --check content.js
 node --check login.js
 node --check popup.js
+node scripts/validate-extension.mjs
 ```
 
 Then follow the manual checks in [Extension setup and validation](docs/setup/extension.md).

@@ -27,8 +27,11 @@ node --check background.js
 node --check content.js
 node --check login.js
 node --check popup.js
+node scripts/validate-extension.mjs
 ```
 
 Also validate that every file referenced by `manifest.json` exists, icon files match their declared dimensions, and `permissions`/`host_permissions` cover only APIs and origins used by the current source.
 
 Production packages must use production HTTPS endpoints and matching host permissions; they must not depend on localhost.
+
+Environment defaults live in `extension-src/config/environment.js`. Development is the active source configuration. Before packaging production, replace the `.invalid` placeholder origins in both the production configuration and `extension-src/config/manifest.production.example.json`, then use that manifest as the root `manifest.json` in the release artifact. Never ship the development manifest as a production package.
