@@ -132,6 +132,7 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_deposit_request_locks_rate_and_calculates_70_percent_snapshot(): void
     {
+        $this->createPaymentAccount();
         $this->createExchangeRate('3600');
         $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
 
@@ -268,6 +269,7 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_deposit_snapshot_does_not_change_when_active_rate_changes(): void
     {
+        $this->createPaymentAccount();
         $firstRate = $this->createExchangeRate('3600');
         $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
         $updated = app(OrderResolver::class)->update(null, [
@@ -404,6 +406,7 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_cannot_mark_deposited_by_status_update_when_deposit_is_not_fully_paid(): void
     {
+        $this->createPaymentAccount();
         $this->createExchangeRate('3600');
         $order = app(OrderResolver::class)->update(null, [
             'id' => $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending')->id,
