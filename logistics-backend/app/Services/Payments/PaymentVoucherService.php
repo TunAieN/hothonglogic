@@ -13,6 +13,7 @@ use App\Models\PaymentVoucher;
 use App\Models\PaymentVoucherPackage;
 use App\Models\PaymentVoucherSurcharge;
 use App\Models\VnPackage;
+use App\Services\Auth\PermissionService;
 use App\Services\Orders\OrderPricingService;
 use App\Services\Shipping\ShippingRateService;
 use Illuminate\Support\Carbon;
@@ -174,7 +175,7 @@ class PaymentVoucherService
 
     public function confirmDepositPayment(int|string $orderId, array $input): Order
     {
-        $this->ensurePermission('payment_transactions.confirm');
+        $this->ensurePermission('payments.confirm');
 
         return DB::transaction(function () use ($orderId, $input) {
             $order = Order::query()->with(['depositVoucher'])->lockForUpdate()->findOrFail($orderId);
@@ -407,7 +408,7 @@ class PaymentVoucherService
 
     public function confirmTransaction(int|string $voucherId, array $input): PaymentVoucher
     {
-        $this->ensurePermission('payment_transactions.confirm');
+        $this->ensurePermission('payments.confirm');
 
         $depositVoucher = PaymentVoucher::query()->find($voucherId);
         if ($depositVoucher?->voucher_type === 'deposit' && $depositVoucher->order_id) {
@@ -494,7 +495,7 @@ class PaymentVoucherService
 
     public function cancel(int|string $voucherId, string $reason): PaymentVoucher
     {
-        $this->ensurePermission('payment_vouchers.cancel');
+        $this->ensurePermission('payment_vouchers.update');
 
         return DB::transaction(function () use ($voucherId, $reason) {
             $voucher = PaymentVoucher::query()->with($this->voucherRelations())->lockForUpdate()->find($voucherId);
@@ -538,7 +539,7 @@ class PaymentVoucherService
         bool $enforcePermission = true,
     ): Invoice {
         if ($enforcePermission) {
-            $this->ensurePermission('invoices.issue');
+            $this->ensurePermission('invoices.create');
         }
 
         $voucher = PaymentVoucher::query()->with($this->voucherRelations())->lockForUpdate()->find($voucherId);
@@ -708,25 +709,7 @@ class PaymentVoucherService
 
     private function ensurePermission(string $permission): void
     {
-        $user = Auth::user();
-        $permissions = $user?->role?->permissions ?? [];
-
-        if (in_array('all', $permissions, true) || in_array($permission, $permissions, true)) {
-            return;
-        }
-
-        $legacyMap = [
-            'payment_vouchers.create' => 'payments.all',
-            'payment_vouchers.cancel' => 'payments.all',
-            'payment_transactions.confirm' => 'payments.all',
-            'invoices.issue' => 'invoices.all',
-        ];
-
-        if (isset($legacyMap[$permission]) && in_array($legacyMap[$permission], $permissions, true)) {
-            return;
-        }
-
-        throw new HttpException(403, 'Bạn không có quyền thực hiện thao tác này.');
+        app(PermissionService::class)->authorize(Auth::user(), $permission);
     }
 
     private function assertPackagesEligible($packages, bool $checkActiveVoucher = false): void

@@ -26,6 +26,7 @@ import {
   UsergroupAddOutlined,
 } from "@ant-design/icons";
 import type { User } from "../../shared/types";
+import { hasPermission } from "../../shared/auth/permissions";
 
 export const SIDEBAR_COLLAPSED_WIDTH = 72;
 export const SIDEBAR_EXPANDED_WIDTH = 256;
@@ -40,6 +41,7 @@ type SidebarItemConfig = {
   key: string;
   label: string;
   icon: React.ReactNode;
+  permission?: string;
 };
 
 type SidebarGroupConfig = {
@@ -85,14 +87,6 @@ type UserProfileCardProps = {
   roleName: string;
 };
 
-const ROLE_LABELS: Record<number, string> = {
-  1: "Quản trị viên",
-  2: "CSKH",
-  3: "Nhân viên kho",
-  4: "Kế toán",
-  5: "Khách hàng",
-};
-
 const menuSections: SidebarGroupConfig[] = [
   {
     key: "overview",
@@ -103,11 +97,11 @@ const menuSections: SidebarGroupConfig[] = [
     key: "management",
     title: "Quản lý",
     items: [
-      { key: "/customers", icon: <UsergroupAddOutlined />, label: "Khách hàng" },
-      { key: "/orders", icon: <CreditCardOutlined />, label: "Đơn hàng" },
-      { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển" },
-      { key: "/china-warehouse", icon: <BankOutlined />, label: "Kho hàng Trung Quốc" },
-      { key: "/vietnam-warehouse", icon: <ApartmentOutlined />, label: "Kho hàng Việt Nam" },
+      { key: "/customers", icon: <UsergroupAddOutlined />, label: "Khách hàng", permission: "customers.read" },
+      { key: "/orders", icon: <CreditCardOutlined />, label: "Đơn hàng", permission: "orders.read" },
+      { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển", permission: "cn_batches.read" },
+      { key: "/china-warehouse", icon: <BankOutlined />, label: "Kho hàng Trung Quốc", permission: "cn_packages.read" },
+      { key: "/vietnam-warehouse", icon: <ApartmentOutlined />, label: "Kho hàng Việt Nam", permission: "vn_warehouse.read" },
     ],
   },
   {
@@ -115,28 +109,28 @@ const menuSections: SidebarGroupConfig[] = [
     title: "Xuất hàng",
     defaultPath: "/shipping/queue",
     items: [
-      { key: "/shipping/queue", icon: <ExportOutlined />, label: "Danh sách chờ xuất" },
-      { key: "/shipping/tasks", icon: <InboxOutlined />, label: "Danh sách nhiệm vụ" },
-      { key: "/shipping/slips", icon: <FileTextOutlined />, label: "Phiếu xuất hàng" },
+      { key: "/shipping/queue", icon: <ExportOutlined />, label: "Danh sách chờ xuất", permission: "shipping_queue.read" },
+      { key: "/shipping/tasks", icon: <InboxOutlined />, label: "Danh sách nhiệm vụ", permission: "shipping_tasks.read" },
+      { key: "/shipping/slips", icon: <FileTextOutlined />, label: "Phiếu xuất hàng", permission: "export_slips.read" },
     ],
   },
   {
     key: "finance",
     title: "Tài chính",
     items: [
-      { key: "/payment-vouchers", icon: <DollarCircleOutlined />, label: "Phiếu thanh toán" },
-      { key: "/shipping-rates", icon: <CreditCardOutlined />, label: "Bảng giá cước" },
-      { key: "/invoices", icon: <FileTextOutlined />, label: "Hóa đơn" },
-      { key: "/revenue-report", icon: <BarChartOutlined />, label: "Báo cáo doanh thu" },
+      { key: "/payment-vouchers", icon: <DollarCircleOutlined />, label: "Phiếu thanh toán", permission: "payment_vouchers.read" },
+      { key: "/shipping-rates", icon: <CreditCardOutlined />, label: "Bảng giá cước", permission: "shipping_rates.read" },
+      { key: "/invoices", icon: <FileTextOutlined />, label: "Hóa đơn", permission: "invoices.read" },
+      { key: "/revenue-report", icon: <BarChartOutlined />, label: "Báo cáo doanh thu", permission: "revenue_report.read" },
     ],
   },
   {
     key: "system",
     title: "Hệ thống",
     items: [
-      { key: "/employees", icon: <TeamOutlined />, label: "Nhân viên" },
-      { key: "/routes", icon: <SettingOutlined />, label: "Cài đặt chung" },
-      { key: "/analytics", icon: <AppstoreOutlined />, label: "Nhật ký hoạt động" },
+      { key: "/employees", icon: <TeamOutlined />, label: "Nhân viên", permission: "employees.read" },
+      { key: "/routes", icon: <SettingOutlined />, label: "Cài đặt chung", permission: "settings.read" },
+      { key: "/analytics", icon: <AppstoreOutlined />, label: "Nhật ký hoạt động", permission: "audit_logs.read" },
     ],
   },
 ];
@@ -359,7 +353,6 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ collapsed, userName, 
           <Avatar
             size={collapsed ? 40 : 44}
             icon={<UserOutlined />}
-            src="https://i.pravatar.cc/150?img=11"
             className="admin-sider__profile-avatar"
           />
           <span className="admin-sider__online-dot" aria-label="Đang online" />
@@ -404,7 +397,17 @@ export const CustomSider: React.FC<SidebarProps> = ({
   const renderedCollapsed = isMobile ? false : collapsed;
   const userName = identity?.name?.trim() || "Admin";
   const roleName =
-    identity?.role?.name?.trim() || ROLE_LABELS[Number(identity?.role_id)] || "Quản trị viên";
+    identity?.role?.name?.trim() || "Chưa gán vai trò";
+
+  const visibleMenuSections = useMemo(
+    () => menuSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => !item.permission || hasPermission(identity, item.permission)),
+      }))
+      .filter((section) => section.items.length > 0),
+    [identity],
+  );
 
   const expandedGroupSet = useMemo(() => new Set(expandedGroups), [expandedGroups]);
 
@@ -450,7 +453,7 @@ export const CustomSider: React.FC<SidebarProps> = ({
           />
 
           <nav className="admin-sider__menu-scroll" aria-label="Menu chính">
-            {menuSections.map((section) => (
+            {visibleMenuSections.map((section) => (
               <SidebarGroup
                 key={section.key}
                 group={section}

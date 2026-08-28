@@ -183,6 +183,7 @@ type EmployeesListFilter = {
   search?: string;
   role_id?: string;
   status?: string;
+  department?: string;
   created_from?: string;
   created_to?: string;
 };
@@ -317,6 +318,9 @@ const getEmployeesListFilter = (
           break;
         case "role_id":
           mappedFilter.role_id = String(value);
+          break;
+        case "department":
+          mappedFilter.department = String(value);
           break;
         case "status":
           mappedFilter.status = String(value);

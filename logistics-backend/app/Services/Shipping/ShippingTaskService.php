@@ -11,6 +11,7 @@ use App\Models\ShippingTaskOrder;
 use App\Models\User;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
+use App\Services\Auth\PermissionService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -34,7 +35,7 @@ class ShippingTaskService
 
     public function queue(array $filter, int $page, int $first): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_queue.read');
         $query = $this->queueOrderQuery($filter);
         $paginator = $query->paginate($first, ['orders.*'], 'page', $page);
         $rows = collect($paginator->items())->map(fn (Order $order) => $this->queueOrderRow($order))->values();
@@ -50,7 +51,7 @@ class ShippingTaskService
 
     public function queueOptions(array $orderIds): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_queue.read');
         $ids = $this->normalizeIds($orderIds);
 
         if ($ids === []) {
@@ -66,7 +67,7 @@ class ShippingTaskService
 
     public function options(): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_tasks.read');
 
         $staff = User::query()
             ->with('role')
@@ -74,12 +75,8 @@ class ShippingTaskService
             ->orderBy('name')
             ->get()
             ->filter(function (User $user) {
-                $roleName = strtolower((string) $user->role?->name);
-                $permissions = $user->role?->permissions ?? [];
-
-                return str_contains($roleName, 'delivery')
-                    || in_array('all', $permissions, true)
-                    || in_array('exports.update', $permissions, true);
+                return $user->role?->key === 'shipping_staff'
+                    || app(PermissionService::class)->allows($user, 'shipping_tasks.update');
             })
             ->values();
 
@@ -107,7 +104,7 @@ class ShippingTaskService
 
     public function create(array $input): ShippingTask
     {
-        $this->ensurePermission('exports.create');
+        $this->ensurePermission('shipping_tasks.create');
         $validated = Validator::make($input, [
             'order_ids' => ['required', 'array', 'min:1'],
             'order_ids.*' => ['required', 'integer', Rule::exists('orders', 'id')],
@@ -234,7 +231,7 @@ class ShippingTaskService
 
     public function tasks(array $filter, int $page, int $first): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_tasks.read');
         $sortField = in_array($filter['sort_field'] ?? null, ['task_code', 'created_at', 'scheduled_delivery_date'], true)
             ? $filter['sort_field']
             : 'created_at';
@@ -287,7 +284,7 @@ class ShippingTaskService
 
     public function task(int|string $id): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_tasks.read');
 
         return $this->taskRow($this->loadTask((int) $id));
     }
@@ -295,7 +292,9 @@ class ShippingTaskService
     public function updateStatus(int|string $id, string $status): array
     {
         $status = strtolower(trim($status));
-        $this->ensurePermission($status === ShippingTask::STATUS_CANCELLED ? 'exports.cancel' : 'exports.update');
+        $this->ensurePermission($status === ShippingTask::STATUS_COMPLETED
+            ? 'shipping_tasks.complete'
+            : 'shipping_tasks.update');
 
         $transitions = [
             ShippingTask::STATUS_CREATED => [ShippingTask::STATUS_PREPARING, ShippingTask::STATUS_CANCELLED],
@@ -344,7 +343,7 @@ class ShippingTaskService
 
     public function slips(array $filter, int $page, int $first): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('export_slips.read');
         $sortDirection = strtolower((string) ($filter['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
         $query = ExportSlip::query()
             ->whereNotNull('shipping_task_id')
@@ -398,7 +397,7 @@ class ShippingTaskService
 
     public function slip(int|string $id): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('export_slips.read');
         $slip = ExportSlip::query()
             ->whereNotNull('shipping_task_id')
             ->with([
@@ -738,22 +737,7 @@ class ShippingTaskService
 
     private function ensurePermission(string $permission): void
     {
-        $permissions = Auth::user()?->role?->permissions ?? [];
-        if (in_array('all', $permissions, true) || in_array($permission, $permissions, true)) {
-            return;
-        }
-
-        $legacy = [
-            'exports.read' => ['export.view'],
-            'exports.create' => ['export.create'],
-            'exports.update' => ['export.update'],
-            'exports.cancel' => ['export.cancel'],
-        ];
-        if (collect($legacy[$permission] ?? [])->contains(fn ($item) => in_array($item, $permissions, true))) {
-            return;
-        }
-
-        throw new HttpException(403, 'Bạn không có quyền thực hiện thao tác xuất hàng.');
+        app(PermissionService::class)->authorize(Auth::user(), $permission);
     }
 
     private function audit(string $action, object $entity, array $after): void

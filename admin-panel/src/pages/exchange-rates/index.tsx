@@ -12,6 +12,7 @@ import {
   type ExchangeRate,
 } from "./api";
 import { formatExchangeRate } from "../../shared/utils/currency";
+import { Can } from "../../shared/auth/Can";
 
 const { Title, Text } = Typography;
 
@@ -90,6 +91,7 @@ export const ExchangeRatesPage = () => {
       render: (_, record) => (
         <Space>
           {!record.is_active && (
+            <Can permission="exchange_rates.update">
             <Popconfirm
               title="Kích hoạt tỷ giá này?"
               description="Tỷ giá active hiện tại sẽ bị ngừng. Các đơn đã chốt trước đó vẫn giữ snapshot cũ."
@@ -99,8 +101,10 @@ export const ExchangeRatesPage = () => {
             >
               <Button icon={<CheckCircleOutlined />}>Kích hoạt</Button>
             </Popconfirm>
+            </Can>
           )}
           {record.is_active && (
+            <Can permission="exchange_rates.update">
             <Popconfirm
               title="Ngừng tỷ giá active?"
               description="Sau khi ngừng, đơn mới sẽ không thể chốt tỷ giá cho đến khi có tỷ giá active khác."
@@ -110,6 +114,7 @@ export const ExchangeRatesPage = () => {
             >
               <Button icon={<CloseCircleOutlined />}>Ngừng</Button>
             </Popconfirm>
+            </Can>
           )}
         </Space>
       ),
@@ -139,7 +144,9 @@ export const ExchangeRatesPage = () => {
           </div>
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()}>Tải lại</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Tạo tỷ giá mới</Button>
+            <Can permission="exchange_rates.update">
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Tạo tỷ giá mới</Button>
+            </Can>
           </Space>
         </Space>
 

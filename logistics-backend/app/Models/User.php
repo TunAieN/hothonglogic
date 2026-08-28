@@ -24,6 +24,12 @@ class User extends Authenticatable
         'role_id',
         'phone',
         'address',
+        'birthday',
+        'gender',
+        'note',
+        'department',
+        'joined_at',
+        'manager_id',
         'status',
     ];
 
@@ -45,10 +51,22 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'birthday' => 'date:Y-m-d',
+        'joined_at' => 'date:Y-m-d',
     ];
 
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function manager()
+    {
+        return $this->belongsTo(self::class, 'manager_id');
+    }
+
+    public function directReports()
+    {
+        return $this->hasMany(self::class, 'manager_id');
     }
 }

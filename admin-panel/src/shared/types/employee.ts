@@ -2,10 +2,12 @@ export type EmployeeStatus = "active" | "locked" | "inactive";
 
 export type EmployeeRole =
   | "admin"
-  | "staff"
+  | "sales_staff"
   | "accountant"
   | "customer_service"
-  | "warehouse_staff";
+  | "china_warehouse_staff"
+  | "vietnam_warehouse_staff"
+  | "shipping_staff";
 
 export type Department =
   | "sales"
@@ -13,7 +15,8 @@ export type Department =
   | "china_warehouse"
   | "vietnam_warehouse"
   | "accounting"
-  | "administration";
+  | "administration"
+  | "shipping";
 
 export interface Employee {
   id: string;
@@ -29,7 +32,29 @@ export interface Employee {
   temporaryPassword?: string;
   avatar?: string;
 }
-export type EmployeeApiStatus = "active" | "inactive";
+export type EmployeeApiStatus = EmployeeStatus;
+export type EmployeeGender = "male" | "female" | "other";
+
+export interface EmployeeManager {
+  id: string;
+  name: string;
+  role?: import("./common").Role | null;
+}
+
+export interface EmployeeStatisticItem {
+  key: string;
+  label: string;
+  value: string;
+  suffix?: string | null;
+}
+
+export interface EmployeeActivity {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  created_at: string;
+}
 
 export interface EmployeeRecord {
   id: string;
@@ -39,6 +64,13 @@ export interface EmployeeRecord {
   role?: import("./common").Role | null;
   phone?: string | null;
   address?: string | null;
+  birthday?: string | null;
+  gender?: EmployeeGender | null;
+  note?: string | null;
+  department?: Department | null;
+  joined_at?: string | null;
+  manager_id?: string | number | null;
+  manager?: EmployeeManager | null;
   status?: EmployeeApiStatus | string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -51,6 +83,12 @@ export interface EmployeeCreateInput {
   role_id: string | number;
   phone?: string | null;
   address?: string | null;
+  birthday?: string | null;
+  gender?: EmployeeGender | null;
+  note?: string | null;
+  department: Department;
+  joined_at?: string | null;
+  manager_id?: string | number | null;
   status?: EmployeeApiStatus | string | null;
 }
 
@@ -61,5 +99,11 @@ export interface EmployeeUpdateInput {
   role_id: string | number;
   phone?: string | null;
   address?: string | null;
+  birthday?: string | null;
+  gender?: EmployeeGender | null;
+  note?: string | null;
+  department: Department;
+  joined_at?: string | null;
+  manager_id?: string | number | null;
   status: EmployeeApiStatus | string;
 }

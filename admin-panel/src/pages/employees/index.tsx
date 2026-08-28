@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { useCreate, useDelete, useList, useUpdate } from "@refinedev/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCreate, useDelete, useGetIdentity, useList, useUpdate } from "@refinedev/core";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
+import { Link } from "react-router";
 import {
   Avatar,
   Breadcrumb,
@@ -28,6 +29,7 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  EyeOutlined,
   LockOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -37,8 +39,10 @@ import {
   UnlockOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import type { Department, EmployeeCreateInput, EmployeeRecord, EmployeeRole, EmployeeStatus, EmployeeUpdateInput } from "../../shared/types/employee";
+import type { Department, EmployeeCreateInput, EmployeeGender, EmployeeRecord, EmployeeRole, EmployeeStatus, EmployeeUpdateInput } from "../../shared/types/employee";
 import type { Role } from "../../shared/types/common";
+import type { User } from "../../shared/types/common";
+import { hasPermission } from "../../shared/auth/permissions";
 import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
 import "./employees.css";
 
@@ -46,22 +50,49 @@ const DATE_FORMAT = "DD/MM/YYYY";
 const API_DATE_FORMAT = "YYYY-MM-DD";
 const DEFAULT_PAGE_SIZE = 5;
 
-const ROLES_QUERY = `
-  query Roles {
+const EMPLOYEE_OPTIONS_QUERY = `
+  query EmployeeOptions {
     roles {
       id
+      key
       name
+      description
       permissions
+    }
+    employees(first: 100, filter: { status: "active" }) {
+      data {
+        id
+        name
+        role { id key name description }
+      }
+    }
+    employeeStatistics {
+      total
+      active
+      locked
+      inactive
     }
   }
 `;
 
+type EmployeeStatistics = {
+  total: number;
+  active: number;
+  locked: number;
+  inactive: number;
+};
+
 type EmployeeFormValues = {
   fullName: string;
   email: string;
-  phone: string;
+  phone?: string;
+  address?: string;
+  birthday?: Dayjs | null;
+  gender?: EmployeeGender;
   department: Department;
   role: string;
+  joinedAt?: Dayjs | null;
+  managerId?: string;
   status: EmployeeStatus;
   temporaryPassword?: string;
   note?: string;
@@ -83,14 +114,29 @@ const departmentOptions: Array<{ label: string; value: Department }> = [
   { label: "Kho hàng VN", value: "vietnam_warehouse" },
   { label: "Kế toán", value: "accounting" },
   { label: "Quản trị", value: "administration" },
+  { label: "Xuất hàng", value: "shipping" },
 ];
+
+const departmentLabels = new Map(departmentOptions.map((option) => [option.value, option.label]));
+
+const roleKeyByDepartment: Record<Department, EmployeeRole> = {
+  administration: "admin",
+  sales: "sales_staff",
+  customer_service: "customer_service",
+  china_warehouse: "china_warehouse_staff",
+  vietnam_warehouse: "vietnam_warehouse_staff",
+  accounting: "accountant",
+  shipping: "shipping_staff",
+};
 
 const ROLE_DISPLAY_LABELS: Record<EmployeeRole, string> = {
   admin: "Quản trị viên",
-  staff: "Nhân viên",
+  sales_staff: "Nhân viên kinh doanh",
   accountant: "Kế toán",
   customer_service: "CSKH",
-  warehouse_staff: "Nhân viên kho",
+  china_warehouse_staff: "Nhân viên kho Trung Quốc",
+  vietnam_warehouse_staff: "Nhân viên kho Việt Nam",
+  shipping_staff: "Nhân viên xuất hàng",
 };
 
 const ROLE_NAME_TRANSLATIONS: Record<string, string> = {
@@ -98,8 +144,9 @@ const ROLE_NAME_TRANSLATIONS: Record<string, string> = {
   administrator: "Quản trị viên",
   "customer service": "CSKH",
   accountant: "Kế toán",
-  "delivery staff": "Nhân viên kho",
-  "warehouse staff": "Nhân viên kho",
+  "delivery staff": "Nhân viên xuất hàng",
+  "shipping staff": "Nhân viên xuất hàng",
+  "warehouse staff": "Nhân viên kho Trung Quốc",
 };
 
 const statusOptions: Array<{ label: string; value: EmployeeStatus }> = [
@@ -162,14 +209,18 @@ const getRoleDepartmentWarning = (
   }
 
   const role = roleById.get(String(roleId));
-  const roleKey = normalizeEmployeeRole(role?.name);
+  const roleKey = normalizeEmployeeRole(role?.key, role?.name);
 
   if (department === "accounting" && roleKey !== "accountant") {
     return "Phòng ban Kế toán thường nên đi với vai trò Kế toán.";
   }
 
-  if ((department === "china_warehouse" || department === "vietnam_warehouse") && roleKey !== "warehouse_staff") {
-    return "Phòng ban kho thường nên đi với vai trò Nhân viên kho.";
+  if (department === "china_warehouse" && roleKey !== "china_warehouse_staff") {
+    return "Phòng ban Kho Trung Quốc thường nên đi với vai trò Nhân viên kho Trung Quốc.";
+  }
+
+  if (department === "vietnam_warehouse" && roleKey !== "vietnam_warehouse_staff") {
+    return "Phòng ban Kho Việt Nam thường nên đi với vai trò Nhân viên kho Việt Nam.";
   }
 
   if (department === "customer_service" && roleKey !== "customer_service") {
@@ -178,6 +229,14 @@ const getRoleDepartmentWarning = (
 
   if (department === "administration" && roleKey !== "admin") {
     return "Phòng ban Quản trị thường nên đi với vai trò Quản trị viên.";
+  }
+
+  if (department === "sales" && roleKey !== "sales_staff") {
+    return "Phòng ban Kinh doanh thường nên đi với vai trò Nhân viên kinh doanh.";
+  }
+
+  if (department === "shipping" && roleKey !== "shipping_staff") {
+    return "Phòng ban Xuất hàng thường nên đi với vai trò Nhân viên xuất hàng.";
   }
 
   return null;
@@ -190,15 +249,19 @@ type EmployeeListRow = {
   fullName: string;
   email: string;
   phone: string;
-  department: Department;
+  address?: string;
+  birthday?: string;
+  gender?: EmployeeGender;
+  department?: Department;
   role: EmployeeRole;
   roleId?: string | number | null;
   roleName: string;
   status: EmployeeStatus;
   createdAt: string;
+  joinedAt?: string;
+  managerId?: string | number | null;
   note?: string;
   temporaryPassword?: string;
-  avatar?: string;
 };
 
 const normalizeEmployeeStatus = (status?: string | null): EmployeeStatus => {
@@ -213,7 +276,11 @@ const normalizeEmployeeStatus = (status?: string | null): EmployeeStatus => {
   return "active";
 };
 
-const normalizeEmployeeRole = (roleName?: string | null): EmployeeRole => {
+const normalizeEmployeeRole = (roleKey?: string | null, roleName?: string | null): EmployeeRole => {
+  if (roleKey) {
+    return roleKey as EmployeeRole;
+  }
+
   const normalizedRoleName = roleName?.trim().toLowerCase();
 
   switch (normalizedRoleName) {
@@ -231,9 +298,9 @@ const normalizeEmployeeRole = (roleName?: string | null): EmployeeRole => {
     case "delivery staff":
     case "warehouse staff":
     case "nhan vien kho":
-      return "warehouse_staff";
+      return normalizedRoleName === "delivery staff" ? "shipping_staff" : "china_warehouse_staff";
     default:
-      return "staff";
+      return "sales_staff";
   }
 };
 
@@ -249,14 +316,18 @@ const mapEmployeeRecordToRow = (record: EmployeeRecord): EmployeeListRow => {
     fullName: record.name,
     email: record.email,
     phone: record.phone ?? "-",
-    department: "administration",
-    role: normalizeEmployeeRole(roleName),
+    address: record.address ?? undefined,
+    birthday: record.birthday ?? undefined,
+    gender: record.gender ?? undefined,
+    department: record.department ?? undefined,
+    role: normalizeEmployeeRole(record.role?.key, roleName),
     roleId: record.role_id,
     roleName,
     status: normalizeEmployeeStatus(record.status),
     createdAt,
-    note: record.address ?? undefined,
-    avatar: `https://i.pravatar.cc/100?u=${encodeURIComponent(record.email)}`,
+    joinedAt: record.joined_at ?? undefined,
+    managerId: record.manager_id,
+    note: record.note ?? undefined,
   };
 };
 
@@ -266,8 +337,14 @@ const mapFormValuesToCreateInput = (values: EmployeeFormValues): EmployeeCreateI
   password: values.temporaryPassword?.trim() ?? "",
   role_id: String(values.role),
   phone: values.phone?.trim() || null,
-  address: values.note?.trim() || null,
-  status: values.status === "inactive" ? "inactive" : "active",
+  address: values.address?.trim() || null,
+  birthday: values.birthday?.format(API_DATE_FORMAT) ?? null,
+  gender: values.gender ?? null,
+  note: values.note?.trim() || null,
+  department: values.department,
+  joined_at: values.joinedAt?.format(API_DATE_FORMAT) ?? null,
+  manager_id: values.managerId || null,
+  status: values.status,
 });
 
 const mapFormValuesToUpdateInput = (values: EmployeeFormValues): EmployeeUpdateInput => {
@@ -279,8 +356,14 @@ const mapFormValuesToUpdateInput = (values: EmployeeFormValues): EmployeeUpdateI
     ...(password ? { password } : {}),
     role_id: String(values.role),
     phone: values.phone?.trim() || null,
-    address: values.note?.trim() || null,
-    status: values.status === "inactive" ? "inactive" : "active",
+    address: values.address?.trim() || null,
+    birthday: values.birthday?.format(API_DATE_FORMAT) ?? null,
+    gender: values.gender ?? null,
+    note: values.note?.trim() || null,
+    department: values.department,
+    joined_at: values.joinedAt?.format(API_DATE_FORMAT) ?? null,
+    manager_id: values.managerId || null,
+    status: values.status,
   };
 };
 
@@ -292,6 +375,8 @@ export const EmployeesPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeListRow | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [managers, setManagers] = useState<EmployeeRecord[]>([]);
+  const [statistics, setStatistics] = useState<EmployeeStatistics>({ total: 0, active: 0, locked: 0, inactive: 0 });
   const [isLoadingRoles, setIsLoadingRoles] = useState(false);
   const [rolesLoadError, setRolesLoadError] = useState<string | null>(null);
   const { mutateAsync: createEmployee } = useCreate<EmployeeRecord>();
@@ -299,46 +384,44 @@ export const EmployeesPage = () => {
   const { mutateAsync: deleteEmployee } = useDelete<EmployeeRecord>();
   const [isSavingEmployee, setIsSavingEmployee] = useState(false);
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
+  const { data: identity } = useGetIdentity<User>();
+  const canCreate = hasPermission(identity, "employees.create");
+  const canUpdate = hasPermission(identity, "employees.update");
+  const canDelete = hasPermission(identity, "employees.delete");
 
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadRoles = async () => {
+  const loadEmployeeOptions = useCallback(async () => {
       setIsLoadingRoles(true);
       setRolesLoadError(null);
 
       try {
         syncGraphqlAuthToken();
-        const response = await client.request<{ roles: Role[] }>(
-          ROLES_QUERY,
+        const response = await client.request<{
+          roles: Role[];
+          employees: { data: EmployeeRecord[] };
+          employeeStatistics: EmployeeStatistics;
+        }>(
+          EMPLOYEE_OPTIONS_QUERY,
           {},
           getGraphqlAuthHeaders(),
         );
 
-        if (isMounted) {
-          setRoles(response.roles ?? []);
-        }
+        setRoles(response.roles ?? []);
+        setManagers(response.employees?.data ?? []);
+        setStatistics(response.employeeStatistics);
       } catch (error) {
         console.error("Failed to load employee roles", error);
-        if (isMounted) {
-          setRoles([]);
-          setRolesLoadError("Không tải được danh sách vai trò nhân viên.");
-        }
+        setRoles([]);
+        setManagers([]);
+        setRolesLoadError("Không tải được danh sách vai trò nhân viên.");
         message.error("Không tải được danh sách vai trò nhân viên.");
       } finally {
-        if (isMounted) {
-          setIsLoadingRoles(false);
-        }
+        setIsLoadingRoles(false);
       }
-    };
-
-    void loadRoles();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    void loadEmployeeOptions();
+  }, [loadEmployeeOptions]);
 
   const roleSelectOptions = useMemo(
     () => roles.map((role) => ({ label: getRoleDisplayLabel(role.name), value: String(role.id) })),
@@ -370,6 +453,10 @@ export const EmployeesPage = () => {
       nextFilters.push({ field: "role_id", operator: "eq" as const, value: filters.roleId });
     }
 
+    if (filters.department) {
+      nextFilters.push({ field: "department", operator: "eq" as const, value: filters.department });
+    }
+
     if (filters.createdFrom) {
       nextFilters.push({
         field: "created_from",
@@ -387,7 +474,7 @@ export const EmployeesPage = () => {
     }
 
     return nextFilters;
-  }, [filters.createdFrom, filters.createdTo, filters.roleId, filters.search, filters.status]);
+  }, [filters.createdFrom, filters.createdTo, filters.department, filters.roleId, filters.search, filters.status]);
 
   const { result: employeesResult, query: employeesQuery } = useList<EmployeeRecord>({
     resource: "employees",
@@ -410,7 +497,7 @@ export const EmployeesPage = () => {
     {
       key: "all",
       label: "Tổng nhân viên",
-      value: totalEmployees,
+      value: statistics.total,
       description: "Tất cả nhân viên",
       icon: <TeamOutlined />,
       iconStyle: { color: "#2563eb", background: "#eaf2ff" },
@@ -418,7 +505,7 @@ export const EmployeesPage = () => {
     {
       key: "active",
       label: "Đang làm việc",
-      value: employees.filter((employee: EmployeeListRow) => employee.status === "active").length,
+      value: statistics.active,
       description: "Nhân viên hoạt động",
       icon: <CheckCircleOutlined />,
       iconStyle: { color: "#16a34a", background: "#eaf8ef" },
@@ -426,7 +513,7 @@ export const EmployeesPage = () => {
     {
       key: "locked",
       label: "Tạm khóa",
-      value: employees.filter((employee: EmployeeListRow) => employee.status === "locked").length,
+      value: statistics.locked,
       description: "Tạm khóa tài khoản",
       icon: <LockOutlined />,
       iconStyle: { color: "#f59e0b", background: "#fff4de" },
@@ -434,7 +521,7 @@ export const EmployeesPage = () => {
     {
       key: "inactive",
       label: "Nghỉ việc",
-      value: employees.filter((employee: EmployeeListRow) => employee.status === "inactive").length,
+      value: statistics.inactive,
       description: "Đã nghỉ việc",
       icon: <StopOutlined />,
       iconStyle: { color: "#64748b", background: "#eef2f7" },
@@ -459,9 +546,14 @@ export const EmployeesPage = () => {
     form.setFieldsValue({
       fullName: employee.fullName,
       email: employee.email,
-      phone: employee.phone,
+      phone: employee.phone === "-" ? undefined : employee.phone,
+      address: employee.address,
+      birthday: employee.birthday ? dayjs(employee.birthday) : null,
+      gender: employee.gender,
       department: employee.department,
       role: employee.roleId ? String(employee.roleId) : employee.role,
+      joinedAt: employee.joinedAt ? dayjs(employee.joinedAt) : null,
+      managerId: employee.managerId ? String(employee.managerId) : undefined,
       status: employee.status,
       temporaryPassword: employee.temporaryPassword,
       note: employee.note,
@@ -487,13 +579,44 @@ export const EmployeesPage = () => {
 
       message.success("Đã chuyển nhân viên sang trạng thái nghỉ việc.");
       await employeesQuery.refetch();
+      await loadEmployeeOptions();
     } finally {
       setDeletingEmployeeId(null);
     }
   };
 
-  const handleToggleLock = () => {
-    message.info("Chức năng khóa tài khoản sẽ được xử lý ở bước sau.");
+  const handleToggleLock = async (employee: EmployeeListRow) => {
+    if (!employee.department || !employee.roleId) {
+      message.error("Nhân viên chưa có đủ phòng ban hoặc vai trò. Hãy cập nhật hồ sơ trước khi khóa tài khoản.");
+      return;
+    }
+
+    const nextStatus: EmployeeStatus = employee.status === "locked" ? "active" : "locked";
+
+    await updateEmployee({
+      resource: "employees",
+      id: employee.id,
+      values: {
+        name: employee.fullName,
+        email: employee.email,
+        role_id: String(employee.roleId),
+        phone: employee.phone === "-" ? null : employee.phone,
+        address: employee.address ?? null,
+        birthday: employee.birthday ?? null,
+        gender: employee.gender ?? null,
+        note: employee.note ?? null,
+        department: employee.department,
+        joined_at: employee.joinedAt ?? null,
+        manager_id: employee.managerId ?? null,
+        status: nextStatus,
+      },
+      successNotification: false,
+      errorNotification: false,
+    });
+
+    message.success(nextStatus === "locked" ? "Đã khóa tài khoản nhân viên." : "Đã mở khóa tài khoản nhân viên.");
+    await employeesQuery.refetch();
+    await loadEmployeeOptions();
   };
 
   const handleSubmit = async () => {
@@ -540,6 +663,7 @@ export const EmployeesPage = () => {
 
       resetModal();
       await employeesQuery.refetch();
+      await loadEmployeeOptions();
     } finally {
       setIsSavingEmployee(false);
     }
@@ -558,8 +682,12 @@ export const EmployeesPage = () => {
       width: 220,
       render: (_, employee) => (
         <div className="employees-page__name-cell">
-          <Avatar src={employee.avatar} icon={<UserOutlined />} />
-          <span className="employees-page__name-text">{employee.fullName}</span>
+          <Link to={`/employees/${employee.id}`} aria-label={`Xem chi tiết ${employee.fullName}`}>
+            <Avatar icon={<UserOutlined />} />
+          </Link>
+          <Link className="employees-page__name-text" to={`/employees/${employee.id}`}>
+            {employee.fullName}
+          </Link>
         </div>
       ),
     },
@@ -573,13 +701,15 @@ export const EmployeesPage = () => {
       title: "Số điện thoại",
       dataIndex: "phone",
       key: "phone",
-      width: 140,
+      width: 190,
     },
     {
       title: "Phòng ban",
       key: "department",
       width: 150,
-      render: () => "-",
+      render: (_, employee) => employee.department
+        ? departmentLabels.get(employee.department) ?? employee.department
+        : "-",
     },
     {
       title: "Vai trò",
@@ -623,15 +753,22 @@ export const EmployeesPage = () => {
 
         return (
           <Space size={8}>
-            <Tooltip title="Sửa nhân viên">
-              <Button
-                className="employees-page__action-button"
-                icon={<EditOutlined />}
-                onClick={() => openEditModal(employee)}
-              />
+            <Tooltip title="Xem chi tiết">
+              <Link to={`/employees/${employee.id}`}>
+                <Button className="employees-page__action-button" icon={<EyeOutlined />} />
+              </Link>
             </Tooltip>
+            {canUpdate && (
+              <Tooltip title="Sửa nhân viên">
+                <Button
+                  className="employees-page__action-button"
+                  icon={<EditOutlined />}
+                  onClick={() => openEditModal(employee)}
+                />
+              </Tooltip>
+            )}
 
-            <Popconfirm
+            {canUpdate && <Popconfirm
               title={
                 isLocked
                   ? "Bạn có chắc muốn mở khóa tài khoản nhân viên này?"
@@ -639,7 +776,7 @@ export const EmployeesPage = () => {
               }
               okText={isLocked ? "Mở khóa" : "Khóa"}
               cancelText="Hủy"
-              onConfirm={handleToggleLock}
+              onConfirm={() => void handleToggleLock(employee)}
             >
               <Tooltip title={isLocked ? "Mở khóa tài khoản" : "Khóa tài khoản"}>
                 <Button
@@ -647,9 +784,9 @@ export const EmployeesPage = () => {
                   icon={isLocked ? <UnlockOutlined /> : <LockOutlined />}
                 />
               </Tooltip>
-            </Popconfirm>
+            </Popconfirm>}
 
-            <Popconfirm
+            {canDelete && <Popconfirm
               title="Bạn có chắc muốn xóa nhân viên này?"
               description="Thao tác này có thể ảnh hưởng đến lịch sử xử lý đơn hàng."
               okText="Xóa"
@@ -665,7 +802,7 @@ export const EmployeesPage = () => {
                   icon={<DeleteOutlined />}
                 />
               </Tooltip>
-            </Popconfirm>
+            </Popconfirm>}
           </Space>
         );
       },
@@ -689,14 +826,14 @@ export const EmployeesPage = () => {
           </Typography.Text>
         </div>
 
-        <Button
+        {canCreate && <Button
           type="primary"
           icon={<PlusOutlined />}
           className="employees-page__primary-button"
           onClick={openCreateModal}
         >
           Thêm nhân viên
-        </Button>
+        </Button>}
       </div>
 
       <Row gutter={[20, 20]} style={{ marginBottom: 20 }}>
@@ -859,6 +996,7 @@ export const EmployeesPage = () => {
 
       <Modal
         open={isModalOpen}
+        width={720}
         onCancel={resetModal}
         onOk={() => void handleSubmit()}
         confirmLoading={isSavingEmployee}
@@ -891,10 +1029,30 @@ export const EmployeesPage = () => {
           <Form.Item
             label="Số điện thoại"
             name="phone"
-            rules={[{ required: true, message: "Vui lòng nhập số điện thoại." }]}
           >
             <Input placeholder="Nhập số điện thoại" />
           </Form.Item>
+
+          <Form.Item label="Địa chỉ" name="address">
+            <Input placeholder="Nhập địa chỉ" />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Ngày sinh" name="birthday">
+                <DatePicker format={DATE_FORMAT} style={{ width: "100%" }} placeholder="Chọn ngày sinh" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Giới tính" name="gender">
+                <Select allowClear placeholder="Chọn giới tính" options={[
+                  { label: "Nam", value: "male" },
+                  { label: "Nữ", value: "female" },
+                  { label: "Khác", value: "other" },
+                ]} />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Row gutter={12}>
             <Col span={12}>
@@ -903,7 +1061,18 @@ export const EmployeesPage = () => {
                 name="department"
                 rules={[{ required: true, message: "Vui lòng chọn phòng ban." }]}
               >
-                <Select placeholder="Chọn phòng ban" options={departmentOptions} />
+                <Select
+                  placeholder="Chọn phòng ban"
+                  options={departmentOptions}
+                  onChange={(department: Department) => {
+                    const suggestedRoleKey = roleKeyByDepartment[department];
+                    const suggestedRole = roles.find((role) => role.key === suggestedRoleKey);
+
+                    if (suggestedRole) {
+                      form.setFieldValue("role", String(suggestedRole.id));
+                    }
+                  }}
+                />
               </Form.Item>
             </Col>
 
@@ -930,6 +1099,30 @@ export const EmployeesPage = () => {
                   loading={isLoadingRoles}
                   disabled={isLoadingRoles || Boolean(rolesLoadError) || !hasRoleOptions}
                   notFoundContent={rolesLoadError ? "Không tải được vai trò" : "Không có vai trò"}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Ngày vào làm" name="joinedAt">
+                <DatePicker format={DATE_FORMAT} style={{ width: "100%" }} placeholder="Chọn ngày vào làm" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Quản lý trực tiếp" name="managerId">
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Chọn quản lý"
+                  options={managers
+                    .filter((manager) => String(manager.id) !== String(editingEmployee?.id ?? ""))
+                    .map((manager) => ({
+                      value: String(manager.id),
+                      label: `${manager.name}${manager.role?.name ? ` (${manager.role.name})` : ""}`,
+                    }))}
                 />
               </Form.Item>
             </Col>

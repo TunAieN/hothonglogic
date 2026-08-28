@@ -11,7 +11,6 @@ use App\Services\Orders\OrderPricingService;
 use App\Services\Payments\PaymentVoucherService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -360,16 +359,6 @@ class OrderResolver
         } catch (\Throwable) {
             return null;
         }
-    }
-
-    private function ensurePermission(string $permission): void
-    {
-        $user = Auth::user();
-        $permissions = $user?->role?->permissions ?? [];
-        if (in_array('all', $permissions, true) || in_array($permission, $permissions, true) || in_array('payments.all', $permissions, true)) {
-            return;
-        }
-        throw new HttpException(403, 'Ban khong co quyen thuc hien thao tac nay.');
     }
 
     private function canUpdateOrder(Order $order, array $input): bool

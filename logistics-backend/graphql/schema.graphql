@@ -25,19 +25,40 @@ type Query {
   user(
     id: ID @eq @rules(apply: ["prohibits:email", "required_without:email"])
     email: String @eq @rules(apply: ["prohibits:id", "required_without:id", "email"])
-  ): User @find
+  ): User
+    @guard(with: ["api"])
+    @permission(requires: "employees.read")
+    @find
   users(
     name: String @where(operator: "like")
-  ): [User!]! @paginate(defaultCount: 10)
+  ): [User!]!
+    @guard(with: ["api"])
+    @permission(requires: "employees.read")
+    @paginate(defaultCount: 10)
   employees(filter: EmployeeFilterInput): [User!]!
     @guard(with: ["api"])
+    @permission(requires: "employees.read")
     @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\EmployeeResolver@list")
   employee(id: ID!): User
     @guard(with: ["api"])
+    @permission(requires: "employees.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@show")
   roles: [Role!]!
     @guard(with: ["api"])
-    @all(model: "App\\Models\\Role")
+    @permission(requires: "roles.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\RoleResolver@list")
+  employeeStatistics: EmployeeStatistics!
+    @guard(with: ["api"])
+    @permission(requires: "employees.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@statistics")
+  employeeDetailStatistics(employee_id: ID!): [EmployeeStatisticItem!]!
+    @guard(with: ["api"])
+    @permission(requires: "employees.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeDetailResolver@statistics")
+  employeeActivity(employee_id: ID!): [AuditLog!]!
+    @guard(with: ["api"])
+    @permission(requires: "employees.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeDetailResolver@activity")
   me: User
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\AuthResolver@me")
@@ -47,8 +68,12 @@ type Query {
   # =========================
 
   customers(filter: CustomerFilterInput): [Customer!]!
+    @guard(with: ["api"])
+    @permission(requires: "customers.read")
     @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\CustomerResolver@list")
   customer(id: ID!): Customer
+    @guard(with: ["api"])
+    @permission(requires: "customers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@show")
 
   # =========================
@@ -56,8 +81,13 @@ type Query {
   # =========================
 
   orders(filter: OrderFilterInput): [Order!]!
+    @guard(with: ["api"])
+    @permission(requires: "orders.read")
     @paginate(defaultCount: 10, builder: "App\\GraphQL\\Resolvers\\OrderResolver@list")
-  order(id: ID! @eq): Order @find
+  order(id: ID! @eq): Order
+    @guard(with: ["api"])
+    @permission(requires: "orders.read")
+    @find
 
   # =========================
   # China Warehouse
@@ -65,9 +95,11 @@ type Query {
 
   cnPackages: [CnPackage!]!
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
     @paginate(defaultCount: 50, builder: "App\\GraphQL\\Resolvers\\CnPackageResolver@list")
   cnPackage(id: ID!): CnPackage
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@show")
 
   # =========================
@@ -76,12 +108,15 @@ type Query {
 
   cnBatches: [CnBatch!]!
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\CnBatchResolver@list")
   cnBatch(id: ID!): CnBatch
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@show")
   cnBatchByCode(batch_code: String!): CnBatch
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@cnBatchByCode")
 
   # =========================
@@ -90,12 +125,15 @@ type Query {
 
   vietnamWarehouseReceipt(batch_code: String!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@vietnamWarehouseReceipt")
   vietnamWarehousePackages(filter: VietnamWarehousePackageFilterInput): [VnPackage!]!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@packages")
   vietnamWarehousePackage(id: ID!): VnPackage!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@package")
 
   # =========================
@@ -104,67 +142,87 @@ type Query {
 
   eligiblePaymentPackages(filter: EligiblePaymentPackageFilterInput): [VnPackage!]!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@eligiblePackages")
   previewPaymentVoucher(input: PreviewPaymentVoucherInput!): PaymentVoucherPreview!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@preview")
   defaultPaymentAccount: PaymentAccount
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@defaultPaymentAccount")
   paymentVouchers(filter: PaymentVoucherFilterInput): [PaymentVoucher!]!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@list")
   paymentVoucher(id: ID!): PaymentVoucher
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@show")
   paymentVoucherTransactions(payment_voucher_id: ID!): [PaymentTransaction!]!
     @guard(with: ["api"])
+    @permission(requires: "payments.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@transactions")
   paymentVoucherInvoice(payment_voucher_id: ID!): Invoice
     @guard(with: ["api"])
+    @permission(requires: "invoices.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@invoice")
   paymentVoucherAuditLogs(payment_voucher_id: ID!): [AuditLog!]!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@auditLogs")
 
   shippingRates(filter: ShippingRateFilterInput): [ShippingRate!]!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\ShippingRateResolver@list")
   shippingRate(id: ID!): ShippingRate
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@show")
   activeShippingRate(input: ActiveShippingRateInput): ShippingRate
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@active")
   calculateShippingFee(input: CalculateShippingFeeInput!): ShippingFeeCalculation!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@calculate")
   exchangeRates(filter: ExchangeRateFilterInput): [ExchangeRate!]!
     @guard(with: ["api"])
+    @permission(requires: "exchange_rates.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\ExchangeRateResolver@list")
   activeExchangeRate: ExchangeRate
     @guard(with: ["api"])
+    @permission(requires: "exchange_rates.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ExchangeRateResolver@active")
   #========================
   # InVoice
   #========================
   invoice(id: ID!): Invoice
     @guard(with: ["api"])
+    @permission(requires: "invoices.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\InvoiceResolver@show")
   invoices(filter: InvoiceFilterInput): [Invoice!]!
     @guard(with: ["api"])
+    @permission(requires: "invoices.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\InvoiceResolver@list")
   invoiceStatistics: InvoiceStatistics!
     @guard(with: ["api"])
+    @permission(requires: "invoices.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\InvoiceResolver@statistics")
   revenueReport(input: RevenueReportInput!): RevenueReport!
     @guard(with: ["api"])
+    @permission(requires: "revenue_report.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\RevenueReportResolver@report")
   revenueReportDrilldown(input: RevenueReportInput!, periodKey: String!): [RevenueDrilldownItem!]!
     @guard(with: ["api"])
+    @permission(requires: "revenue_report.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\RevenueReportResolver@drilldown")
   vnWarehouses: [VnWarehouse!]!
     @guard(with: ["api"])
+    @permission(requires: "revenue_report.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\RevenueReportResolver@warehouses")
 
   # =========================
@@ -172,24 +230,31 @@ type Query {
   # =========================
   shippingQueueOrders(page: Int = 1, first: Int = 10, filter: ShippingQueueFilterInput): ShippingQueuePage!
     @guard(with: ["api"])
+    @permission(requires: "shipping_queue.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@queue")
   shippingQueueOrderOptions(order_ids: [ID!]!): [ShippingQueueOrder!]!
     @guard(with: ["api"])
+    @permission(requires: "shipping_queue.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@queueOptions")
   shippingTaskOptions: ShippingTaskOptions!
     @guard(with: ["api"])
+    @permission(requires: "shipping_tasks.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@options")
   shippingTasks(page: Int = 1, first: Int = 10, filter: ShippingTaskFilterInput): ShippingTaskPage!
     @guard(with: ["api"])
+    @permission(requires: "shipping_tasks.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@tasks")
   shippingTask(id: ID!): ShippingTask!
     @guard(with: ["api"])
+    @permission(requires: "shipping_tasks.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@task")
   exportSlips(page: Int = 1, first: Int = 10, filter: ExportSlipFilterInput): ExportSlipPage!
     @guard(with: ["api"])
+    @permission(requires: "export_slips.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@slips")
   exportSlip(id: ID!): ExportSlip!
     @guard(with: ["api"])
+    @permission(requires: "export_slips.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@slip")
 }
 
@@ -213,10 +278,16 @@ type Mutation {
   # =========================
 
   createCustomer(input: CreateCustomerInput! @spread): Customer
+    @guard(with: ["api"])
+    @permission(requires: "customers.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@create")
   updateCustomer(id: ID!, input: UpdateCustomerInput! @spread): Customer
+    @guard(with: ["api"])
+    @permission(requires: "customers.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@update")
   deleteCustomer(id: ID!): Customer
+    @guard(with: ["api"])
+    @permission(requires: "customers.delete")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@delete")
 
   # =========================
@@ -225,12 +296,15 @@ type Mutation {
 
   createEmployee(input: CreateEmployeeInput! @spread): User
     @guard(with: ["api"])
+    @permission(requires: "employees.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@create")
   updateEmployee(id: ID!, input: UpdateEmployeeInput! @spread): User
     @guard(with: ["api"])
+    @permission(requires: "employees.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@update")
   deleteEmployee(id: ID!): User
     @guard(with: ["api"])
+    @permission(requires: "employees.delete")
     @field(resolver: "App\\GraphQL\\Resolvers\\EmployeeResolver@delete")
 
   # =========================
@@ -239,21 +313,27 @@ type Mutation {
 
   createOrder(input: CreateOrderInput!): Order
     @guard(with: ["api"])
+    @permission(requires: "orders.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@create")
   updateOrder(id: ID!, input: UpdateOrderInput!): Order
     @guard(with: ["api"])
+    @permission(requires: "orders.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@update")
   confirmOrderDepositPayment(order_id: ID!, input: ConfirmOrderDepositPaymentInput!): Order!
     @guard(with: ["api"])
+    @permission(requires: "payments.confirm")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@confirmDepositPayment")
   deleteOrder(id: ID!): Order
     @guard(with: ["api"])
+    @permission(requires: "orders.delete")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@delete")
   mockReceiveAtGuangzhouWarehouse(package_id: ID!): MockReceivePackagePayload!
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@mockReceiveAtGuangzhouWarehouse")
   createPackagesByShop(order_id: ID!): Order!
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@createPackagesByShop")
 
   # =========================
@@ -262,15 +342,19 @@ type Mutation {
 
   createCnPackage(input: CreateCnPackageInput!): CnPackage
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@create")
   updateCnPackage(id: ID!, input: UpdateCnPackageInput!): CnPackage
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@update")
   confirmCnPackageItems(package_id: ID!, items: [OrderPackageItemInput!]!): CnPackage
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.inspect")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@confirmItems")
   deleteCnPackage(id: ID!): CnPackage
     @guard(with: ["api"])
+    @permission(requires: "cn_packages.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@delete")
 
   # =========================
@@ -279,18 +363,23 @@ type Mutation {
 
   addPackagesToCnBatch(input: AddPackagesToCnBatchInput!): CnBatch!
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@addPackages")
   updateCnBatch(id: ID!, input: UpdateCnBatchInput!): CnBatch!
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@update")
   deleteCnBatch(id: ID!): CnBatch!
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@delete")
   dispatchCnBatch(id: ID!, input: DispatchCnBatchInput!): CnBatch!
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.dispatch")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@dispatch")
   createVietnamInboundTask(input: CreateVietnamInboundTaskInput!): VietnamInboundTaskPayload!
     @guard(with: ["api"])
+    @permission(requires: "cn_batches.dispatch")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@createVietnamInboundTask")
 
   # =========================
@@ -299,30 +388,39 @@ type Mutation {
 
   startVietnamWarehouseReceipt(input: StartVietnamWarehouseReceiptInput!): VnBatchReceipt!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.receive")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@startVietnamWarehouseReceipt")
   scanVietnamPackage(input: ScanVietnamPackageInput!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.scan")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@scanVietnamPackage")
   inspectVietnamPackageItems(package_id: ID!, items: [VietnamPackageItemInspectionInput!]!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.inspect")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@inspectVietnamPackageItems")
   resolveVietnamReceiptDiscrepancy(receipt_id: ID!, resolution_note: String!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.resolve_discrepancy")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@resolveVietnamReceiptDiscrepancy")
   resolveVietnamPackageDiscrepancy(package_id: ID!, resolution_note: String!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.resolve_discrepancy")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@resolveVietnamPackageDiscrepancy")
   updateVietnamPackageError(input: UpdateVietnamPackageErrorInput!): VnPackage!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.resolve_discrepancy")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@updateVietnamPackageError")
   removeVietnamPackage(id: ID!): VietnamWarehouseReceiptPayload!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.resolve_discrepancy")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@removeVietnamPackage")
   moveVietnamWarehouseReceiptToErrorQueue(receipt_id: ID!): VnBatchReceipt!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.resolve_discrepancy")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@moveVietnamWarehouseReceiptToErrorQueue")
   confirmVietnamWarehouseReceipt(receipt_id: ID!): VnBatchReceipt!
     @guard(with: ["api"])
+    @permission(requires: "vn_warehouse.receive")
     @field(resolver: "App\\GraphQL\\Resolvers\\VietnamWarehouseResolver@confirmVietnamWarehouseReceipt")
 
   # =========================
@@ -331,51 +429,67 @@ type Mutation {
 
   createPaymentVoucher(input: CreatePaymentVoucherInput!): PaymentVoucher!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@create")
   createDepositPaymentVoucher(order_id: ID!, deposit_percent: Float): PaymentVoucher!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@createDeposit")
   cancelPaymentVoucher(id: ID!, reason: String!): PaymentVoucher!
     @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@cancel")
   confirmPaymentTransaction(payment_voucher_id: ID!, input: ConfirmPaymentTransactionInput!): PaymentVoucher!
     @guard(with: ["api"])
+    @permission(requires: "payments.confirm")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@confirmTransaction")
   issuePaymentVoucherInvoice(payment_voucher_id: ID!): Invoice!
     @guard(with: ["api"])
+    @permission(requires: "invoices.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@issueInvoice")
   createShippingRate(input: ShippingRateInput!): ShippingRate!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@create")
   updateShippingRate(id: ID!, input: ShippingRateInput!): ShippingRate!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@update")
   deactivateShippingRate(id: ID!): ShippingRate!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@deactivate")
   createShippingRateDetail(shipping_rate_id: ID!, input: ShippingRateDetailInput!): ShippingRateDetail!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@createDetail")
   updateShippingRateDetail(id: ID!, input: ShippingRateDetailInput!): ShippingRateDetail!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@updateDetail")
   deleteShippingRateDetail(id: ID!): Boolean!
     @guard(with: ["api"])
+    @permission(requires: "shipping_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingRateResolver@deleteDetail")
   createExchangeRate(input: ExchangeRateInput!): ExchangeRate!
     @guard(with: ["api"])
+    @permission(requires: "exchange_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ExchangeRateResolver@create")
   activateExchangeRate(id: ID!): ExchangeRate!
     @guard(with: ["api"])
+    @permission(requires: "exchange_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ExchangeRateResolver@activate")
   deactivateExchangeRate(id: ID!): ExchangeRate!
     @guard(with: ["api"])
+    @permission(requires: "exchange_rates.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ExchangeRateResolver@deactivate")
 
   createShippingTask(input: CreateShippingTaskInput!): CreateShippingTaskPayload!
     @guard(with: ["api"])
+    @permission(requires: "shipping_tasks.create")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@create")
   updateShippingTaskStatus(id: ID!, status: String!): ShippingTask!
     @guard(with: ["api"])
+    @permission(requires: "shipping_tasks.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@updateStatus")
 }

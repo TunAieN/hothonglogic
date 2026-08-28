@@ -42,6 +42,7 @@ import { dataProvider } from "../../providers/dataProvider";
 import { getTtlCache, setTtlCache } from "../../shared/utils/ttlCache";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
 import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
+import { Can } from "../../shared/auth/Can";
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -553,15 +554,20 @@ export const OrderList = () => {
                         <ShowButton hideText size="small" recordItemId={record.id} />
                     </Tooltip>
                     {isOrderEditable(record.status) ? (
+                        <Can permission="orders.update">
                         <Tooltip title="Chỉnh sửa đơn hàng">
                             <EditButton hideText size="small" recordItemId={record.id} />
                         </Tooltip>
+                        </Can>
                     ) : canManageTrackingFromList(record.status) ? (
+                        <Can permission="orders.update">
                         <Tooltip title="Tracking">
                             <EditButton hideText size="small" recordItemId={record.id} />
                         </Tooltip>
+                        </Can>
                     ) : null}
                     {isOrderEditable(record.status) ? (
+                        <Can permission="orders.update">
                         <Tooltip title="Từ chối đơn hàng">
                             <Button
                                 danger
@@ -570,8 +576,10 @@ export const OrderList = () => {
                                 onClick={() => openRejectModal(record)}
                             />
                         </Tooltip>
+                        </Can>
                     ) : null}
                     {isOrderEditable(record.status) ? (
+                        <Can permission="orders.delete">
                         <Tooltip title="Xóa đơn hàng">
                             <DeleteButton
                                 hideText
@@ -581,6 +589,7 @@ export const OrderList = () => {
                                 resource="orders"
                             />
                         </Tooltip>
+                        </Can>
                     ) : null}
                 </Space>
             ),

@@ -34,6 +34,7 @@ import { Link, useNavigate } from "react-router";
 import { fetchShippingQueue, shippingErrorMessage } from "./api";
 import { formatVnd, formatWeight } from "./helpers";
 import type { ShippingQueueFilter, ShippingQueueOrder, ShippingQueuePage as ShippingQueuePageData } from "./types";
+import { Can } from "../../shared/auth/Can";
 import "./shipping.css";
 
 const { RangePicker } = DatePicker;
@@ -163,7 +164,7 @@ export const ShippingQueuePage = () => {
       <div className="shipping-page__actions">
         <Input className="shipping-page__search" prefix={<SearchOutlined />} value={draft.search} placeholder="Tìm mã đơn, vận đơn, khách hàng..." onChange={(event) => setDraft((current) => ({ ...current, search: event.target.value }))} onPressEnter={applyFilters} allowClear />
         <Button icon={<FilterOutlined />} onClick={applyFilters}>Bộ lọc</Button>
-        <Button type="primary" icon={<PlusOutlined />} disabled={!selectedKeys.length} onClick={createTask}>Tạo nhiệm vụ xuất hàng</Button>
+        <Can permission="shipping_tasks.create"><Button type="primary" icon={<PlusOutlined />} disabled={!selectedKeys.length} onClick={createTask}>Tạo nhiệm vụ xuất hàng</Button></Can>
       </div>
     </div>
 
@@ -182,7 +183,7 @@ export const ShippingQueuePage = () => {
     </Card>
 
     <Card className="shipping-panel" styles={{ body: { padding: 16 } }}>
-      {selectedKeys.length > 0 && <div className="shipping-selection-bar"><div><strong>Đã chọn {selectedKeys.length} đơn hàng</strong><div className="shipping-selection-bar__meta">{selectedSummary.packages} kiện • {formatWeight(selectedSummary.weight)} • {formatVnd(selectedSummary.value)}</div></div><Button type="primary" icon={<PlusOutlined />} onClick={createTask}>Tạo nhiệm vụ xuất hàng</Button></div>}
+      {selectedKeys.length > 0 && <div className="shipping-selection-bar"><div><strong>Đã chọn {selectedKeys.length} đơn hàng</strong><div className="shipping-selection-bar__meta">{selectedSummary.packages} kiện • {formatWeight(selectedSummary.weight)} • {formatVnd(selectedSummary.value)}</div></div><Can permission="shipping_tasks.create"><Button type="primary" icon={<PlusOutlined />} onClick={createTask}>Tạo nhiệm vụ xuất hàng</Button></Can></div>}
       {loading && !pageData.data.length ? <><Skeleton active paragraph={{ rows: 2 }} /><Skeleton active paragraph={{ rows: 7 }} /></> : <Table<ShippingQueueOrder>
         className="shipping-table"
         rowKey="id"

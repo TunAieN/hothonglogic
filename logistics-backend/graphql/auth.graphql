@@ -16,6 +16,13 @@ type User {
   role: Role @belongsTo
   phone: String
   address: String
+  birthday: String
+  gender: String
+  note: String
+  department: String
+  joined_at: String
+  manager_id: ID
+  manager: User @belongsTo
   status: String
   email_verified_at: DateTime
   created_at: DateTime!
@@ -24,7 +31,9 @@ type User {
 
 type Role {
   id: ID!
+  key: String
   name: String!
+  description: String
   permissions: [String!]
   created_at: DateTime
   updated_at: DateTime
@@ -34,6 +43,7 @@ input EmployeeFilterInput {
   search: String
   role_id: ID
   status: String
+  department: String
   created_from: DateTime
   created_to: DateTime
 }
@@ -45,6 +55,12 @@ input CreateEmployeeInput {
   role_id: ID!
   phone: String
   address: String
+  birthday: String
+  gender: String
+  note: String
+  department: String!
+  joined_at: String
+  manager_id: ID
   status: String
 }
 
@@ -55,5 +71,25 @@ input UpdateEmployeeInput {
   role_id: ID!
   phone: String
   address: String
+  birthday: String
+  gender: String
+  note: String
+  department: String!
+  joined_at: String
+  manager_id: ID
   status: String!
+}
+
+type EmployeeStatistics {
+  total: Int!
+  active: Int!
+  locked: Int!
+  inactive: Int!
+}
+
+type EmployeeStatisticItem {
+  key: String!
+  label: String!
+  value: String!
+  suffix: String
 }

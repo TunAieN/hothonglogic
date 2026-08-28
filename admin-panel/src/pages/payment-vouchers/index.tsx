@@ -7,6 +7,7 @@ import { ArrowLeftOutlined, ArrowRightOutlined, BankOutlined, CalculatorOutlined
 import type { ColumnsType } from "antd/es/table";
 import { createPaymentVoucher, fetchDefaultPaymentAccount, fetchEligiblePaymentPackages, fetchPaymentVouchers, getPaymentErrorMessage, previewPaymentVoucher } from "./api";
 import type { EligiblePaymentPackage, PaymentAccount, PaymentVoucher, VoucherPreview, VoucherSurchargeInput } from "./types";
+import { Can } from "../../shared/auth/Can";
 import "./payment-vouchers.css";
 
 const { Text, Title } = Typography;
@@ -406,9 +407,11 @@ const PaymentPageHeader = ({ canCreate, loading, onCreate, onRefresh }: { canCre
       <Tooltip title="Tải lại dữ liệu">
         <Button aria-label="Tải lại dữ liệu" icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
       </Tooltip>
-      <Button type="primary" disabled={!canCreate} onClick={onCreate}>
-        Tạo phiếu thanh toán
-      </Button>
+      <Can permission="payment_vouchers.create">
+        <Button type="primary" disabled={!canCreate} onClick={onCreate}>
+          Tạo phiếu thanh toán
+        </Button>
+      </Can>
     </Space>
   </div>
 );
@@ -500,9 +503,11 @@ const EligibleShipmentTable = ({
         <Text type={canCreate ? "secondary" : "danger"}>
           Đã chọn {selectedCount} vận đơn{canCreate ? "." : ", nhưng đang trộn nhiều khách hàng."}
         </Text>
-        <Button type="primary" disabled={!canCreate} onClick={onCreate}>
-          Tạo phiếu thanh toán
-        </Button>
+        <Can permission="payment_vouchers.create">
+          <Button type="primary" disabled={!canCreate} onClick={onCreate}>
+            Tạo phiếu thanh toán
+          </Button>
+        </Can>
       </div>
     )}
   </>
