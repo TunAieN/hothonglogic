@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 class VerifyPaymentDomainMigration extends Command
 {
     protected $signature = 'payment-domains:verify';
+
     protected $description = 'Kiểm tra tính đầy đủ của dữ liệu payment, delivery và shipment sau migration';
 
     public function handle(): int
@@ -47,13 +48,17 @@ class VerifyPaymentDomainMigration extends Command
         $this->line('Legacy columns còn lại: '.($remainingLegacyColumns === [] ? '0' : implode(', ', $remainingLegacyColumns)));
         $this->line('Package monetary duplicates còn lại: '.($remainingPackageDuplicates === [] ? '0' : implode(', ', $remainingPackageDuplicates)));
         $this->line('Bảng payment_voucher_surcharges còn tồn tại: '.(Schema::hasTable('payment_voucher_surcharges') ? 'có' : 'không'));
-        if ($mismatches->isNotEmpty()) $this->table(['ID', 'Mã phiếu', 'Subtotal', 'Tổng item'], $mismatches->map(fn ($row) => [$row->id, $row->voucher_code, $row->subtotal, $row->item_total])->all());
+        if ($mismatches->isNotEmpty()) {
+            $this->table(['ID', 'Mã phiếu', 'Subtotal', 'Tổng item'], $mismatches->map(fn ($row) => [$row->id, $row->voucher_code, $row->subtotal, $row->item_total])->all());
+        }
 
         if (array_sum($checks) > 0) {
             $this->error('Phát hiện dữ liệu cần xử lý trước khi cleanup column cũ.');
+
             return self::FAILURE;
         }
         $this->info('Dữ liệu domain mới đã đầy đủ và cân bằng.');
+
         return self::SUCCESS;
     }
 }

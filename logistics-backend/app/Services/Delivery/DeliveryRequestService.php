@@ -14,7 +14,9 @@ class DeliveryRequestService
 {
     public function createForVoucher(PaymentVoucher $voucher, array $input): ?DeliveryRequest
     {
-        if ($voucher->voucher_type === 'deposit') return null;
+        if ($voucher->voucher_type === 'deposit') {
+            return null;
+        }
 
         $method = $this->normalizeMethod($input['delivery_method'] ?? null);
         $request = DeliveryRequest::query()->create([
@@ -30,7 +32,9 @@ class DeliveryRequestService
             'created_by' => Auth::id() ?? $voucher->created_by,
         ]);
 
-        if ($method === DeliveryRequest::METHOD_DELIVERY) $this->saveDeliveryAddressSnapshot($request, $input);
+        if ($method === DeliveryRequest::METHOD_DELIVERY) {
+            $this->saveDeliveryAddressSnapshot($request, $input);
+        }
 
         return $request->load('address');
     }
@@ -53,7 +57,9 @@ class DeliveryRequestService
             'full_address' => $input['full_address'] ?? $source?->full_address,
         ];
         foreach (['receiver_name', 'receiver_phone', 'province_name', 'district_name', 'ward_name', 'address_line'] as $field) {
-            if (trim((string) ($values[$field] ?? '')) === '') throw new HttpException(422, 'Thông tin giao tận nơi chưa đầy đủ.');
+            if (trim((string) ($values[$field] ?? '')) === '') {
+                throw new HttpException(422, 'Thông tin giao tận nơi chưa đầy đủ.');
+            }
         }
         if (trim((string) ($values['full_address'] ?? '')) === '') {
             $values['full_address'] = implode(', ', array_filter([$values['address_line'], $values['ward_name'], $values['district_name'], $values['province_name']]));

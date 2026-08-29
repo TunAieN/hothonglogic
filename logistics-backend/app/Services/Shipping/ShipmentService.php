@@ -16,7 +16,9 @@ class ShipmentService
             throw new HttpException(422, 'Yêu cầu giao hàng chưa gắn với nhiệm vụ xuất hợp lệ.');
         }
         $carrier = strtoupper(trim((string) ($input['carrier_code'] ?? $request->preferred_carrier ?? '')));
-        if ($carrier === '') throw new HttpException(422, 'Vui lòng chọn hãng vận chuyển.');
+        if ($carrier === '') {
+            throw new HttpException(422, 'Vui lòng chọn hãng vận chuyển.');
+        }
 
         return DB::transaction(function () use ($request, $input, $carrier) {
             $shipment = Shipment::query()->create([
@@ -38,6 +40,7 @@ class ShipmentService
                 'description' => 'Đã khởi tạo shipment nội bộ; chưa gọi API hãng vận chuyển.',
                 'occurred_at' => now(),
             ]);
+
             return $shipment->load('trackingEvents');
         });
     }
