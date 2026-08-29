@@ -79,9 +79,11 @@ class ShippingRateService
         $details = $rate->details->map(fn ($row) => [
             'min_weight' => $this->detailMin($row),
             'max_weight' => $this->detailMax($row),
+            'price' => $this->detailPrice($row),
         ])->push([
             'min_weight' => $input['min_weight'] ?? $input['weight_from'] ?? 0,
             'max_weight' => $input['max_weight'] ?? $input['weight_to'] ?? null,
+            'price' => $input['price'] ?? $input['price_per_kg'] ?? 0,
         ])->all();
         $this->assertDetailsValid($details);
 
@@ -95,9 +97,11 @@ class ShippingRateService
         $details = $rate->details->filter(fn ($row) => (int) $row->id !== (int) $detail->id)->map(fn ($row) => [
             'min_weight' => $this->detailMin($row),
             'max_weight' => $this->detailMax($row),
+            'price' => $this->detailPrice($row),
         ])->push([
             'min_weight' => $input['min_weight'] ?? $input['weight_from'] ?? $this->detailMin($detail),
             'max_weight' => array_key_exists('max_weight', $input) ? $input['max_weight'] : ($input['weight_to'] ?? $this->detailMax($detail)),
+            'price' => $input['price'] ?? $input['price_per_kg'] ?? $this->detailPrice($detail),
         ])->all();
         $this->assertDetailsValid($details);
         $detail->update($this->normalizeDetailInput($detail->rate_id, $input, $detail));

@@ -10,6 +10,7 @@ use App\Models\ExportSlip;
 use App\Models\Order;
 use App\Models\PaymentTransaction;
 use App\Models\PaymentVoucher;
+use App\Models\PaymentVoucherItem;
 use App\Models\PaymentVoucherPackage;
 use App\Models\Role;
 use App\Models\ShippingTask;
@@ -229,7 +230,14 @@ class ShippingTaskWorkflowTest extends TestCase
             'chargeable_weight' => 5,
             'unit_price' => 35000,
             'price_type' => 'fixed',
-            'domestic_shipping_fee' => 5000,
+        ]);
+        PaymentVoucherItem::query()->create([
+            'payment_voucher_id' => $voucher->id,
+            'item_type' => 'domestic_shipping',
+            'description' => 'Phí giao hàng nội địa Việt Nam',
+            'quantity' => 1,
+            'unit_price' => 5000,
+            'amount' => 5000,
         ]);
         PaymentTransaction::query()->create([
             'transaction_code' => 'GD-'.uniqid(),

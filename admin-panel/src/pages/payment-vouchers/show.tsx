@@ -46,8 +46,11 @@ const paymentMethodLabel = (value?: string | null) => {
   return value || EMPTY_VALUE;
 };
 
-const getVoucherTypeLabel = (voucher: PaymentVoucher) => voucherTypeLabels[voucher.voucher_type] ?? voucherTypeLabels[voucher.receiver_type] ?? "Khác";
-const isOrderDepositVoucher = (voucher: PaymentVoucher) => voucher.voucher_type === "deposit" || voucher.receiver_type === "deposit";
+const getVoucherTypeLabel = (voucher: PaymentVoucher) => voucherTypeLabels[voucher.voucher_type] ?? "Khác";
+const isOrderDepositVoucher = (voucher: PaymentVoucher) => voucher.voucher_type === "deposit";
+const itemTotal = (voucher: PaymentVoucher, itemType: string) => voucher.items
+  .filter((item) => item.item_type === itemType)
+  .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
 
 const renderValue = (value?: ReactNode) => {
   if (value === null || value === undefined || value === "") return EMPTY_VALUE;
@@ -200,7 +203,7 @@ const CustomerInfoCard = ({ voucher }: { voucher: PaymentVoucher }) => (
         { label: "Mã khách hàng", value: voucher.customer.code },
         { label: "Số điện thoại", value: voucher.customer.phone },
         { label: "Email", value: voucher.customer.email },
-        { label: "Địa chỉ", value: voucher.delivery_address ?? voucher.customer.address, full: true },
+        { label: "Địa chỉ", value: voucher.deliveryRequest?.address?.full_address ?? voucher.customer.address, full: true },
       ]}
     />
   </DetailCard>
@@ -229,19 +232,18 @@ const DepositSummaryCard = ({ voucher }: { voucher: PaymentVoucher }) => {
 };
 
 const ShipmentPaymentSummaryCard = ({ voucher }: { voucher: PaymentVoucher }) => {
-  const grossTotal = Number(voucher.base_amount_vnd ?? 0)
-    + Number(voucher.shipping_fee_total ?? 0)
-    + Number(voucher.domestic_shipping_fee ?? 0)
-    + Number(voucher.surcharge_total ?? 0);
+  const weightShippingTotal = itemTotal(voucher, "weight_fee");
+  const deliveryFeeTotal = itemTotal(voucher, "domestic_shipping");
+  const additionalChargeTotal = itemTotal(voucher, "surcharge");
 
   return (
     <DetailCard title="Tổng quan thanh toán" className="payment-vouchers-show__summary-card">
       <div className="payment-vouchers-show__summary-list">
         <SummaryLine label="Tổng giá trị đơn hàng" value={money(voucher.base_amount_vnd)} />
-        <SummaryLine label="Phí cân nặng / vận chuyển" value={money(voucher.shipping_fee_total)} />
-        <SummaryLine label="Phí vận chuyển nội địa Việt Nam" value={money(voucher.domestic_shipping_fee)} />
-        <SummaryLine label="Phụ phí khác" value={money(voucher.surcharge_total)} />
-        <SummaryLine label="Tổng trước khấu trừ" value={money(grossTotal)} />
+        <SummaryLine label="Phí cân nặng / vận chuyển" value={money(weightShippingTotal)} />
+        <SummaryLine label="Phí vận chuyển nội địa Việt Nam" value={money(deliveryFeeTotal)} />
+        <SummaryLine label="Phụ phí khác" value={money(additionalChargeTotal)} />
+        <SummaryLine label="Tổng trước khấu trừ" value={money(voucher.subtotal)} />
         <SummaryLine label="Tiền cọc được khấu trừ" value={money(voucher.deposit_applied)} danger />
         <SummaryLine label="Tiền dư áp dụng" value={money(voucher.customer_credit_applied)} danger />
         <SummaryLine label="Đã thanh toán" value={money(voucher.paid_amount)} />
@@ -295,9 +297,8 @@ const ShipmentItemsSection = ({ voucher, columns }: { voucher: PaymentVoucher; c
       summary={() => (
         <Table.Summary.Row>
           <Table.Summary.Cell index={0} colSpan={4}><Text strong>Tổng cộng</Text></Table.Summary.Cell>
-          <Table.Summary.Cell index={4} align="right"><Text strong>{money(voucher.shipping_fee_total)}</Text></Table.Summary.Cell>
-          <Table.Summary.Cell index={5} align="right"><Text strong>{money(voucher.surcharge_total)}</Text></Table.Summary.Cell>
-          <Table.Summary.Cell index={6} align="right"><Text strong>{money(voucher.total_amount)}</Text></Table.Summary.Cell>
+          <Table.Summary.Cell index={4} align="right"><Text strong>{money(itemTotal(voucher, "weight_fee"))}</Text></Table.Summary.Cell>
+          <Table.Summary.Cell index={5} align="right"><Text strong>{money(voucher.total_amount)}</Text></Table.Summary.Cell>
         </Table.Summary.Row>
       )}
     />
@@ -443,7 +444,6 @@ export const PaymentVoucherShow = () => {
     { title: "Ngày nhận", render: (_, item) => formatDate(item.vnPackage.received_at), width: 130 },
     { title: "Cân tính phí", render: (_, item) => Number(item.chargeable_weight ?? 0).toLocaleString("vi-VN") + " kg", align: "right", width: 130 },
     { title: "Phí vận chuyển", render: (_, item) => money(item.shipping_fee), align: "right", width: 150 },
-    { title: "Phụ phí", render: (_, item) => money(item.surcharge_amount), align: "right", width: 130 },
     { title: "Thành tiền", render: (_, item) => money(item.total_amount), align: "right", width: 150 },
     { title: "Trạng thái", render: (_, item) => <StatusBadge status={item.vnPackage.payment_status ?? voucher?.status ?? ""} />, width: 160 },
   ], [voucher?.status]);

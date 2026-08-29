@@ -11,6 +11,7 @@ use App\Services\Orders\OrderPricingService;
 use App\Services\Payments\PaymentVoucherService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 

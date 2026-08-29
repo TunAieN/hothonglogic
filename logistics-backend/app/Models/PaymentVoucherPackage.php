@@ -20,8 +20,6 @@ class PaymentVoucherPackage extends Model
         'price_type',
         'rate_description',
         'shipping_fee',
-        'domestic_shipping_fee',
-        'surcharge_amount',
         'total_amount',
     ];
 
@@ -32,8 +30,6 @@ class PaymentVoucherPackage extends Model
         'price_per_kg' => 'float',
         'unit_price' => 'float',
         'shipping_fee' => 'float',
-        'domestic_shipping_fee' => 'float',
-        'surcharge_amount' => 'float',
         'total_amount' => 'float',
     ];
 
@@ -49,17 +45,13 @@ class PaymentVoucherPackage extends Model
         $priceType = in_array($this->price_type, ['per_kg', 'fixed'], true) ? $this->price_type : 'per_kg';
         $unitPrice = (float) ($this->unit_price ?: $this->price_per_kg ?: 0);
         $chargeableWeight = (float) ($this->chargeable_weight ?? 0);
-        $domesticFee = (float) ($this->domestic_shipping_fee ?? 0);
-        $surcharge = (float) ($this->surcharge_amount ?? 0);
         $shippingFee = $priceType === 'fixed' ? $unitPrice : $chargeableWeight * $unitPrice;
 
         $this->price_type = $priceType;
         $this->unit_price = round($unitPrice, 0);
         $this->price_per_kg = round($unitPrice, 0);
         $this->shipping_fee = round($shippingFee, 0);
-        $this->domestic_shipping_fee = round($domesticFee, 0);
-        $this->surcharge_amount = round($surcharge, 0);
-        $this->total_amount = round($shippingFee + $domesticFee + $surcharge, 0);
+        $this->total_amount = round($shippingFee, 0);
     }
 
     public function voucher()

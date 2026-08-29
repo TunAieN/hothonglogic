@@ -3,15 +3,19 @@
 namespace App\Services\Shipping;
 
 use App\Models\AuditLog;
+use App\Models\DeliveryRequest;
 use App\Models\ExportItem;
 use App\Models\ExportSlip;
 use App\Models\Order;
+use App\Models\PaymentVoucherItem;
 use App\Models\ShippingTask;
 use App\Models\ShippingTaskOrder;
+use App\Models\Shipment;
 use App\Models\User;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
 use App\Services\Auth\PermissionService;
+use App\Services\Delivery\DeliveryRequestService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -24,7 +28,10 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ShippingTaskService
 {
+    public function __construct(private readonly DeliveryRequestService $deliveryRequestService) {}
+
     public const CARRIERS = [
+        'spx' => 'SPX Express',
         'ghn' => 'Giao hàng nhanh',
         'viettel_post' => 'Viettel Post',
         'ghtk' => 'GHTK',
@@ -136,7 +143,7 @@ class ShippingTaskService
             }
 
             $packages = VnPackage::query()
-                ->with(['cnPackage.order.customer', 'paymentVoucher.invoice', 'paymentVoucherPackage'])
+                ->with(['cnPackage.order.customer', 'paymentVoucher.invoice', 'paymentVoucher.deliveryRequest.address', 'paymentVoucherPackage'])
                 ->whereHas('cnPackage', fn (Builder $query) => $query->whereIn('order_id', $orderIds))
                 ->where('payment_status', 'paid')
                 ->where('delivery_status', 'ready_for_delivery')
@@ -171,6 +178,8 @@ class ShippingTaskService
                 'created_by' => Auth::id(),
             ]);
             $task->update(['task_code' => $this->datedCode('NVX', $task->id, $task->created_at)]);
+            $voucherIds = $packages->pluck('payment_voucher_id')->filter()->unique()->map(fn ($id) => (int) $id)->values()->all();
+            $this->deliveryRequestService->attachShippingTask($task, $voucherIds);
 
             foreach ($orderIds as $orderId) {
                 $orderPackages = $packagesByOrder[$orderId];
@@ -189,7 +198,7 @@ class ShippingTaskService
             $customerIds = $orders->pluck('customer_id')->filter()->unique()->values();
             $invoiceIds = $packages->map(fn (VnPackage $package) => $package->paymentVoucher?->invoice?->id)
                 ->filter()->unique()->values();
-            $deliveryAddresses = $packages->map(fn (VnPackage $package) => $package->paymentVoucher?->delivery_address)
+            $deliveryAddresses = $packages->map(fn (VnPackage $package) => $package->paymentVoucher?->deliveryRequest?->address?->full_address)
                 ->filter()->unique()->values();
 
             $slip = ExportSlip::query()->create([
@@ -312,6 +321,24 @@ class ShippingTaskService
             }
 
             $task->update(['status' => $status]);
+            $requestStatus = match ($status) {
+                ShippingTask::STATUS_IN_TRANSIT => 'shipped',
+                ShippingTask::STATUS_COMPLETED => 'delivered',
+                ShippingTask::STATUS_CANCELLED => DeliveryRequest::STATUS_READY_TO_SHIP,
+                default => DeliveryRequest::STATUS_PROCESSING,
+            };
+            $deliveryRequestIds = $task->deliveryRequests()->pluck('id');
+            $task->deliveryRequests()->update([
+                'status' => $requestStatus,
+                'shipping_task_id' => $status === ShippingTask::STATUS_CANCELLED ? null : $task->id,
+            ]);
+            if (in_array($status, [ShippingTask::STATUS_IN_TRANSIT, ShippingTask::STATUS_COMPLETED, ShippingTask::STATUS_CANCELLED], true)) {
+                Shipment::query()->whereIn('delivery_request_id', $deliveryRequestIds)->update(['status' => match ($status) {
+                    ShippingTask::STATUS_IN_TRANSIT => 'in_transit',
+                    ShippingTask::STATUS_COMPLETED => 'delivered',
+                    default => 'cancelled',
+                }]);
+            }
             $slipStatus = match ($status) {
                 ShippingTask::STATUS_IN_TRANSIT => 'in_transit',
                 ShippingTask::STATUS_COMPLETED => 'delivered',
@@ -632,12 +659,17 @@ class ShippingTaskService
         $row['transport_note'] = $task?->transport_note;
         $row['payment'] = $this->slipPaymentSummary($items);
         $orderValue = (float) $taskOrders->sum(fn (ShippingTaskOrder $taskOrder) => $taskOrder->order?->product_total_vnd ?? 0);
-        $actualShippingFee = (float) $items->sum(function (ExportItem $item) {
+        $weightShippingFee = (float) $items->sum(function (ExportItem $item) {
             $paymentPackage = $item->package?->paymentVoucherPackage;
 
-            return (float) ($paymentPackage?->shipping_fee ?? 0)
-                + (float) ($paymentPackage?->domestic_shipping_fee ?? 0);
+            return (float) ($paymentPackage?->shipping_fee ?? 0);
         });
+        $voucherIds = $items->pluck('package.payment_voucher_id')->filter()->unique()->values();
+        $deliveryFee = (float) PaymentVoucherItem::query()
+            ->whereIn('payment_voucher_id', $voucherIds)
+            ->where('item_type', 'domestic_shipping')
+            ->sum('amount');
+        $actualShippingFee = $weightShippingFee + $deliveryFee;
         $shippingFee = (float) ($task?->estimated_shipping_fee ?? 0) > 0
             ? (float) $task->estimated_shipping_fee
             : $actualShippingFee;

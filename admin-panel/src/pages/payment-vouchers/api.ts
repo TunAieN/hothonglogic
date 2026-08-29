@@ -15,7 +15,7 @@ const PACKAGE_FIELDS = `
   delivery_status
   received_at
   receipt { warehouse { id name address } }
-  cn_package { order { id order_code total_amount product_total_vnd deposit_percent deposit_amount_vnd deposit_paid_amount_vnd deposit_remaining_amount_vnd customer { id code name phone address } } }
+  cn_package { order { id order_code total_amount product_total_vnd deposit_percent deposit_amount_vnd deposit_paid_amount_vnd deposit_remaining_amount_vnd customer { id code name phone address province district ward } } }
 `;
 
 const PAYMENT_ACCOUNT_FIELDS = `
@@ -34,8 +34,6 @@ const VOUCHER_FIELDS = `
   voucher_code
   voucher_type
   order_id
-  receiver_type
-  delivery_address
   payment_method_expected
   payment_account_id
   bank_name_snapshot
@@ -50,9 +48,10 @@ const VOUCHER_FIELDS = `
   currency
   transfer_content
   status
-  shipping_fee_total
-  domestic_shipping_fee
-  surcharge_total
+  subtotal
+  discount_amount
+  payment_method
+  paid_at
   total_amount
   deposit_applied
   customer_credit_applied
@@ -78,11 +77,15 @@ const VOUCHER_FIELDS = `
     price_type
     rate_description
     shipping_fee
-    surcharge_amount
     total_amount
     vnPackage { ${PACKAGE_FIELDS} }
   }
-  surcharges { id surcharge_type amount note }
+  items { id item_type description quantity unit_price amount reference_type reference_id created_at }
+  deliveryRequest {
+    id delivery_method preferred_carrier delivery_note status shipping_task_id
+    address { id receiver_name receiver_phone province_code province_name district_code district_name ward_code ward_name address_line full_address }
+    shipments { id carrier_code service_code carrier_order_id tracking_number shipping_fee cod_amount weight length width height status label_url }
+  }
   transactions { id transaction_code amount payment_method bank_name bank_transaction_code received_at status note }
   invoice { id invoice_code issued_at total_amount paid_amount status items { id item_type description quantity unit_price amount } }
 `;
@@ -126,17 +129,17 @@ export const fetchDefaultPaymentAccount = async () => {
   const res = await requestGraphql<{ defaultPaymentAccount: PaymentAccount | null }, Record<string, never>>(query, {});
   return res.defaultPaymentAccount;
 };
-export const previewPaymentVoucher = async (packageIds: string[], surcharges: VoucherSurchargeInput[]) => {
+export const previewPaymentVoucher = async (packageIds: string[], surcharges: VoucherSurchargeInput[], deliveryFee = 0) => {
   const query = `
     query PreviewPaymentVoucher($input: PreviewPaymentVoucherInput!) {
       previewPaymentVoucher(input: $input) {
         customer { id code name phone address }
-        packages { id tracking_number order_id order_code customer_name actual_weight volumetric_weight chargeable_weight price_per_kg shipping_rate_id shipping_rate_detail_id unit_price price_type rate_description shipping_fee domestic_shipping_fee surcharge_amount total_amount }
+        packages { id tracking_number order_id order_code customer_name actual_weight volumetric_weight chargeable_weight price_per_kg shipping_rate_id shipping_rate_detail_id unit_price price_type rate_description shipping_fee additional_charge_amount total_amount }
         order_total
         product_total
-        shipping_fee_total
-        domestic_shipping_fee
-        surcharge_total
+        weight_shipping_total
+        delivery_fee_total
+        additional_charge_total
         gross_total
         deposit_applied
         customer_credit_available
@@ -148,8 +151,8 @@ export const previewPaymentVoucher = async (packageIds: string[], surcharges: Vo
       }
     }
   `;
-  const res = await requestGraphql<{ previewPaymentVoucher: VoucherPreview }, { input: { package_ids: string[]; surcharges: VoucherSurchargeInput[] } }>(query, {
-    input: { package_ids: packageIds, surcharges },
+  const res = await requestGraphql<{ previewPaymentVoucher: VoucherPreview }, { input: { package_ids: string[]; surcharges: VoucherSurchargeInput[]; delivery_fee: number } }>(query, {
+    input: { package_ids: packageIds, surcharges, delivery_fee: deliveryFee },
   });
   return res.previewPaymentVoucher;
 };
@@ -158,8 +161,17 @@ export const createPaymentVoucher = async (input: {
   package_ids: string[];
   request_uuid: string;
   vn_warehouse_id?: string;
-  receiver_type: string;
-  delivery_address?: string;
+  delivery_method: "pickup_at_warehouse" | "delivery";
+  receiver_name?: string;
+  receiver_phone?: string;
+  province_name?: string;
+  district_name?: string;
+  ward_name?: string;
+  address_line?: string;
+  full_address?: string;
+  preferred_carrier?: string;
+  delivery_note?: string;
+  delivery_fee?: number;
   payment_method_expected: string;
   note?: string;
   surcharges: VoucherSurchargeInput[];

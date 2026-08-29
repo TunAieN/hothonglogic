@@ -10,10 +10,11 @@ use App\Models\Order;
 use App\Models\PaymentAccount;
 use App\Models\PaymentTransaction;
 use App\Models\PaymentVoucher;
+use App\Models\PaymentVoucherItem;
 use App\Models\PaymentVoucherPackage;
-use App\Models\PaymentVoucherSurcharge;
 use App\Models\VnPackage;
 use App\Services\Auth\PermissionService;
+use App\Services\Delivery\DeliveryRequestService;
 use App\Services\Orders\OrderPricingService;
 use App\Services\Shipping\ShippingRateService;
 use Illuminate\Support\Carbon;
@@ -25,6 +26,7 @@ class PaymentVoucherService
 {
     public function __construct(
         private readonly ShippingRateService $shippingRateService,
+        private readonly DeliveryRequestService $deliveryRequestService,
     ) {}
 
     public function eligiblePackages(array $filter = [])
@@ -72,7 +74,7 @@ class PaymentVoucherService
         $this->assertPackagesEligible($packages);
         $surcharges = $this->normalizeSurcharges($input['surcharges'] ?? []);
 
-        return $this->buildVoucherPreview($packages, $surcharges);
+        return $this->buildVoucherPreview($packages, $surcharges, $this->normalizeDeliveryFee($input));
     }
 
     public function createDepositVoucher(
@@ -139,7 +141,6 @@ class PaymentVoucherService
                 'order_id' => $lockedOrder->id,
                 'customer_id' => $lockedOrder->customer_id,
                 'created_by' => Auth::id(),
-                'receiver_type' => 'deposit',
                 'payment_method_expected' => 'bank_transfer',
                 'payment_account_id' => $paymentAccount->id,
                 'bank_name_snapshot' => $paymentAccount->bank_name,
@@ -154,15 +155,27 @@ class PaymentVoucherService
                 'currency' => 'VND',
                 'transfer_content' => 'COC '.$lockedOrder->order_code,
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
-                'shipping_fee_total' => 0,
-                'domestic_shipping_fee' => 0,
-                'surcharge_total' => 0,
+                'subtotal' => $depositAmount,
+                'discount_amount' => 0,
+                'payment_method' => 'bank_transfer',
                 'total_amount' => $depositAmount,
                 'deposit_applied' => 0,
                 'customer_credit_applied' => 0,
                 'paid_amount' => 0,
                 'remaining_amount' => $depositAmount,
                 'note' => 'Deposit for order '.$lockedOrder->order_code,
+            ]);
+
+            PaymentVoucherItem::query()->create([
+                'payment_voucher_id' => $voucher->id,
+                'item_type' => 'deposit',
+                'description' => 'Tiền đặt cọc đơn hàng '.$lockedOrder->order_code,
+                'quantity' => 1,
+                'unit_price' => $depositAmount,
+                'amount' => $depositAmount,
+                'reference_type' => 'Order',
+                'reference_id' => $lockedOrder->id,
+                'metadata' => ['deposit_percent' => $percent],
             ]);
 
             $this->syncOrderDepositSnapshot($lockedOrder, $voucher);
@@ -267,6 +280,8 @@ class PaymentVoucherService
                 'paid_amount' => $this->money((float) $voucher->total_amount),
                 'remaining_amount' => 0,
                 'status' => PaymentVoucher::STATUS_PAID,
+                'payment_method' => $voucher->payment_method_expected ?: 'bank_transfer',
+                'paid_at' => $receivedAt,
             ]);
 
             $order->forceFill([
@@ -317,7 +332,12 @@ class PaymentVoucherService
 
             $this->assertPackagesEligible($packages, true);
             $surcharges = $this->normalizeSurcharges($input['surcharges'] ?? []);
-            $preview = $this->buildVoucherPreview($packages, $surcharges);
+            $deliveryMethod = $input['delivery_method'] ?? 'pickup_at_warehouse';
+            if (! in_array($deliveryMethod, ['pickup_at_warehouse', 'delivery'], true)) {
+                throw new HttpException(422, 'Hình thức nhận hàng không hợp lệ.');
+            }
+            $deliveryFee = $deliveryMethod === 'pickup_at_warehouse' ? 0.0 : $this->normalizeDeliveryFee($input);
+            $preview = $this->buildVoucherPreview($packages, $surcharges, $deliveryFee);
             $customer = $preview['customer'];
             $paymentMethodExpected = $input['payment_method_expected'] ?? 'bank_transfer';
             $paymentAccount = in_array($paymentMethodExpected, ['bank_transfer', 'mixed'], true) ? $this->defaultPaymentAccount() : null;
@@ -325,22 +345,19 @@ class PaymentVoucherService
                 throw new HttpException(422, 'Chưa cấu hình tài khoản nhận tiền mặc định.');
             }
             $voucherCode = $this->nextCode('PT', 'payment_vouchers', 'voucher_code');
-            $receiverType = $input['receiver_type'] ?? 'pickup_at_warehouse';
-            $deliveryAddress = trim((string) ($input['delivery_address'] ?? ''));
+            $deliveryAddress = trim((string) ($input['full_address'] ?? ''));
 
-            if ($receiverType !== 'pickup_at_warehouse' && $deliveryAddress === '') {
+            if ($deliveryMethod === 'delivery' && $deliveryAddress === '') {
                 throw new HttpException(422, 'Vui lòng nhập địa chỉ giao hàng.');
             }
-
             $voucher = PaymentVoucher::query()->create([
                 'voucher_code' => $voucherCode,
                 'request_uuid' => $input['request_uuid'] ?? null,
                 'customer_id' => $customer->id,
                 'vn_warehouse_id' => $input['vn_warehouse_id'] ?? $packages->first()->receipt?->vn_warehouse_id,
                 'created_by' => Auth::id(),
-                'receiver_type' => $receiverType,
-                'delivery_address' => $deliveryAddress !== '' ? $deliveryAddress : null,
                 'payment_method_expected' => $paymentMethodExpected,
+                'payment_method' => $paymentMethodExpected,
                 'payment_account_id' => $paymentAccount?->id,
                 'bank_name_snapshot' => $paymentAccount?->bank_name,
                 'bank_code_snapshot' => $paymentAccount?->bank_code,
@@ -350,12 +367,11 @@ class PaymentVoucherService
                 'transfer_content' => $paymentAccount ? 'TT '.$voucherCode : null,
                 'voucher_type' => 'shipping',
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
+                'subtotal' => $preview['gross_total'],
+                'discount_amount' => $preview['deposit_applied'] + $preview['customer_credit_applied'],
                 'base_amount_cny' => $preview['product_total_cny'],
                 'base_amount_vnd' => $preview['product_total'],
                 'currency' => 'VND',
-                'shipping_fee_total' => $preview['shipping_fee_total'],
-                'domestic_shipping_fee' => $preview['domestic_shipping_fee'],
-                'surcharge_total' => $preview['surcharge_total'],
                 'total_amount' => $preview['total_amount'],
                 'deposit_applied' => $preview['deposit_applied'],
                 'customer_credit_applied' => $preview['customer_credit_applied'],
@@ -379,13 +395,16 @@ class PaymentVoucherService
                     'price_type' => $row['price_type'],
                     'rate_description' => $row['rate_description'],
                     'shipping_fee' => $row['shipping_fee'],
-                    'domestic_shipping_fee' => $row['domestic_shipping_fee'],
-                    'surcharge_amount' => $row['surcharge_amount'],
                     'total_amount' => $row['total_amount'],
                 ]);
             }
 
-            $this->createSurcharges($voucher, $input['surcharges'] ?? []);
+            $this->persistVoucherItems($voucher, $preview);
+            $calculatedTotal = $this->calculateVoucherTotal($voucher);
+            if ($calculatedTotal !== $this->money((float) $preview['total_amount'])) {
+                throw new HttpException(422, 'Chi tiết phiếu không khớp với tổng thanh toán.');
+            }
+            $this->deliveryRequestService->createForVoucher($voucher, $input);
 
             VnPackage::query()->whereIn('id', $packageIds)->update([
                 'payment_status' => 'unpaid',
@@ -470,6 +489,8 @@ class PaymentVoucherService
                 'paid_amount' => $this->money(min($paid, (float) $voucher->total_amount)),
                 'remaining_amount' => $this->money($remaining),
                 'status' => $status,
+                'payment_method' => $method,
+                'paid_at' => $status === PaymentVoucher::STATUS_PAID ? $transaction->received_at : null,
             ]);
 
             if ($overpaid > 0) {
@@ -486,6 +507,7 @@ class PaymentVoucherService
             }
 
             if ($status === PaymentVoucher::STATUS_PAID && $freshVoucher?->voucher_type !== 'deposit') {
+                $this->deliveryRequestService->markVoucherPaid($freshVoucher);
                 $this->issueInvoice($voucher->id);
             }
 
@@ -519,6 +541,7 @@ class PaymentVoucherService
                 'cancelled_by' => Auth::id(),
                 'cancelled_at' => now(),
             ]);
+            $this->deliveryRequestService->cancelForVoucher($voucher);
 
             VnPackage::query()->where('payment_voucher_id', $voucher->id)->update([
                 'payment_status' => 'unpaid',
@@ -602,37 +625,24 @@ class PaymentVoucherService
             ]);
         }
 
-        foreach ($isDeposit ? [] : $voucher->packages as $package) {
+        foreach ($isDeposit ? [] : $voucher->items as $item) {
+            $package = $item->reference_type === 'PaymentVoucherPackage'
+                ? $voucher->packages->firstWhere('id', $item->reference_id)
+                : null;
             InvoiceItem::query()->create([
                 'invoice_id' => $invoice->id,
-                'vn_package_id' => $package->vn_package_id,
-                'weight' => $package->chargeable_weight,
-                'volume' => $package->vnPackage?->actual_volume ?? 0,
-                'shipping_fee' => $package->shipping_fee,
-                'payment_voucher_package_id' => $package->id,
-                'item_type' => 'shipping_fee',
-                'description' => 'Phí vận chuyển vận đơn '.($package->vnPackage?->tracking_number_snapshot ?? $package->vn_package_id),
-                'quantity' => $package->chargeable_weight,
-                'unit_price' => $package->price_per_kg,
-                'amount' => $package->shipping_fee,
-                'metadata' => ['vn_package_id' => $package->vn_package_id],
+                'vn_package_id' => $package?->vn_package_id,
+                'weight' => $item->item_type === 'weight_fee' ? $item->quantity : 0,
+                'volume' => $package?->vnPackage?->actual_volume ?? 0,
+                'shipping_fee' => $item->amount,
+                'payment_voucher_package_id' => $package?->id,
+                'item_type' => $item->item_type,
+                'description' => $item->description,
+                'quantity' => $item->quantity,
+                'unit_price' => $item->unit_price,
+                'amount' => $item->amount,
+                'metadata' => $item->metadata,
             ]);
-            if ($package->surcharge_amount > 0) {
-                InvoiceItem::query()->create([
-                    'invoice_id' => $invoice->id,
-                    'vn_package_id' => $package->vn_package_id,
-                    'weight' => 0,
-                    'volume' => $package->vnPackage?->actual_volume ?? 0,
-                    'shipping_fee' => $package->surcharge_amount,
-                    'payment_voucher_package_id' => $package->id,
-                    'item_type' => 'surcharge',
-                    'description' => 'Phụ phí vận đơn '.($package->vnPackage?->tracking_number_snapshot ?? $package->vn_package_id),
-                    'quantity' => 1,
-                    'unit_price' => $package->surcharge_amount,
-                    'amount' => $package->surcharge_amount,
-                    'metadata' => ['vn_package_id' => $package->vn_package_id],
-                ]);
-            }
         }
 
         if (! $isDeposit) {
@@ -640,6 +650,7 @@ class PaymentVoucherService
                 'payment_status' => 'paid',
                 'delivery_status' => 'ready_for_delivery',
             ]);
+            $this->deliveryRequestService->markVoucherPaid($voucher);
         }
 
         $this->audit('issue_invoice', $invoice, null, $invoice->toArray());
@@ -692,7 +703,9 @@ class PaymentVoucherService
             'warehouse',
             'creator',
             'packages.vnPackage.cnPackage.order.customer',
-            'surcharges',
+            'items',
+            'deliveryRequest.address',
+            'deliveryRequest.shipments.trackingEvents',
             'transactions',
             'invoice.items',
         ];
@@ -751,10 +764,10 @@ class PaymentVoucherService
             ->exists();
     }
 
-    private function calculatePackageRows($packages, array $surcharges): array
+    private function calculatePackageRows($packages, array $surcharges, float $domesticShippingFee = 0): array
     {
         $rows = [];
-        foreach ($packages as $package) {
+        foreach ($packages as $index => $package) {
             $actualWeight = (float) ($package->actual_weight ?? 0);
             $volumetricWeight = $this->volumetricWeight($package);
             $chargeableWeight = max($actualWeight, $volumetricWeight);
@@ -767,7 +780,6 @@ class PaymentVoucherService
                 'customer_type' => $package->cnPackage?->order?->customer?->vip_group,
             ]);
             $shippingFee = $this->money($rateResult['shipping_fee']);
-            $domesticShippingFee = 0.0;
             $packageSurcharge = $this->packageSurchargeTotal((int) $package->id, $surcharges);
             $rows[] = [
                 'id' => (string) $package->id,
@@ -785,25 +797,24 @@ class PaymentVoucherService
                 'price_type' => $rateResult['price_type'],
                 'rate_description' => $rateResult['rate_description'],
                 'shipping_fee' => $shippingFee,
-                'domestic_shipping_fee' => $this->money($domesticShippingFee),
-                'surcharge_amount' => $this->money($packageSurcharge),
-                'total_amount' => $this->money($shippingFee + $domesticShippingFee + $packageSurcharge),
+                'additional_charge_amount' => $this->money($packageSurcharge),
+                'total_amount' => $shippingFee,
             ];
         }
 
         return $rows;
     }
 
-    private function buildVoucherPreview($packages, array $surcharges): array
+    private function buildVoucherPreview($packages, array $surcharges, float $domesticShippingFee = 0): array
     {
-        $packageRows = $this->calculatePackageRows($packages, $surcharges);
+        $packageRows = $this->calculatePackageRows($packages, $surcharges, $domesticShippingFee);
         $customer = $packages->first()->cnPackage?->order?->customer;
 
         if (! $customer) {
             throw new HttpException(422, 'Không xác định được khách hàng của phiếu thanh toán.');
         }
 
-        $amounts = $this->calculateVoucherAmounts($packages, $packageRows, $surcharges, (int) $customer->id);
+        $amounts = $this->calculateVoucherAmounts($packages, $packageRows, $surcharges, (int) $customer->id, $domesticShippingFee);
 
         return [
             'customer' => $customer,
@@ -814,7 +825,7 @@ class PaymentVoucherService
         ];
     }
 
-    private function calculateVoucherAmounts($packages, array $packageRows, array $surcharges, int $customerId): array
+    private function calculateVoucherAmounts($packages, array $packageRows, array $surcharges, int $customerId, float $domesticShippingFee): array
     {
         $orders = $packages
             ->map(fn (VnPackage $package) => $package->cnPackage?->order)
@@ -825,10 +836,10 @@ class PaymentVoucherService
         $productTotal = (float) $orders->sum(fn (Order $order) => max(0, (float) $order->product_total_vnd));
         $productTotalCny = (float) $orders->sum(fn (Order $order) => max(0, (float) $order->product_total_cny));
         $shippingTotal = array_sum(array_column($packageRows, 'shipping_fee'));
-        $domesticTotal = array_sum(array_column($packageRows, 'domestic_shipping_fee'));
-        $surchargeTotal = array_sum(array_column($packageRows, 'surcharge_amount'))
+        $deliveryFeeTotal = $domesticShippingFee;
+        $additionalChargeTotal = array_sum(array_column($packageRows, 'additional_charge_amount'))
             + $this->voucherLevelSurchargeTotal($surcharges);
-        $grossTotal = $productTotal + $shippingTotal + $domesticTotal + $surchargeTotal;
+        $grossTotal = $productTotal + $shippingTotal + $deliveryFeeTotal + $additionalChargeTotal;
         $paidDeposits = (float) $orders->sum(fn (Order $order) => max(0, (float) $order->deposit_paid_amount_vnd));
         $depositApplied = min($paidDeposits, $grossTotal);
         $afterDeposit = max(0, $grossTotal - $depositApplied);
@@ -840,9 +851,10 @@ class PaymentVoucherService
             'order_total' => $this->money($productTotal),
             'product_total' => $this->money($productTotal),
             'product_total_cny' => round($productTotalCny, 2),
-            'shipping_fee_total' => $this->money($shippingTotal),
-            'domestic_shipping_fee' => $this->money($domesticTotal),
-            'surcharge_total' => $this->money($surchargeTotal),
+            'weight_shipping_total' => $this->money($shippingTotal),
+            'delivery_fee_total' => $this->money($deliveryFeeTotal),
+            'additional_charge_total' => $this->money($additionalChargeTotal),
+            'surcharges' => $surcharges,
             'gross_total' => $this->money($grossTotal),
             'deposit_applied' => $this->money($depositApplied),
             'customer_credit_available' => $this->money($creditAvailable),
@@ -882,6 +894,73 @@ class PaymentVoucherService
         }
     }
 
+    private function persistVoucherItems(PaymentVoucher $voucher, array $preview): void
+    {
+        PaymentVoucherItem::query()->create([
+            'payment_voucher_id' => $voucher->id,
+            'item_type' => 'order_amount',
+            'description' => 'Giá trị hàng hóa',
+            'quantity' => 1,
+            'unit_price' => $preview['product_total'],
+            'amount' => $preview['product_total'],
+            'reference_type' => 'PaymentVoucher',
+            'reference_id' => $voucher->id,
+        ]);
+
+        $packageModels = $voucher->packages()->get()->keyBy(fn (PaymentVoucherPackage $package) => (string) $package->vn_package_id);
+        foreach ($preview['packages'] as $row) {
+            $packageModel = $packageModels->get((string) $row['id']);
+            PaymentVoucherItem::query()->create([
+                'payment_voucher_id' => $voucher->id,
+                'item_type' => 'weight_fee',
+                'description' => 'Cước Trung Quốc → Việt Nam - '.($row['tracking_number'] ?? $row['id']),
+                'quantity' => $row['chargeable_weight'],
+                'unit_price' => $row['price_per_kg'],
+                'amount' => $row['shipping_fee'],
+                'reference_type' => 'PaymentVoucherPackage',
+                'reference_id' => $packageModel?->id,
+                'metadata' => ['vn_package_id' => $row['id'], 'price_type' => $row['price_type']],
+            ]);
+        }
+
+        if ((float) $preview['delivery_fee_total'] > 0) {
+            PaymentVoucherItem::query()->create([
+                'payment_voucher_id' => $voucher->id,
+                'item_type' => 'domestic_shipping',
+                'description' => 'Phí giao hàng nội địa Việt Nam',
+                'quantity' => 1,
+                'unit_price' => $preview['delivery_fee_total'],
+                'amount' => $preview['delivery_fee_total'],
+                'reference_type' => 'PaymentVoucher',
+                'reference_id' => $voucher->id,
+            ]);
+        }
+
+        foreach ($preview['surcharges'] as $surcharge) {
+            PaymentVoucherItem::query()->create([
+                'payment_voucher_id' => $voucher->id,
+                'item_type' => 'surcharge',
+                'description' => $surcharge['note'] ?: 'Phụ phí '.$surcharge['surcharge_type'],
+                'quantity' => 1,
+                'unit_price' => $surcharge['amount'],
+                'amount' => $surcharge['amount'],
+                'reference_type' => $surcharge['vn_package_id'] ? 'VnPackage' : null,
+                'reference_id' => $surcharge['vn_package_id'],
+                'metadata' => ['surcharge_type' => $surcharge['surcharge_type'], 'vn_package_id' => $surcharge['vn_package_id']],
+            ]);
+        }
+
+        $voucher->update([
+            'subtotal' => $this->money((float) $voucher->items()->sum('amount')),
+            'discount_amount' => $this->money((float) $voucher->deposit_applied + (float) $voucher->customer_credit_applied),
+        ]);
+    }
+
+    public function calculateVoucherTotal(PaymentVoucher $voucher): float
+    {
+        return $this->money(max(0, (float) $voucher->items()->sum('amount') - (float) $voucher->discount_amount));
+    }
+
     private function normalizeSurcharges(array $surcharges): array
     {
         return array_values(array_filter(array_map(function ($item) {
@@ -899,19 +978,15 @@ class PaymentVoucherService
         }, $surcharges)));
     }
 
-    private function createSurcharges(PaymentVoucher $voucher, array $surcharges): void
+    private function normalizeDeliveryFee(array $input): float
     {
-        foreach ($this->normalizeSurcharges($surcharges) as $item) {
-            PaymentVoucherSurcharge::query()->create([
-                'payment_voucher_id' => $voucher->id,
-                'vn_package_id' => $item['vn_package_id'],
-                'surcharge_type' => $item['surcharge_type'],
-                'amount' => $item['amount'],
-                'note' => $item['note'],
-                'created_by' => Auth::id(),
-            ]);
-            $this->audit('add_surcharge', $voucher, null, $item);
+        $fee = (float) ($input['delivery_fee'] ?? 0);
+
+        if (! is_finite($fee) || $fee < 0) {
+            throw new HttpException(422, 'Phí vận chuyển nội địa Việt Nam không hợp lệ.');
         }
+
+        return $this->money($fee);
     }
 
     private function packageSurchargeTotal(int $packageId, array $surcharges): float
