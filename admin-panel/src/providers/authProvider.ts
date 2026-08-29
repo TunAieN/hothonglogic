@@ -38,8 +38,11 @@ const LOGIN_MUTATION = `
         name
         email
         role_id
+        department
+        status
         role {
           id
+          key
           name
           permissions
         }
@@ -55,8 +58,11 @@ const ME_QUERY = `
       name
       email
       role_id
+      department
+      status
       role {
         id
+        key
         name
         permissions
       }
@@ -121,7 +127,7 @@ const getStoredUser = () => {
 };
 
 const getLoginRedirect = (params?: { redirect?: string; to?: string }) =>
-  params?.redirect || params?.to || "/orders/external/create";
+  params?.redirect || params?.to || "/";
 
 const getAuthRedirect = () =>
   `/login?redirect=${encodeURIComponent(

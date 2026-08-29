@@ -41,6 +41,16 @@ class Customer extends Model
         return $this->hasMany(PaymentVoucher::class);
     }
 
+    public function addresses()
+    {
+        return $this->hasMany(CustomerAddress::class);
+    }
+
+    public function deliveryRequests()
+    {
+        return $this->hasMany(DeliveryRequest::class);
+    }
+
     public function balanceLedgers()
     {
         return $this->hasMany(CustomerBalanceLedger::class);

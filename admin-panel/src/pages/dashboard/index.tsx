@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useList } from "@refinedev/core";
+import { useGetIdentity, useList } from "@refinedev/core";
 import { Alert, Avatar, Button, Card, DatePicker, Empty, Select, Skeleton, Tooltip, Typography } from "antd";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
@@ -24,8 +24,9 @@ import {
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
-import type { CnBatch, CnPackage, Customer, OrderSummary } from "../../shared/types";
+import type { CnBatch, CnPackage, Customer, OrderSummary, User } from "../../shared/types";
 import { formatVnd, toNumber } from "../../shared/utils/currency";
+import { hasPermission } from "../../shared/auth/permissions";
 import "./dashboard.css";
 
 const { RangePicker } = DatePicker;
@@ -575,7 +576,7 @@ const AlertsCard = ({ alerts, loading }: { alerts: AlertItem[]; loading: boolean
   );
 };
 
-const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) => {
+const QuickActions = ({ onNavigate, user }: { onNavigate: (path: string) => void; user?: User | null }) => {
   const actions = [
     {
       key: "create-order",
@@ -583,6 +584,7 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
       description: "Tạo đơn hàng mới",
       icon: <PlusOutlined />,
       path: "/orders/external/create",
+      permission: "orders.create",
     },
     {
       key: "orders",
@@ -590,6 +592,7 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
       description: "Theo dõi danh sách đơn",
       icon: <ShoppingCartOutlined />,
       path: "/orders",
+      permission: "orders.read",
     },
     {
       key: "china-warehouse",
@@ -597,6 +600,7 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
       description: "Nhập hàng từ TQ",
       icon: <InboxOutlined />,
       path: "/china-warehouse",
+      permission: "cn_packages.read",
     },
     {
       key: "payment-vouchers",
@@ -604,6 +608,7 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
       description: "Quản lý phiếu thu chi",
       icon: <FileTextOutlined />,
       path: "/payment-vouchers",
+      permission: "payment_vouchers.read",
     },
     {
       key: "shipping-rates",
@@ -611,6 +616,7 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
       description: "Xem cấu hình cước",
       icon: <BarChartOutlined />,
       path: "/shipping-rates",
+      permission: "shipping_rates.read",
     },
   ];
 
@@ -620,7 +626,7 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
         <Title level={2}>{"Thao tác nhanh"}</Title>
       </div>
       <div className="dashboard-page__quick-grid">
-        {actions.map((action) => (
+        {actions.filter((action) => hasPermission(user, action.permission)).map((action) => (
           <button key={action.key} type="button" className="dashboard-page__quick-action" onClick={() => onNavigate(action.path)}>
             <span>{action.icon}</span>
             <strong>{action.title}</strong>
@@ -634,6 +640,11 @@ const QuickActions = ({ onNavigate }: { onNavigate: (path: string) => void }) =>
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
+  const { data: identity } = useGetIdentity<User>();
+  const canReadOrders = hasPermission(identity, "orders.read");
+  const canReadPackages = hasPermission(identity, "cn_packages.read");
+  const canReadBatches = hasPermission(identity, "cn_batches.read");
+  const canReadCustomers = hasPermission(identity, "customers.read");
   const [rangeKey, setRangeKey] = useState<RangeKey>("7d");
   const [range, setRange] = useState<DateRange>(() => getRangeByKey("7d"));
 
@@ -649,30 +660,34 @@ export const DashboardPage = () => {
     resource: "orders",
     pagination: { currentPage: 1, pageSize: DASHBOARD_PAGE_SIZE },
     filters: orderFilters,
+    queryOptions: { enabled: canReadOrders },
   });
 
   const { result: packagesResult, query: packagesQuery } = useList<CnPackage>({
     resource: "cnPackages",
     pagination: { currentPage: 1, pageSize: DASHBOARD_PAGE_SIZE },
+    queryOptions: { enabled: canReadPackages },
   });
 
   const { result: batchesResult, query: batchesQuery } = useList<CnBatch>({
     resource: "cnBatches",
     pagination: { currentPage: 1, pageSize: DASHBOARD_PAGE_SIZE },
+    queryOptions: { enabled: canReadBatches },
   });
 
   const { result: customersResult, query: customersQuery } = useList<Customer>({
     resource: "customers",
     pagination: { currentPage: 1, pageSize: DASHBOARD_PAGE_SIZE },
+    queryOptions: { enabled: canReadCustomers },
   });
 
   const orders = useMemo(() => ordersResult.data ?? [], [ordersResult.data]);
   const packages = useMemo(() => packagesResult.data ?? [], [packagesResult.data]);
   const batches = useMemo(() => batchesResult.data ?? [], [batchesResult.data]);
   const customers = useMemo(() => customersResult.data ?? [], [customersResult.data]);
-  const isLoading = ordersQuery.isLoading || packagesQuery.isLoading || batchesQuery.isLoading || customersQuery.isLoading;
-  const isFetching = ordersQuery.isFetching || packagesQuery.isFetching || batchesQuery.isFetching || customersQuery.isFetching;
-  const hasError = ordersQuery.isError || packagesQuery.isError || batchesQuery.isError || customersQuery.isError;
+  const isLoading = (canReadOrders && ordersQuery.isLoading) || (canReadPackages && packagesQuery.isLoading) || (canReadBatches && batchesQuery.isLoading) || (canReadCustomers && customersQuery.isLoading);
+  const isFetching = (canReadOrders && ordersQuery.isFetching) || (canReadPackages && packagesQuery.isFetching) || (canReadBatches && batchesQuery.isFetching) || (canReadCustomers && customersQuery.isFetching);
+  const hasError = (canReadOrders && ordersQuery.isError) || (canReadPackages && packagesQuery.isError) || (canReadBatches && batchesQuery.isError) || (canReadCustomers && customersQuery.isError);
 
   const revenue = useMemo(() => orders.reduce((sum, order) => sum + getOrderRevenue(order), 0), [orders]);
   const receivable = useMemo(() => orders.reduce((sum, order) => sum + getReceivable(order), 0), [orders]);
@@ -891,10 +906,10 @@ export const DashboardPage = () => {
   }, [batches, orders, receivable, warehouseRows]);
 
   const refetchAll = () => {
-    void ordersQuery.refetch();
-    void packagesQuery.refetch();
-    void batchesQuery.refetch();
-    void customersQuery.refetch();
+    if (canReadOrders) void ordersQuery.refetch();
+    if (canReadPackages) void packagesQuery.refetch();
+    if (canReadBatches) void batchesQuery.refetch();
+    if (canReadCustomers) void customersQuery.refetch();
   };
 
   return (
@@ -933,7 +948,7 @@ export const DashboardPage = () => {
         <AlertsCard alerts={alerts} loading={isLoading} />
       </div>
 
-      <QuickActions onNavigate={navigate} />
+      <QuickActions onNavigate={navigate} user={identity} />
     </div>
   );
 };

@@ -24,6 +24,7 @@ import type { Invoice, InvoiceFilters, InvoiceStatus, PaymentMethod } from "./ty
 import { fetchInvoices, fetchInvoiceStatistics, type InvoiceStatistics } from "./api";
 import { filterInvoices, formatDate, formatDateTime, invoiceStatusConfig, invoiceTypeLabels, money, paymentMethodLabels } from "./invoiceUtils";
 import { InvoiceStatusTag } from "./InvoiceStatusTag";
+import { Can } from "../../shared/auth/Can";
 import "./invoice-pages.css";
 
 const { RangePicker } = DatePicker;
@@ -266,7 +267,9 @@ export const InvoiceListPage = () => {
         </div>
         <Space wrap className="invoice-page__actions">
           <Button icon={<FileExcelOutlined />} onClick={() => message.info("Chức năng xuất Excel đang được phát triển.")}>Xuất Excel</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateInvoice}>Tạo hóa đơn</Button>
+          <Can permission="invoices.create">
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateInvoice}>Tạo hóa đơn</Button>
+          </Can>
         </Space>
       </div>
 

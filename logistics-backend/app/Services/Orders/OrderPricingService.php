@@ -5,6 +5,7 @@ namespace App\Services\Orders;
 use App\Models\ExchangeRate;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\Auth\PermissionService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -44,7 +45,7 @@ class OrderPricingService
 
     public function createExchangeRate(array $input): ExchangeRate
     {
-        $this->ensurePermission('exchange_rates.manage');
+        $this->ensurePermission('exchange_rates.update');
         $rate = $this->normalizeRate($input['rate'] ?? null);
         if ($rate <= 0) {
             throw new HttpException(422, 'Tỷ giá phải lớn hơn 0.');
@@ -77,7 +78,7 @@ class OrderPricingService
 
     public function activateExchangeRate(int|string $id): ExchangeRate
     {
-        $this->ensurePermission('exchange_rates.manage');
+        $this->ensurePermission('exchange_rates.update');
 
         return DB::transaction(function () use ($id) {
             $rate = ExchangeRate::query()->lockForUpdate()->findOrFail($id);
@@ -95,7 +96,7 @@ class OrderPricingService
 
     public function deactivateExchangeRate(int|string $id): ExchangeRate
     {
-        $this->ensurePermission('exchange_rates.manage');
+        $this->ensurePermission('exchange_rates.update');
         $rate = ExchangeRate::query()->findOrFail($id);
         $rate->update(['is_active' => false, 'effective_to' => $rate->effective_to ?? now()]);
 
@@ -270,11 +271,6 @@ class OrderPricingService
 
     private function ensurePermission(string $permission): void
     {
-        $user = Auth::user();
-        $permissions = $user?->role?->permissions ?? [];
-        if (in_array('all', $permissions, true) || in_array($permission, $permissions, true) || in_array('settings.all', $permissions, true)) {
-            return;
-        }
-        throw new HttpException(403, 'Bạn không có quyền cập nhật tỷ giá.');
+        app(PermissionService::class)->authorize(Auth::user(), $permission);
     }
 }

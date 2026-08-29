@@ -17,6 +17,7 @@ import type { Customer as ICustomer } from "../../shared/types";
 import { CustomerFormModal } from "./components/CustomerFormModal";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
 import { PageHeader, PageHeaderActions, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
+import { Can } from "../../shared/auth/Can";
 const { Search } = Input;
 const { Text } = Typography;
 
@@ -263,19 +264,19 @@ export const CustomerList = () => {
             align: "right",
             render: (_, record: ICustomer) => (
                 <Space>
-                    <Button
+                    <Can permission="customers.update"><Button
                         icon={<EditOutlined />}
                         onClick={() => setEditingCustomerId(record.id)}
                         size="small"
-                    />
+                    /></Can>
                     <ShowButton hideText size="small" recordItemId={record.id} />
-                    <DeleteButton
+                    <Can permission="customers.delete"><DeleteButton
                         hideText
                         size="small"
                         icon={<DeleteOutlined />}
                         recordItemId={record.id}
                         resource="customers"
-                    />
+                    /></Can>
                 </Space>
             ),
         },
@@ -292,14 +293,14 @@ export const CustomerList = () => {
                             <Button icon={<ReloadOutlined />} onClick={handleFilterReset}>
                                 Reset Filters
                             </Button>
-                            <Button
+                            <Can permission="customers.create"><Button
                                 icon={<PlusOutlined />}
                                 className="customer-list-add-button"
                                 type="primary"
                                 onClick={() => setIsCreateModalOpen(true)}
                             >
                                 Add Customer
-                            </Button>
+                            </Button></Can>
                         </PageHeaderActions>
                     }
                 />
@@ -439,16 +440,16 @@ export const CustomerList = () => {
                 </Card>
             </Space>
 
-            <CustomerFormModal
+            <Can permission="customers.create"><CustomerFormModal
                 mode="create"
                 onClose={() => setIsCreateModalOpen(false)}
                 onCompleted={async () => {
                     await tableQuery?.refetch?.();
                 }}
                 open={isCreateModalOpen}
-            />
+            /></Can>
 
-            <CustomerFormModal
+            <Can permission="customers.update"><CustomerFormModal
                 customerId={editingCustomerId ?? undefined}
                 mode="edit"
                 onClose={() => setEditingCustomerId(null)}
@@ -456,7 +457,7 @@ export const CustomerList = () => {
                     await tableQuery?.refetch?.();
                 }}
                 open={Boolean(editingCustomerId)}
-            />
+            /></Can>
         </List>
     );
 };

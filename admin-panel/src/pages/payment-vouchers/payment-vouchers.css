@@ -807,13 +807,21 @@
 
 .payment-vouchers__info-step-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.65fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(330px, 1.05fr) minmax(370px, 1.12fr) minmax(300px, 0.9fr);
   gap: 16px;
   align-items: stretch;
 }
 
 .payment-vouchers__info-step-left {
   display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.payment-vouchers__info-step-middle,
+.payment-vouchers__info-step-summary {
+  display: grid;
+  align-content: start;
   gap: 16px;
   min-width: 0;
 }
@@ -909,6 +917,92 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.payment-vouchers__three-field-grid,
+.payment-vouchers__dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payment-vouchers__delivery-form {
+  display: grid;
+  gap: 12px;
+}
+
+.payment-vouchers__dimension-grid .ant-input-number,
+.payment-vouchers__wizard-card .ant-input-number {
+  width: 100%;
+}
+
+.payment-vouchers__shipping-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.payment-vouchers__shipping-stats span,
+.payment-vouchers__quote-values span {
+  display: grid;
+  gap: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.payment-vouchers__shipping-stats strong,
+.payment-vouchers__quote-values strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.payment-vouchers__quote-result {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+.payment-vouchers__quote-result > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.payment-vouchers__quote-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payment-vouchers__quote-values strong:first-letter {
+  text-transform: uppercase;
+}
+
+.payment-vouchers__estimate-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: #f8fbff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+}
+
+.payment-vouchers__estimate-title {
+  display: block;
+  margin: -16px -16px 4px;
+  padding: 13px 16px;
+  color: #1677ff;
+  background: #eff6ff;
+  border-radius: 12px 12px 0 0;
+}
+
+.payment-vouchers__estimate-total {
+  color: #ea580c !important;
+  font-size: 18px;
 }
 
 .payment-vouchers__wizard-card .ant-input,
@@ -1069,16 +1163,17 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .payment-vouchers__info-step-left {
-    grid-column: 1 / -1;
-  }
+  .payment-vouchers__info-step-left { grid-column: 1 / -1; }
 }
 
 @media (max-width: 760px) {
   .payment-vouchers__info-step-grid,
   .payment-vouchers__two-field-grid,
   .payment-vouchers__delivery-options,
-  .payment-vouchers__pickup-section {
+  .payment-vouchers__pickup-section,
+  .payment-vouchers__three-field-grid,
+  .payment-vouchers__dimension-grid,
+  .payment-vouchers__shipping-stats {
     grid-template-columns: 1fr;
   }
 

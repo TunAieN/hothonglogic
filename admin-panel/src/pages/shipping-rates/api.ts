@@ -24,6 +24,10 @@ export type ShippingRate = {
   details: ShippingRateDetail[];
 };
 
+export type ShippingRateSaveInput = Omit<ShippingRate, "id" | "details"> & {
+  details: Array<Omit<ShippingRateDetail, "id">>;
+};
+
 const RATE_FIELDS = `
   id
   name
@@ -67,11 +71,22 @@ export const fetchShippingRates = async (status?: string) => {
   return res.shippingRates.data;
 };
 
-export const saveShippingRate = async (input: Omit<ShippingRate, "id">, id?: string) => {
+export const saveShippingRate = async (input: ShippingRateSaveInput, id?: string) => {
   const mutation = id
     ? `mutation UpdateShippingRate($id: ID!, $input: ShippingRateInput!) { updateShippingRate(id: $id, input: $input) { ${RATE_FIELDS} } }`
     : `mutation CreateShippingRate($input: ShippingRateInput!) { createShippingRate(input: $input) { ${RATE_FIELDS} } }`;
-  const variables = id ? { id, input } : { input };
+  const normalizedInput = {
+    ...input,
+    details: input.details.map((detail) => ({
+      min_weight: detail.min_weight,
+      max_weight: detail.max_weight,
+      price: detail.price,
+      price_type: detail.price_type,
+      description: detail.description,
+      sort_order: detail.sort_order,
+    })),
+  };
+  const variables = id ? { id, input: normalizedInput } : { input: normalizedInput };
   const res = await requestGraphql<{ updateShippingRate?: ShippingRate; createShippingRate?: ShippingRate }, typeof variables>(mutation, variables);
   return res.updateShippingRate ?? res.createShippingRate!;
 };

@@ -13,11 +13,13 @@ use App\Models\PaymentVoucher;
 use App\Models\Role;
 use App\Models\ShippingRate;
 use App\Models\ShippingRateDetail;
+use App\Models\ShippingTask;
 use App\Models\User;
 use App\Models\VnBatchReceipt;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
 use App\Services\Payments\PaymentVoucherService;
+use App\Services\Shipping\ShipmentService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -130,7 +132,7 @@ class PaymentVoucherAmountsTest extends TestCase
         $preview = $this->preview([$package]);
 
         $this->assertSame(48996.0, $preview['product_total']);
-        $this->assertSame(400000.0, $preview['shipping_fee_total']);
+        $this->assertSame(400000.0, $preview['weight_shipping_total']);
         $this->assertSame(448996.0, $preview['gross_total']);
         $this->assertSame(34297.0, $preview['deposit_applied']);
         $this->assertSame(414699.0, $preview['total_amount']);
@@ -145,7 +147,7 @@ class PaymentVoucherAmountsTest extends TestCase
         $voucher = $this->createVoucher([$package]);
 
         $this->assertSame(48996, $voucher->base_amount_vnd);
-        $this->assertSame(400000.0, $voucher->shipping_fee_total);
+        $this->assertSame(400000.0, (float) $voucher->items()->where('item_type', 'weight_fee')->sum('amount'));
         $this->assertSame(34297.0, $voucher->deposit_applied);
         $this->assertSame(414699.0, $voucher->total_amount);
         $this->assertSame(0.0, $voucher->paid_amount);
@@ -161,7 +163,7 @@ class PaymentVoucherAmountsTest extends TestCase
         $preview = $this->preview($packages);
 
         $this->assertSame(100000.0, $preview['product_total']);
-        $this->assertSame(30000.0, $preview['shipping_fee_total']);
+        $this->assertSame(30000.0, $preview['weight_shipping_total']);
         $this->assertSame(30000.0, $preview['deposit_applied']);
         $this->assertSame(100000.0, $preview['remaining_amount']);
     }
@@ -175,7 +177,7 @@ class PaymentVoucherAmountsTest extends TestCase
         $preview = $this->preview([$this->createPackage($firstOrder), $this->createPackage($secondOrder)]);
 
         $this->assertSame(300000.0, $preview['product_total']);
-        $this->assertSame(40000.0, $preview['shipping_fee_total']);
+        $this->assertSame(40000.0, $preview['weight_shipping_total']);
         $this->assertSame(30000.0, $preview['deposit_applied']);
         $this->assertSame(310000.0, $preview['remaining_amount']);
     }
@@ -230,7 +232,7 @@ class PaymentVoucherAmountsTest extends TestCase
 
         $preview = $this->preview([$package], $surcharges);
 
-        $this->assertSame(12000.0, $preview['surcharge_total']);
+        $this->assertSame(12000.0, $preview['additional_charge_total']);
         $this->assertSame(132000.0, $preview['gross_total']);
         $this->assertSame(132000.0, $preview['remaining_amount']);
     }
@@ -248,8 +250,8 @@ class PaymentVoucherAmountsTest extends TestCase
         $preview = $this->preview([$firstPackage, $secondPackage], $surcharges);
 
         $this->assertSame(150000.0, $preview['order_total']);
-        $this->assertSame(40000.0, $preview['shipping_fee_total']);
-        $this->assertSame(5000.0, $preview['surcharge_total']);
+        $this->assertSame(40000.0, $preview['weight_shipping_total']);
+        $this->assertSame(5000.0, $preview['additional_charge_total']);
         $this->assertSame(195000.0, $preview['gross_total']);
         $this->assertSame(40000.0, $preview['deposit_applied']);
         $this->assertSame(15000.0, $preview['customer_credit_applied']);
@@ -267,12 +269,66 @@ class PaymentVoucherAmountsTest extends TestCase
         $voucher = $this->createVoucher([$package], $surcharges);
 
         $this->assertSame($preview['product_total'], (float) $voucher->base_amount_vnd);
-        $this->assertSame($preview['shipping_fee_total'], $voucher->shipping_fee_total);
-        $this->assertSame($preview['surcharge_total'], $voucher->surcharge_total);
+        $this->assertSame($preview['weight_shipping_total'], (float) $voucher->items()->where('item_type', 'weight_fee')->sum('amount'));
+        $this->assertSame($preview['additional_charge_total'], (float) $voucher->items()->where('item_type', 'surcharge')->sum('amount'));
         $this->assertSame($preview['deposit_applied'], $voucher->deposit_applied);
         $this->assertSame($preview['customer_credit_applied'], $voucher->customer_credit_applied);
         $this->assertSame($preview['total_amount'], $voucher->total_amount);
         $this->assertSame($preview['remaining_amount'], $voucher->remaining_amount);
+    }
+
+    public function test_delivery_fee_is_included_once_and_persisted(): void
+    {
+        $this->setShippingFee(30000);
+        $order = $this->createOrder(120000, 20000);
+        $packages = [$this->createPackage($order), $this->createPackage($order)];
+
+        $preview = $this->preview($packages, [], 52000);
+        $voucher = $this->createVoucher($packages, [], 'delivery', 52000);
+
+        $this->assertSame(52000.0, $preview['delivery_fee_total']);
+        $this->assertSame(232000.0, $preview['gross_total']);
+        $this->assertSame(212000.0, $preview['remaining_amount']);
+        $this->assertSame(52000.0, (float) $voucher->items()->where('item_type', 'domestic_shipping')->sum('amount'));
+        $this->assertSame(212000.0, $voucher->remaining_amount);
+        $this->assertSame(232000.0, $voucher->subtotal);
+        $this->assertSame(20000.0, $voucher->discount_amount);
+        $this->assertSame(212000.0, app(PaymentVoucherService::class)->calculateVoucherTotal($voucher));
+        $this->assertSame(52000.0, (float) $voucher->items()->where('item_type', 'domestic_shipping')->sum('amount'));
+        $this->assertSame('delivery', $voucher->deliveryRequest?->delivery_method);
+        $this->assertSame('SPX', $voucher->deliveryRequest?->preferred_carrier);
+        $this->assertSame('Người nhận kiểm thử', $voucher->deliveryRequest?->address?->receiver_name);
+        $this->assertSame('12 Lê Đức Thọ, Hà Nội', $voucher->deliveryRequest?->address?->full_address);
+
+        $task = ShippingTask::query()->create([
+            'task_code' => 'SHIP-'.uniqid(), 'delivery_staff_id' => $this->user->id,
+            'vn_warehouse_id' => $this->receipt->vn_warehouse_id, 'carrier_code' => 'spx',
+            'carrier_name' => 'SPX Express', 'scheduled_delivery_date' => now()->addDay(),
+            'status' => ShippingTask::STATUS_CREATED, 'created_by' => $this->user->id,
+        ]);
+        $request = $voucher->deliveryRequest;
+        $request->update(['shipping_task_id' => $task->id, 'status' => 'processing']);
+        $shipment = app(ShipmentService::class)->createPending($request->fresh(), [
+            'carrier_code' => 'SPX', 'shipping_fee' => 52000, 'cod_amount' => 0,
+            'weight' => 2, 'length' => 40, 'width' => 30, 'height' => 25,
+        ]);
+        $this->assertSame('pending', $shipment->status);
+        $this->assertSame('SPX', $shipment->carrier_code);
+        $this->assertNull($shipment->tracking_number);
+        $this->assertCount(1, $shipment->trackingEvents);
+    }
+
+    public function test_pickup_ignores_a_submitted_delivery_fee(): void
+    {
+        $this->setShippingFee(30000);
+        $package = $this->createPackage($this->createOrder(120000));
+
+        $voucher = $this->createVoucher([$package], [], 'pickup_at_warehouse', 52000);
+
+        $this->assertSame(0.0, (float) $voucher->items()->where('item_type', 'domestic_shipping')->sum('amount'));
+        $this->assertSame(150000.0, $voucher->remaining_amount);
+        $this->assertSame('pickup_at_warehouse', $voucher->deliveryRequest?->delivery_method);
+        $this->assertNull($voucher->deliveryRequest?->address);
     }
 
     private function createOrder(int $productTotal, int $depositPaid = 0, ?int $depositRequired = null): Order
@@ -341,20 +397,30 @@ class PaymentVoucherAmountsTest extends TestCase
         ]);
     }
 
-    private function preview(array $packages, array $surcharges = []): array
+    private function preview(array $packages, array $surcharges = [], int $deliveryFee = 0): array
     {
         return app(PaymentVoucherService::class)->preview([
             'package_ids' => collect($packages)->pluck('id')->all(),
             'surcharges' => $surcharges,
+            'delivery_fee' => $deliveryFee,
         ]);
     }
 
-    private function createVoucher(array $packages, array $surcharges = []): PaymentVoucher
+    private function createVoucher(array $packages, array $surcharges = [], string $deliveryMethod = 'pickup_at_warehouse', int $deliveryFee = 0): PaymentVoucher
     {
         return app(PaymentVoucherService::class)->create([
             'package_ids' => collect($packages)->pluck('id')->all(),
             'request_uuid' => (string) Str::uuid(),
-            'receiver_type' => 'pickup_at_warehouse',
+            'delivery_method' => $deliveryMethod,
+            'receiver_name' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'Người nhận kiểm thử',
+            'receiver_phone' => $deliveryMethod === 'pickup_at_warehouse' ? null : '0900000000',
+            'province_name' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'Hà Nội',
+            'district_name' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'Nam Từ Liêm',
+            'ward_name' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'Mỹ Đình 2',
+            'address_line' => $deliveryMethod === 'pickup_at_warehouse' ? null : '12 Lê Đức Thọ',
+            'full_address' => $deliveryMethod === 'pickup_at_warehouse' ? null : '12 Lê Đức Thọ, Hà Nội',
+            'preferred_carrier' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'spx',
+            'delivery_fee' => $deliveryFee,
             'payment_method_expected' => 'bank_transfer',
             'surcharges' => $surcharges,
         ]);

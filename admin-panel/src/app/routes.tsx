@@ -1,10 +1,17 @@
 import { lazy, Suspense } from "react";
+import type { ReactNode } from "react";
 import { ErrorComponent } from "@refinedev/antd";
 import { Navigate, Outlet, Route, Routes } from "react-router";
 
 import { CustomLayout } from "../layouts/admin";
 import { RouteLoadingFallback } from "../shared/components/admin-loading";
 import { RequireAuth } from "./auth/RequireAuth";
+import { RequirePermission } from "./auth/RequirePermission";
+import { ForbiddenPage } from "../pages/errors/ForbiddenPage";
+
+const allow = (permission: string, element: ReactNode) => (
+  <RequirePermission permission={permission}>{element}</RequirePermission>
+);
 
 const LoginPage = lazy(() =>
   import("../pages/auth/LoginPage").then((module) => ({ default: module.LoginPage })),
@@ -52,6 +59,9 @@ const DashboardPage = lazy(() =>
 );
 const EmployeesPage = lazy(() =>
   import("../pages/employees").then((module) => ({ default: module.EmployeesPage })),
+);
+const EmployeeShowPage = lazy(() =>
+  import("../pages/employees/show").then((module) => ({ default: module.EmployeeShowPage })),
 );
 const PaymentVouchersPage = lazy(() =>
   import("../pages/payment-vouchers").then((module) => ({ default: module.PaymentVouchersPage })),
@@ -105,7 +115,7 @@ export const AppRoutes = () => (
         element={
           <RequireAuth>
             <ExternalOrderLayout>
-              <ExternalOrderCreate />
+              {allow("orders.create", <ExternalOrderCreate />)}
             </ExternalOrderLayout>
           </RequireAuth>
         }
@@ -120,43 +130,45 @@ export const AppRoutes = () => (
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="/403" element={<ForbiddenPage />} />
 
         <Route path="/customers">
-          <Route index element={<CustomerList />} />
-          <Route path="create" element={<CustomerCreate />} />
-          <Route path="edit/:id" element={<CustomerEdit />} />
-          <Route path="show/:id" element={<CustomerShow />} />
+          <Route index element={allow("customers.read", <CustomerList />)} />
+          <Route path="create" element={allow("customers.create", <CustomerCreate />)} />
+          <Route path="edit/:id" element={allow("customers.update", <CustomerEdit />)} />
+          <Route path="show/:id" element={allow("customers.read", <CustomerShow />)} />
         </Route>
 
         <Route path="/orders">
-          <Route index element={<OrderList />} />
-          <Route path="show/:id" element={<OrderShow />} />
-          <Route path="edit/:id" element={<OrderEdit />} />
+          <Route index element={allow("orders.read", <OrderList />)} />
+          <Route path="show/:id" element={allow("orders.read", <OrderShow />)} />
+          <Route path="edit/:id" element={allow("orders.update", <OrderEdit />)} />
         </Route>
 
-        <Route path="/cn-batches" element={<CnBatchesPage />} />
-        <Route path="/china-warehouse" element={<ChinaWarehousePage />} />
-        <Route path="/vietnam-warehouse" element={<VietnamWarehousePage />} />
-        <Route path="/payment-vouchers" element={<PaymentVouchersPage />} />
-        <Route path="/payment-vouchers/:id" element={<PaymentVoucherShow />} />
-        <Route path="/invoices" element={<InvoiceListPage />} />
-        <Route path="/invoices/create" element={<InvoiceCreatePage />} />
-        <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-        <Route path="/revenue-report" element={<RevenueReportPage />} />
-        <Route path="/shipping-rates" element={<ShippingRatesPage />} />
-        <Route path="/exchange-rates" element={<ExchangeRatesPage />} />
-        <Route path="/employees" element={<EmployeesPage />} />
+        <Route path="/cn-batches" element={allow("cn_batches.read", <CnBatchesPage />)} />
+        <Route path="/china-warehouse" element={allow("cn_packages.read", <ChinaWarehousePage />)} />
+        <Route path="/vietnam-warehouse" element={allow("vn_warehouse.read", <VietnamWarehousePage />)} />
+        <Route path="/payment-vouchers" element={allow("payment_vouchers.read", <PaymentVouchersPage />)} />
+        <Route path="/payment-vouchers/:id" element={allow("payment_vouchers.read", <PaymentVoucherShow />)} />
+        <Route path="/invoices" element={allow("invoices.read", <InvoiceListPage />)} />
+        <Route path="/invoices/create" element={allow("invoices.create", <InvoiceCreatePage />)} />
+        <Route path="/invoices/:id" element={allow("invoices.read", <InvoiceDetailPage />)} />
+        <Route path="/revenue-report" element={allow("revenue_report.read", <RevenueReportPage />)} />
+        <Route path="/shipping-rates" element={allow("shipping_rates.read", <ShippingRatesPage />)} />
+        <Route path="/exchange-rates" element={allow("exchange_rates.read", <ExchangeRatesPage />)} />
+        <Route path="/employees" element={allow("employees.read", <EmployeesPage />)} />
+        <Route path="/employees/:id" element={allow("employees.read", <EmployeeShowPage />)} />
         <Route path="/shipping" element={<Navigate to="/shipping/queue" replace />} />
-        <Route path="/shipping/queue" element={<ShippingQueuePage />} />
-        <Route path="/shipping/create" element={<CreateShippingTaskPage />} />
-        <Route path="/shipping/tasks" element={<ShippingTaskListPage />} />
-        <Route path="/shipping/tasks/:id" element={<ShippingTaskDetailPage />} />
-        <Route path="/shipping/slips" element={<ExportSlipListPage />} />
-        <Route path="/shipping/slips/:id" element={<ExportSlipDetailPage />} />
+        <Route path="/shipping/queue" element={allow("shipping_queue.read", <ShippingQueuePage />)} />
+        <Route path="/shipping/create" element={allow("shipping_tasks.create", <CreateShippingTaskPage />)} />
+        <Route path="/shipping/tasks" element={allow("shipping_tasks.read", <ShippingTaskListPage />)} />
+        <Route path="/shipping/tasks/:id" element={allow("shipping_tasks.read", <ShippingTaskDetailPage />)} />
+        <Route path="/shipping/slips" element={allow("export_slips.read", <ExportSlipListPage />)} />
+        <Route path="/shipping/slips/:id" element={allow("export_slips.read", <ExportSlipDetailPage />)} />
 
         <Route path="/fleet" element={<Navigate to="/employees" replace />} />
-        <Route path="/routes" element={<DashboardPage />} />
-        <Route path="/analytics" element={<DashboardPage />} />
+        <Route path="/routes" element={allow("settings.read", <DashboardPage />)} />
+        <Route path="/analytics" element={allow("audit_logs.read", <DashboardPage />)} />
 
         <Route path="*" element={<ErrorComponent />} />
       </Route>

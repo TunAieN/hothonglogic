@@ -30,8 +30,6 @@ class PaymentVoucher extends Model
         'order_id',
         'vn_warehouse_id',
         'created_by',
-        'receiver_type',
-        'delivery_address',
         'payment_method_expected',
         'payment_account_id',
         'bank_name_snapshot',
@@ -46,9 +44,10 @@ class PaymentVoucher extends Model
         'currency',
         'transfer_content',
         'status',
-        'shipping_fee_total',
-        'domestic_shipping_fee',
-        'surcharge_total',
+        'subtotal',
+        'discount_amount',
+        'payment_method',
+        'paid_at',
         'total_amount',
         'deposit_applied',
         'customer_credit_applied',
@@ -66,14 +65,14 @@ class PaymentVoucher extends Model
         'exchange_rate' => 'float',
         'base_amount_vnd' => 'integer',
         'deposit_percent' => 'float',
-        'shipping_fee_total' => 'float',
-        'domestic_shipping_fee' => 'float',
-        'surcharge_total' => 'float',
         'total_amount' => 'float',
         'deposit_applied' => 'float',
         'customer_credit_applied' => 'float',
         'paid_amount' => 'float',
         'remaining_amount' => 'float',
+        'subtotal' => 'float',
+        'discount_amount' => 'float',
+        'paid_at' => 'datetime',
         'cancelled_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
@@ -108,9 +107,14 @@ class PaymentVoucher extends Model
         return $this->hasMany(PaymentVoucherPackage::class);
     }
 
-    public function surcharges()
+    public function items()
     {
-        return $this->hasMany(PaymentVoucherSurcharge::class);
+        return $this->hasMany(PaymentVoucherItem::class);
+    }
+
+    public function deliveryRequest()
+    {
+        return $this->hasOne(DeliveryRequest::class);
     }
 
     public function transactions()

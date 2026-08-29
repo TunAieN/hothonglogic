@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Key } from "react";
 import { useNavigate } from "react-router";
-import { Button, Card, Col, Descriptions, Form, Input, InputNumber, Modal, Popover, Radio, Result, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Card, Col, Descriptions, Form, Input, InputNumber, Modal, Popover, Radio, Result, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, message } from "antd";
 import { ArrowLeftOutlined, ArrowRightOutlined, BankOutlined, CalculatorOutlined, CheckOutlined, CopyOutlined, CreditCardOutlined, DeleteOutlined, DollarOutlined, EnvironmentOutlined, FileDoneOutlined, FileTextOutlined, HomeOutlined, InfoCircleOutlined, PhoneOutlined, PlusOutlined, ReloadOutlined, RightOutlined, SafetyCertificateOutlined, ShopOutlined, ShoppingCartOutlined, ShoppingOutlined, TruckOutlined, UserOutlined, WalletOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { createPaymentVoucher, fetchDefaultPaymentAccount, fetchEligiblePaymentPackages, fetchPaymentVouchers, getPaymentErrorMessage, previewPaymentVoucher } from "./api";
 import type { EligiblePaymentPackage, PaymentAccount, PaymentVoucher, VoucherPreview, VoucherSurchargeInput } from "./types";
+import { shippingQuotationService } from "./shippingQuotation";
+import type { ShippingQuotation } from "./shippingQuotation";
+import { Can } from "../../shared/auth/Can";
 import "./payment-vouchers.css";
 
 const { Text, Title } = Typography;
@@ -143,9 +146,9 @@ const calculatePaymentBreakdown = (selectedPackages: EligiblePaymentPackage[], p
   const orderSurcharge = 0;
   const orderTotal = preview ? toMoneyNumber(preview.order_total) : productAmount + purchaseFee + foreignDomesticFee + orderSurcharge;
 
-  const weightShippingFee = toMoneyNumber(preview?.shipping_fee_total);
-  const localShippingFee = toMoneyNumber(preview?.domestic_shipping_fee);
-  const shippingSurcharge = toMoneyNumber(preview?.surcharge_total);
+  const weightShippingFee = toMoneyNumber(preview?.weight_shipping_total);
+  const localShippingFee = toMoneyNumber(preview?.delivery_fee_total);
+  const shippingSurcharge = toMoneyNumber(preview?.additional_charge_total);
   const shippingTotal = weightShippingFee + localShippingFee + shippingSurcharge;
 
   const totalPayable = preview ? toMoneyNumber(preview.gross_total) : orderTotal + shippingTotal;
@@ -303,6 +306,16 @@ const DeliveryMethodOption = ({ selected, icon, title, description, onClick }: {
   </button>
 );
 
+const EditableLocationSelect = ({ value, onChange, options = [], disabled, placeholder }: { value?: string; onChange?: (value?: string) => void; options?: Array<{ value: string; label: string }>; disabled?: boolean; placeholder: string }) => {
+  const [searchValue, setSearchValue] = useState("");
+  const mergedOptions = [...options];
+  if (searchValue.trim() && !mergedOptions.some((option) => option.value.toLocaleLowerCase("vi-VN") === searchValue.trim().toLocaleLowerCase("vi-VN"))) {
+    mergedOptions.push({ value: searchValue.trim(), label: searchValue.trim() });
+  }
+
+  return <Select value={value} onChange={onChange} showSearch allowClear disabled={disabled} placeholder={placeholder} options={mergedOptions} filterOption={false} onSearch={setSearchValue} onOpenChange={(open: boolean) => { if (!open) setSearchValue(""); }} />;
+};
+
 const getUniqueOrders = (items: EligiblePaymentPackage[]) => {
   const ordersById = new Map<string, NonNullable<NonNullable<EligiblePaymentPackage["cn_package"]>["order"]>>();
   items.forEach((item) => {
@@ -406,9 +419,11 @@ const PaymentPageHeader = ({ canCreate, loading, onCreate, onRefresh }: { canCre
       <Tooltip title="Tải lại dữ liệu">
         <Button aria-label="Tải lại dữ liệu" icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
       </Tooltip>
-      <Button type="primary" disabled={!canCreate} onClick={onCreate}>
-        Tạo phiếu thanh toán
-      </Button>
+      <Can permission="payment_vouchers.create">
+        <Button type="primary" disabled={!canCreate} onClick={onCreate}>
+          Tạo phiếu thanh toán
+        </Button>
+      </Can>
     </Space>
   </div>
 );
@@ -500,9 +515,11 @@ const EligibleShipmentTable = ({
         <Text type={canCreate ? "secondary" : "danger"}>
           Đã chọn {selectedCount} vận đơn{canCreate ? "." : ", nhưng đang trộn nhiều khách hàng."}
         </Text>
-        <Button type="primary" disabled={!canCreate} onClick={onCreate}>
-          Tạo phiếu thanh toán
-        </Button>
+        <Can permission="payment_vouchers.create">
+          <Button type="primary" disabled={!canCreate} onClick={onCreate}>
+            Tạo phiếu thanh toán
+          </Button>
+        </Can>
       </div>
     )}
   </>
@@ -565,8 +582,13 @@ export const PaymentVouchersPage = () => {
   const [surcharges, setSurcharges] = useState<VoucherSurchargeInput[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuotation | null>(null);
+  const [shippingQuoteError, setShippingQuoteError] = useState("");
   const [activeVoucherTab, setActiveVoucherTab] = useState("waiting_payment");
   const [form] = Form.useForm();
+  const deliveryMethod = Form.useWatch("delivery_method", form) ?? "pickup_at_warehouse";
+  const wizardValues = Form.useWatch([], form) ?? {};
 
   const selectedPackages = useMemo(
     () => packages.filter((item) => selectedKeys.includes(item.id)),
@@ -639,22 +661,36 @@ export const PaymentVouchersPage = () => {
     }
     const first = selectedPackages[0];
     form.setFieldsValue({
-      receiver_type: "pickup_at_warehouse",
+      delivery_method: "pickup_at_warehouse",
       payment_method_expected: "bank_transfer",
-      delivery_address: getCustomer(first)?.address ?? "",
+      receiver_name: getCustomer(first)?.name ?? "",
+      receiver_phone: getCustomer(first)?.phone ?? "",
+      province: getCustomer(first)?.province ?? undefined,
+      district: getCustomer(first)?.district ?? undefined,
+      ward: getCustomer(first)?.ward ?? undefined,
+      address_line: getCustomer(first)?.address ?? "",
+      delivery_note: "",
+      carrier: "spx",
+      package_count: selectedPackages.length,
+      length_cm: Math.max(...selectedPackages.map((item) => Number(item.actual_length ?? 0)), 0) || undefined,
+      width_cm: Math.max(...selectedPackages.map((item) => Number(item.actual_width ?? 0)), 0) || undefined,
+      height_cm: Math.max(...selectedPackages.map((item) => Number(item.actual_height ?? 0)), 0) || undefined,
+      cod_amount: 0,
       note: "",
     });
     setPreview(null);
+    setShippingQuote(null);
+    setShippingQuoteError("");
     setSurcharges([]);
     setActiveStep(0);
     setWizardOpen(true);
     void loadDefaultPaymentAccount();
   };
 
-  const refreshPreview = async () => {
+  const refreshPreview = async (deliveryFee = deliveryMethod === "pickup_at_warehouse" ? 0 : shippingQuote?.fee ?? 0) => {
     setLoading(true);
     try {
-      const data = await previewPaymentVoucher(selectedPackages.map((item) => item.id), surcharges);
+      const data = await previewPaymentVoucher(selectedPackages.map((item) => item.id), surcharges, deliveryFee);
       setPreview(data);
       if (data.payment_account) {
         setDefaultPaymentAccount(data.payment_account);
@@ -668,10 +704,63 @@ export const PaymentVouchersPage = () => {
     }
   };
 
+  const invalidateShippingQuote = () => {
+    if (shippingQuote) {
+      setShippingQuote(null);
+      setShippingQuoteError("Thông tin giao hàng đã thay đổi. Vui lòng tính lại cước.");
+      setPreview(null);
+    }
+  };
+
+  const calculateShippingQuote = async () => {
+    setShippingQuoteError("");
+    try {
+      const values = await form.validateFields([
+        "receiver_name", "receiver_phone", "province", "district", "ward", "address_line",
+        "carrier", "package_count", "length_cm", "width_cm", "height_cm",
+      ]);
+      setQuoteLoading(true);
+      const quote = await shippingQuotationService.quote({
+        carrier: values.carrier,
+        province: values.province,
+        district: values.district,
+        ward: values.ward,
+        addressLine: values.address_line,
+        packageCount: Number(values.package_count),
+        actualWeightKg: selectedActualWeight,
+        chargeableWeightKg: selectedChargeableWeight,
+        lengthCm: Number(values.length_cm),
+        widthCm: Number(values.width_cm),
+        heightCm: Number(values.height_cm),
+        codAmount: Number(values.cod_amount ?? 0),
+      });
+      setShippingQuote(quote);
+      await refreshPreview(quote.fee);
+    } catch (error) {
+      const hasFieldErrors = typeof error === "object" && error !== null && "errorFields" in error;
+      if (!hasFieldErrors) {
+        setShippingQuoteError("Không thể lấy cước vận chuyển. Vui lòng thử lại.");
+      }
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
   const handleNext = async () => {
+    if (activeStep === 0) {
+      setShippingQuote(null);
+      setShippingQuoteError("");
+      await refreshPreview(0);
+    }
     if (activeStep === 1) {
-      await form.validateFields(["receiver_type", "delivery_address", "payment_method_expected"]);
-      await refreshPreview();
+      if (deliveryMethod === "delivery") {
+        await form.validateFields(["receiver_name", "receiver_phone", "province", "district", "ward", "address_line", "carrier"]);
+        if (!shippingQuote) {
+          setShippingQuoteError("Vui lòng tính phí vận chuyển trước khi tiếp tục.");
+          return;
+        }
+      }
+      await refreshPreview(deliveryMethod === "pickup_at_warehouse" ? 0 : shippingQuote?.fee ?? 0);
     }
     if (activeStep === 2) {
       await refreshPreview();
@@ -683,26 +772,34 @@ export const PaymentVouchersPage = () => {
     setSubmitLoading(true);
     try {
       const values = {
-        receiver_type: "pickup_at_warehouse",
+        delivery_method: "pickup_at_warehouse",
         payment_method_expected: "bank_transfer",
-        delivery_address: getCustomer(selectedPackages[0])?.address ?? "",
+        address_line: getCustomer(selectedPackages[0])?.address ?? "",
         note: "",
         ...form.getFieldsValue(true),
       };
 
-      if (!values.receiver_type) values.receiver_type = "pickup_at_warehouse";
+      if (!values.delivery_method) values.delivery_method = "pickup_at_warehouse";
       if (!values.payment_method_expected) values.payment_method_expected = "bank_transfer";
-      if (values.receiver_type !== "pickup_at_warehouse" && !String(values.delivery_address ?? "").trim()) {
-        message.warning("Vui lòng nhập địa chỉ giao hàng.");
-        return;
-      }
+      const fullAddress = values.delivery_method === "pickup_at_warehouse"
+        ? undefined
+        : [values.address_line, values.ward, values.district, values.province].filter(Boolean).join(", ");
 
       const voucher = await createPaymentVoucher({
         package_ids: selectedPackages.map((item) => item.id),
         request_uuid: crypto.randomUUID(),
         vn_warehouse_id: selectedPackages[0]?.receipt?.warehouse?.id,
-        receiver_type: values.receiver_type,
-        delivery_address: values.delivery_address,
+        delivery_method: values.delivery_method,
+        receiver_name: values.receiver_name,
+        receiver_phone: values.receiver_phone,
+        province_name: values.province,
+        district_name: values.district,
+        ward_name: values.ward,
+        address_line: values.address_line,
+        full_address: fullAddress,
+        preferred_carrier: values.carrier,
+        delivery_note: values.delivery_note,
+        delivery_fee: values.delivery_method === "pickup_at_warehouse" ? 0 : shippingQuote?.fee ?? 0,
         payment_method_expected: values.payment_method_expected,
         note: values.note,
         surcharges,
@@ -787,7 +884,23 @@ export const PaymentVouchersPage = () => {
       const depositStatus = getDepositStatus(paymentBreakdown.depositPaid, paymentBreakdown.orderTotal);
       const voucherCreatedAt = new Date().toISOString();
 
-      return <Form form={form} layout="vertical" requiredMark className="payment-vouchers__wizard-step-form">
+      const quoteFee = deliveryMethod === "delivery" ? shippingQuote?.fee ?? 0 : 0;
+      const provisionalTotal = paymentBreakdown.productAmount + paymentBreakdown.weightShippingFee + quoteFee + paymentBreakdown.shippingSurcharge;
+      const customerProvinceOptions = customer?.province ? [{ value: customer.province, label: customer.province }] : [];
+      const customerDistrictOptions = customer?.district ? [{ value: customer.district, label: customer.district }] : [];
+      const customerWardOptions = customer?.ward ? [{ value: customer.ward, label: customer.ward }] : [];
+
+      return <Form
+        form={form}
+        layout="vertical"
+        requiredMark
+        className="payment-vouchers__wizard-step-form"
+        onValuesChange={(changed) => {
+          if (["province", "district", "ward", "address_line", "carrier", "package_count", "length_cm", "width_cm", "height_cm"].some((key) => key in changed)) {
+            invalidateShippingQuote();
+          }
+        }}
+      >
         <div className="payment-vouchers__info-step-grid">
           <div className="payment-vouchers__info-step-left">
             <WizardInfoCard title="Thông tin khách hàng" index={1} icon={<UserOutlined />} tone="blue">
@@ -802,14 +915,14 @@ export const PaymentVouchersPage = () => {
             </WizardInfoCard>
 
             <WizardInfoCard title="Thông tin giao nhận" index={4} icon={<TruckOutlined />} tone="green">
-              <Form.Item hidden name="receiver_type" rules={[{ required: true, message: "Vui lòng chọn hình thức nhận hàng" }]}><Input /></Form.Item>
+              <Form.Item hidden name="delivery_method" rules={[{ required: true, message: "Vui lòng chọn hình thức nhận hàng" }]}><Input /></Form.Item>
               <Form.Item noStyle shouldUpdate>{({ getFieldValue }) => {
-                const receiverType = getFieldValue("receiver_type") ?? "pickup_at_warehouse";
-                const isPickup = receiverType === "pickup_at_warehouse";
+                const selectedDeliveryMethod = getFieldValue("delivery_method") ?? "pickup_at_warehouse";
+                const isPickup = selectedDeliveryMethod === "pickup_at_warehouse";
                 return <>
                   <div className="payment-vouchers__delivery-options" aria-label="Hình thức nhận hàng">
-                    <DeliveryMethodOption selected={isPickup} icon={<HomeOutlined />} title="Nhận tại kho" description="Khách hàng đến kho để nhận hàng" onClick={() => form.setFieldsValue({ receiver_type: "pickup_at_warehouse" })} />
-                    <DeliveryMethodOption selected={!isPickup} icon={<TruckOutlined />} title="Giao tận nơi" description="Giao hàng đến địa chỉ khách hàng" onClick={() => form.setFieldsValue({ receiver_type: "local_delivery" })} />
+                    <DeliveryMethodOption selected={isPickup} icon={<HomeOutlined />} title="Nhận tại kho" description="Khách hàng đến kho để nhận hàng" onClick={() => { form.setFieldsValue({ delivery_method: "pickup_at_warehouse" }); setShippingQuote(null); setShippingQuoteError(""); void refreshPreview(0); }} />
+                    <DeliveryMethodOption selected={!isPickup} icon={<TruckOutlined />} title="Giao tận nơi" description="Giao hàng đến địa chỉ khách hàng" onClick={() => form.setFieldsValue({ delivery_method: "delivery" })} />
                   </div>
                   {isPickup ? <div className="payment-vouchers__pickup-section">
                     <Form.Item label="Kho nhận hàng" required>
@@ -821,23 +934,51 @@ export const PaymentVouchersPage = () => {
                       {warehouseInfo.address ? <Text type="secondary">{warehouseInfo.address}</Text> : null}
                     </div> : null}
                     <div className="payment-vouchers__delivery-status"><CheckOutlined /> Khách hàng sẽ đến kho để nhận hàng</div>
-                  </div> : <Form.Item name="delivery_address" label="Địa chỉ giao hàng" rules={[{ required: true, message: "Vui lòng nhập địa chỉ giao" }]}>
-                    <Input prefix={<EnvironmentOutlined />} placeholder="Nhập địa chỉ giao hàng" />
-                  </Form.Item>}
+                  </div> : <div className="payment-vouchers__delivery-form">
+                    <div className="payment-vouchers__two-field-grid">
+                      <Form.Item name="receiver_name" label="Người nhận" rules={[{ required: true, whitespace: true, message: "Vui lòng nhập người nhận" }]}><Input prefix={<UserOutlined />} placeholder="Tên người nhận" /></Form.Item>
+                      <Form.Item name="receiver_phone" label="Số điện thoại nhận" rules={[{ required: true, whitespace: true, message: "Vui lòng nhập số điện thoại" }, { pattern: /^(?:\+?84|0)[0-9]{9,10}$/, message: "Số điện thoại chưa đúng định dạng" }]}><Input prefix={<PhoneOutlined />} placeholder="Số điện thoại" /></Form.Item>
+                    </div>
+                    <div className="payment-vouchers__three-field-grid">
+                      <Form.Item name="province" label="Tỉnh/Thành phố" rules={[{ required: true, message: "Vui lòng chọn tỉnh/thành" }]}><EditableLocationSelect placeholder="Chọn hoặc nhập tỉnh/thành" options={customerProvinceOptions} onChange={() => form.setFieldsValue({ district: undefined, ward: undefined })} /></Form.Item>
+                      <Form.Item shouldUpdate noStyle>{({ getFieldValue }) => <Form.Item name="district" label="Quận/Huyện" rules={[{ required: true, message: "Vui lòng chọn quận/huyện" }]}><EditableLocationSelect disabled={!getFieldValue("province")} placeholder="Chọn hoặc nhập quận/huyện" options={customerDistrictOptions} onChange={() => form.setFieldValue("ward", undefined)} /></Form.Item>}</Form.Item>
+                      <Form.Item shouldUpdate noStyle>{({ getFieldValue }) => <Form.Item name="ward" label="Phường/Xã" rules={[{ required: true, message: "Vui lòng chọn phường/xã" }]}><EditableLocationSelect disabled={!getFieldValue("district")} placeholder="Chọn hoặc nhập phường/xã" options={customerWardOptions} /></Form.Item>}</Form.Item>
+                    </div>
+                    <Form.Item name="address_line" label="Địa chỉ chi tiết" rules={[{ required: true, whitespace: true, message: "Vui lòng nhập địa chỉ chi tiết" }]}><Input prefix={<EnvironmentOutlined />} placeholder="Số nhà, tên đường..." /></Form.Item>
+                    <Form.Item name="delivery_note" label="Ghi chú giao hàng"><Input placeholder="Ví dụ: Giao giờ hành chính" /></Form.Item>
+                  </div>}
                 </>;
               }}</Form.Item>
             </WizardInfoCard>
           </div>
 
-          <WizardInfoCard title="Thông tin phiếu" index={2} icon={<FileTextOutlined />} tone="blue" className="payment-vouchers__info-step-middle">
-            <WizardInfoRow label="Mã phiếu dự kiến" value="Tự động tạo" />
-            <WizardInfoRow label="Ngày tạo phiếu" value={formatDateTime(voucherCreatedAt)} />
-            <WizardInfoRow label="Loại phiếu" value={<StatusBadge label="Thanh toán đơn hàng" tone="info" />} />
-            <WizardInfoRow label="Nhân viên tạo" value="Admin" />
-            <WizardInfoRow label="Trạng thái" value={<StatusBadge label="Chưa thanh toán" tone="warning" />} />
-          </WizardInfoCard>
+          <div className="payment-vouchers__info-step-middle">
+            <WizardInfoCard title="Thông tin phiếu" index={2} icon={<FileTextOutlined />} tone="blue">
+              <WizardInfoRow label="Mã phiếu dự kiến" value="Tự động tạo" />
+              <WizardInfoRow label="Ngày tạo phiếu" value={formatDateTime(voucherCreatedAt)} />
+              <WizardInfoRow label="Loại phiếu" value={<StatusBadge label="Thanh toán đơn hàng" tone="info" />} />
+              <WizardInfoRow label="Nhân viên tạo" value="Admin" />
+              <WizardInfoRow label="Trạng thái" value={<StatusBadge label="Chưa thanh toán" tone="warning" />} />
+            </WizardInfoCard>
+            {deliveryMethod === "delivery" ? <WizardInfoCard title="Thông tin tính phí giao tận nơi" index={5} icon={<CalculatorOutlined />} tone="green">
+              <div className="payment-vouchers__two-field-grid">
+                <Form.Item name="carrier" label="Đơn vị vận chuyển" rules={[{ required: true, message: "Vui lòng chọn đơn vị vận chuyển" }]}><Select options={[{ value: "spx", label: "SPX Express" }]} /></Form.Item>
+                <Form.Item label="Hình thức giao"><Input value="Giao tận nơi" readOnly /></Form.Item>
+              </div>
+              <div className="payment-vouchers__shipping-stats"><span>Số kiện<strong>{selectedPackages.length}</strong></span><span>Cân thực tế<strong>{kg(selectedActualWeight)}</strong></span><span>Cân tính phí<strong>{kg(Number(selectedChargeableWeight.toFixed(2)))}</strong></span></div>
+              <div className="payment-vouchers__dimension-grid">
+                <Form.Item name="length_cm" label="Dài (cm)" rules={[{ required: true, message: "Nhập chiều dài" }]}><InputNumber min={1} /></Form.Item>
+                <Form.Item name="width_cm" label="Rộng (cm)" rules={[{ required: true, message: "Nhập chiều rộng" }]}><InputNumber min={1} /></Form.Item>
+                <Form.Item name="height_cm" label="Cao (cm)" rules={[{ required: true, message: "Nhập chiều cao" }]}><InputNumber min={1} /></Form.Item>
+              </div>
+              <Form.Item name="cod_amount" label="Giá trị thu hộ COD"><InputNumber min={0} addonAfter="đ" disabled /></Form.Item>
+              <Button type="primary" block icon={<CalculatorOutlined />} loading={quoteLoading} onClick={() => void calculateShippingQuote()}>Tính phí vận chuyển</Button>
+              {shippingQuoteError ? <Alert type="error" showIcon message={shippingQuoteError} action={<Button size="small" onClick={() => void calculateShippingQuote()}>Thử lại</Button>} /> : null}
+              {shippingQuote ? <div className="payment-vouchers__quote-result"><div><Text strong>Kết quả tính phí SPX</Text>{shippingQuote.source === "development_mock" ? <Tag color="gold">Mock development</Tag> : null}</div><div className="payment-vouchers__quote-values"><span>Cước dự kiến<strong>{money(shippingQuote.fee)}</strong></span><span>Thời gian giao dự kiến<strong>{shippingQuote.estimatedDelivery}</strong></span></div><Text type="success"><CheckOutlined /> Đã lấy được cước vận chuyển</Text></div> : null}
+            </WizardInfoCard> : null}
+          </div>
 
-          <WizardInfoCard title="Tóm tắt đơn hàng" index={3} icon={<ShoppingCartOutlined />} tone="purple" className="payment-vouchers__info-step-summary">
+          <div className="payment-vouchers__info-step-summary"><WizardInfoCard title="Tóm tắt đơn hàng" index={3} icon={<ShoppingCartOutlined />} tone="purple">
             <WizardInfoRow label="Mã đơn hàng" value={orderCodes.length > 0 ? <Tooltip title={orderCodes.join(", ")}><span>{orderCodes[0]}{orderCodes.length > 1 ? " +" + (orderCodes.length - 1) : ""}</span></Tooltip> : "—"} valueClassName="payment-vouchers__purple-value" />
             <WizardInfoRow label="Vận đơn" value={trackingNumbers.length > 0 ? <Tooltip title={trackingNumbers.join(", ")}><span>{visibleTrackingNumbers.join(", ")}{hiddenTrackingCount > 0 ? " +" + hiddenTrackingCount : ""}</span></Tooltip> : "Chưa có vận đơn"} />
             <WizardInfoRow label="Số kiện hàng" value={selectedPackages.length + " kiện"} />
@@ -849,19 +990,15 @@ export const PaymentVouchersPage = () => {
             <WizardInfoRow label="Đã đặt cọc" value={paymentBreakdown.depositPaid > 0 ? "-" + money(paymentBreakdown.depositPaid) : money(0)} valueClassName="payment-vouchers__negative-value" />
             <WizardInfoRow label="Công nợ đơn hàng" value={money(orderDebt)} valueClassName={orderDebt > 0 ? "payment-vouchers__debt-value" : "payment-vouchers__paid-value"} />
           </WizardInfoCard>
+            <div className="payment-vouchers__estimate-card"><Text strong className="payment-vouchers__estimate-title">Tạm tính thanh toán</Text><WizardInfoRow label="Tiền hàng" value={money(paymentBreakdown.productAmount)} /><WizardInfoRow label="Cước TQ → VN" value={money(paymentBreakdown.weightShippingFee)} /><WizardInfoRow label="Phí nội địa VN (SPX)" value={money(quoteFee)} /><WizardInfoRow label="Phụ phí khác" value={money(paymentBreakdown.shippingSurcharge)} /><div className="payment-vouchers__wizard-divider" /><WizardInfoRow label="Tổng tạm tính" value={money(provisionalTotal)} valueClassName="payment-vouchers__estimate-total" /></div>
+          </div>
         </div>
-
-        <WizardInfoCard title="Ghi chú" index={5} icon={<FileDoneOutlined />} tone="amber" className="payment-vouchers__note-card">
-          <Form.Item name="note" className="payment-vouchers__note-field">
-            <Input.TextArea rows={3} maxLength={500} showCount placeholder="Nhập ghi chú (nếu có)..." />
-          </Form.Item>
-        </WizardInfoCard>
       </Form>;
     }
 
     if (activeStep === 2) return <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Button icon={<ReloadOutlined />} onClick={() => void refreshPreview()} loading={loading}>Tính lại tiền</Button>
-      <Table rowKey="id" pagination={false} dataSource={preview?.packages ?? []} size="middle" bordered scroll={{ x: 980 }} columns={[{ title: "Mã vận đơn", dataIndex: "tracking_number", width: 150 }, { title: "Cân thực tế", render: (_, item) => kg(toMoneyNumber(item.actual_weight)), align: "right", width: 110 }, { title: "Cân quy đổi", render: (_, item) => kg(toMoneyNumber(item.volumetric_weight)), align: "right", width: 110 }, { title: "Cân tính phí", render: (_, item) => kg(toMoneyNumber(item.chargeable_weight)), align: "right", width: 110 }, { title: "Khung giá áp dụng", render: (_, item) => item.rate_description ?? "-", width: 180 }, { title: "Đơn giá", render: (_, item) => money(toMoneyNumber(item.unit_price ?? item.price_per_kg)), align: "right", width: 120 }, { title: "Kiểu tính giá", render: (_, item) => item.price_type === "fixed" ? "Giá cố định" : "Giá theo kg", width: 120 }, { title: "Phụ phí", render: (_, item) => money(toMoneyNumber(item.surcharge_amount)), align: "right", width: 110 }, { title: "Thành tiền", render: (_, item) => money(toMoneyNumber(item.total_amount)), align: "right", width: 120 }]} />
+      <Table rowKey="id" pagination={false} dataSource={preview?.packages ?? []} size="middle" bordered scroll={{ x: 980 }} columns={[{ title: "Mã vận đơn", dataIndex: "tracking_number", width: 150 }, { title: "Cân thực tế", render: (_, item) => kg(toMoneyNumber(item.actual_weight)), align: "right", width: 110 }, { title: "Cân quy đổi", render: (_, item) => kg(toMoneyNumber(item.volumetric_weight)), align: "right", width: 110 }, { title: "Cân tính phí", render: (_, item) => kg(toMoneyNumber(item.chargeable_weight)), align: "right", width: 110 }, { title: "Khung giá áp dụng", render: (_, item) => item.rate_description ?? "-", width: 180 }, { title: "Đơn giá", render: (_, item) => money(toMoneyNumber(item.unit_price ?? item.price_per_kg)), align: "right", width: 120 }, { title: "Kiểu tính giá", render: (_, item) => item.price_type === "fixed" ? "Giá cố định" : "Giá theo kg", width: 120 }, { title: "Phụ phí", render: (_, item) => money(toMoneyNumber(item.additional_charge_amount)), align: "right", width: 110 }, { title: "Thành tiền", render: (_, item) => money(toMoneyNumber(item.total_amount)), align: "right", width: 120 }]} />
       <div style={{ ...panelStyle, padding: 14 }}><Text strong>Phụ phí khác</Text><div style={{ marginTop: 12 }}><Space direction="vertical" style={{ width: "100%" }}>{surcharges.map((item, index) => <Space key={index} wrap style={{ width: "100%" }}><Select style={{ width: 190 }} value={item.vn_package_id} placeholder="Theo phiếu" allowClear onChange={(value) => setSurcharges((rows) => rows.map((row, i) => i === index ? { ...row, vn_package_id: value } : row))} options={selectedPackages.map((pkg) => ({ value: pkg.id, label: pkg.tracking_number_snapshot }))} /><Select style={{ width: 170 }} value={item.surcharge_type} onChange={(value) => setSurcharges((rows) => rows.map((row, i) => i === index ? { ...row, surcharge_type: value } : row))} options={[{ value: "packing", label: "Đóng gói" }, { value: "inspection", label: "Kiểm hàng" }, { value: "fragile", label: "Hàng dễ vỡ" }, { value: "heavy", label: "Hàng nặng" }, { value: "oversized", label: "Quá khổ" }, { value: "domestic_delivery", label: "Giao nội địa" }, { value: "other", label: "Khác" }]} /><InputNumber min={0} value={item.amount} onChange={(value) => setSurcharges((rows) => rows.map((row, i) => i === index ? { ...row, amount: toMoneyNumber(value) } : row))} /><Input style={{ flex: 1, minWidth: 220 }} placeholder="Ghi chú" value={item.note} onChange={(event) => setSurcharges((rows) => rows.map((row, i) => i === index ? { ...row, note: event.target.value } : row))} /><Button icon={<DeleteOutlined />} onClick={() => setSurcharges((rows) => rows.filter((_, i) => i !== index))} /></Space>)}<div className="payment-vouchers__surcharge-footer"><Button icon={<PlusOutlined />} onClick={() => setSurcharges((rows) => [...rows, { surcharge_type: "other", amount: 0 }])}>Thêm phụ phí</Button><Text>Tổng phụ phí vận chuyển: <Text strong>{money(paymentBreakdown.shippingSurcharge)}</Text></Text></div></Space></div></div>
       <div className="payment-vouchers__breakdown-grid"><PaymentBreakdownCard title="Chi phí đơn hàng" index={1} icon={<ShoppingOutlined />} tone="blue"><PaymentBreakdownRow label="Tiền hàng" value={paymentBreakdown.productAmount} /><PaymentBreakdownRow label="Phí mua hàng / dịch vụ" value={paymentBreakdown.purchaseFee} /><PaymentBreakdownRow label="Phí nội địa nước ngoài" value={paymentBreakdown.foreignDomesticFee} /><PaymentBreakdownRow label="Phụ phí đơn hàng" value={paymentBreakdown.orderSurcharge} /><PaymentBreakdownRow label="Tổng giá trị đơn hàng" value={paymentBreakdown.orderTotal} strong total /></PaymentBreakdownCard><PaymentBreakdownCard title="Chi phí vận chuyển" index={2} icon={<TruckOutlined />} tone="green"><PaymentBreakdownRow label="Phí vận chuyển theo cân" value={paymentBreakdown.weightShippingFee} /><PaymentBreakdownRow label="Phí nội địa Việt Nam" value={paymentBreakdown.localShippingFee} /><PaymentBreakdownRow label="Phụ phí vận chuyển" value={paymentBreakdown.shippingSurcharge} /><PaymentBreakdownRow label="Tổng phí vận chuyển" value={paymentBreakdown.shippingTotal} strong total /></PaymentBreakdownCard><PaymentBreakdownCard title="Tổng thanh toán" index={3} icon={<CalculatorOutlined />} tone="amber" footer={<div className="payment-vouchers__remaining-total"><span>Còn phải thanh toán</span><strong>{money(paymentBreakdown.remainingAmount)}</strong></div>}><PaymentBreakdownRow label="Tổng giá trị đơn hàng" value={paymentBreakdown.orderTotal} /><PaymentBreakdownRow label="Tổng phí vận chuyển" value={paymentBreakdown.shippingTotal} /><PaymentBreakdownRow label="Tổng phải trả" value={paymentBreakdown.totalPayable} strong total /><PaymentBreakdownRow label="Tiền đã đặt cọc" value={paymentBreakdown.depositPaid} subtract /><PaymentBreakdownRow label="Đã thanh toán trước đó" value={paymentBreakdown.previousPaidAmount} subtract /><PaymentBreakdownRow label="Tiền dư áp dụng" value={paymentBreakdown.balanceApplied} subtract /><PaymentBreakdownRow label="Giảm giá" value={paymentBreakdown.discountAmount} subtract /></PaymentBreakdownCard></div>
       <div className="payment-vouchers__calculation-note"><InfoCircleOutlined /><Text>Giá trị được tính dựa trên thông tin đơn hàng, vận đơn và bảng giá hiện tại. Vui lòng kiểm tra kỹ trước khi tiếp tục.</Text></div>
@@ -997,6 +1134,10 @@ export const PaymentVouchersPage = () => {
     </div>;
   };
 
+  const hasDeliveryFields = ["receiver_name", "receiver_phone", "province", "district", "ward", "address_line", "carrier", "length_cm", "width_cm", "height_cm"]
+    .every((key) => String((wizardValues as Record<string, unknown>)[key] ?? "").trim().length > 0);
+  const canContinueCurrentStep = canCreate && (activeStep !== 1 || deliveryMethod === "pickup_at_warehouse" || (hasDeliveryFields && Boolean(shippingQuote)));
+
   return <div className="payment-vouchers">
     <PaymentPageHeader
       canCreate={canCreate}
@@ -1039,12 +1180,12 @@ export const PaymentVouchersPage = () => {
       className="payment-vouchers__wizard-modal"
       title={<div className="payment-vouchers__modal-heading"><div className="payment-vouchers__modal-title"><span className="payment-vouchers__modal-title-icon"><FileTextOutlined /></span><div className="payment-vouchers__modal-title-copy"><Text strong>Tạo phiếu thanh toán</Text><Text type="secondary">Xác nhận thông tin và hoàn tất tạo phiếu thanh toán</Text></div></div>{renderWizardStepper(activeStep)}</div>}
       open={wizardOpen}
-      width={1080}
+      width={1280}
       onCancel={() => setWizardOpen(false)}
       centered
       destroyOnHidden
       
-      footer={<div className="payment-vouchers__wizard-footer"><Button icon={<ArrowLeftOutlined />} onClick={() => activeStep === 0 ? setWizardOpen(false) : setActiveStep((step) => step - 1)}>{activeStep === 0 ? "Hủy" : "Quay lại"}</Button>{activeStep < 4 ? <Button type="primary" icon={<ArrowRightOutlined />} disabled={!canCreate} loading={loading} onClick={() => void handleNext()}>Tiếp tục</Button> : <Button type="primary" icon={<CheckOutlined />} disabled={!canCreate || submitLoading} loading={submitLoading} onClick={() => void handleCreate()}>Xác nhận tạo phiếu</Button>}</div>}
+      footer={<div className="payment-vouchers__wizard-footer"><Button icon={<ArrowLeftOutlined />} onClick={() => activeStep === 0 ? setWizardOpen(false) : setActiveStep((step) => step - 1)}>{activeStep === 0 ? "Hủy" : "Quay lại"}</Button>{activeStep < 4 ? <Button type="primary" icon={<ArrowRightOutlined />} disabled={!canContinueCurrentStep} loading={loading} onClick={() => void handleNext()}>Tiếp tục</Button> : <Button type="primary" icon={<CheckOutlined />} disabled={!canCreate || submitLoading} loading={submitLoading} onClick={() => void handleCreate()}>Xác nhận tạo phiếu</Button>}</div>}
       styles={{ body: modalBodyStyle }}
     >
       {renderStep()}
@@ -1055,7 +1196,7 @@ export const PaymentVouchersPage = () => {
         <Descriptions column={1} size="small">
           <Descriptions.Item label="Khách hàng">{successVoucher?.customer.name}</Descriptions.Item>
           <Descriptions.Item label="Tổng giá trị đơn hàng">{money(successVoucher?.base_amount_vnd)}</Descriptions.Item>
-          <Descriptions.Item label="Tổng trước khấu trừ">{money(toMoneyNumber(successVoucher?.base_amount_vnd) + toMoneyNumber(successVoucher?.shipping_fee_total) + toMoneyNumber(successVoucher?.domestic_shipping_fee) + toMoneyNumber(successVoucher?.surcharge_total))}</Descriptions.Item>
+          <Descriptions.Item label="Tổng trước khấu trừ">{money(successVoucher?.subtotal)}</Descriptions.Item>
           <Descriptions.Item label="Tiền cọc được khấu trừ">{money(successVoucher?.deposit_applied)}</Descriptions.Item>
           <Descriptions.Item label="Tiền dư áp dụng">{money(successVoucher?.customer_credit_applied)}</Descriptions.Item>
           <Descriptions.Item label="Số tiền cần thanh toán">{money(successVoucher?.total_amount)}</Descriptions.Item>

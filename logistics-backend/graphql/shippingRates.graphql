@@ -8,10 +8,10 @@ type ShippingRate {
   customer_type: String
   route_type: String
   warehouse_id: ID
-  valid_from: DateTime
-  valid_to: DateTime
-  effective_from: DateTime
-  effective_to: DateTime
+  valid_from: Date
+  valid_to: Date
+  effective_from: Date
+  effective_to: Date
   status: String!
   note: String
   created_by: ID
@@ -52,7 +52,7 @@ input ShippingRateFilterInput {
 }
 
 input ActiveShippingRateInput {
-  date: DateTime
+  date: Date
   customer_type: String
   route_type: String
   warehouse_id: ID
@@ -60,7 +60,7 @@ input ActiveShippingRateInput {
 
 input CalculateShippingFeeInput {
   weight: Float!
-  date: DateTime
+  date: Date
   customer_type: String
   route_type: String
   warehouse_id: ID
@@ -71,8 +71,8 @@ input ShippingRateInput {
   customer_type: String
   route_type: String
   warehouse_id: ID
-  effective_from: DateTime!
-  effective_to: DateTime
+  effective_from: Date!
+  effective_to: Date
   status: String
   note: String
   details: [ShippingRateDetailInput!]

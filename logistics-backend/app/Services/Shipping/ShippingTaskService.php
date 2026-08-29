@@ -3,14 +3,19 @@
 namespace App\Services\Shipping;
 
 use App\Models\AuditLog;
+use App\Models\DeliveryRequest;
 use App\Models\ExportItem;
 use App\Models\ExportSlip;
 use App\Models\Order;
+use App\Models\PaymentVoucherItem;
+use App\Models\Shipment;
 use App\Models\ShippingTask;
 use App\Models\ShippingTaskOrder;
 use App\Models\User;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
+use App\Services\Auth\PermissionService;
+use App\Services\Delivery\DeliveryRequestService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -23,7 +28,10 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ShippingTaskService
 {
+    public function __construct(private readonly DeliveryRequestService $deliveryRequestService) {}
+
     public const CARRIERS = [
+        'spx' => 'SPX Express',
         'ghn' => 'Giao hàng nhanh',
         'viettel_post' => 'Viettel Post',
         'ghtk' => 'GHTK',
@@ -34,7 +42,7 @@ class ShippingTaskService
 
     public function queue(array $filter, int $page, int $first): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_queue.read');
         $query = $this->queueOrderQuery($filter);
         $paginator = $query->paginate($first, ['orders.*'], 'page', $page);
         $rows = collect($paginator->items())->map(fn (Order $order) => $this->queueOrderRow($order))->values();
@@ -50,7 +58,7 @@ class ShippingTaskService
 
     public function queueOptions(array $orderIds): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_queue.read');
         $ids = $this->normalizeIds($orderIds);
 
         if ($ids === []) {
@@ -66,7 +74,7 @@ class ShippingTaskService
 
     public function options(): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_tasks.read');
 
         $staff = User::query()
             ->with('role')
@@ -74,12 +82,8 @@ class ShippingTaskService
             ->orderBy('name')
             ->get()
             ->filter(function (User $user) {
-                $roleName = strtolower((string) $user->role?->name);
-                $permissions = $user->role?->permissions ?? [];
-
-                return str_contains($roleName, 'delivery')
-                    || in_array('all', $permissions, true)
-                    || in_array('exports.update', $permissions, true);
+                return $user->role?->key === 'shipping_staff'
+                    || app(PermissionService::class)->allows($user, 'shipping_tasks.update');
             })
             ->values();
 
@@ -107,7 +111,7 @@ class ShippingTaskService
 
     public function create(array $input): ShippingTask
     {
-        $this->ensurePermission('exports.create');
+        $this->ensurePermission('shipping_tasks.create');
         $validated = Validator::make($input, [
             'order_ids' => ['required', 'array', 'min:1'],
             'order_ids.*' => ['required', 'integer', Rule::exists('orders', 'id')],
@@ -139,7 +143,7 @@ class ShippingTaskService
             }
 
             $packages = VnPackage::query()
-                ->with(['cnPackage.order.customer', 'paymentVoucher.invoice', 'paymentVoucherPackage'])
+                ->with(['cnPackage.order.customer', 'paymentVoucher.invoice', 'paymentVoucher.deliveryRequest.address', 'paymentVoucherPackage'])
                 ->whereHas('cnPackage', fn (Builder $query) => $query->whereIn('order_id', $orderIds))
                 ->where('payment_status', 'paid')
                 ->where('delivery_status', 'ready_for_delivery')
@@ -174,6 +178,8 @@ class ShippingTaskService
                 'created_by' => Auth::id(),
             ]);
             $task->update(['task_code' => $this->datedCode('NVX', $task->id, $task->created_at)]);
+            $voucherIds = $packages->pluck('payment_voucher_id')->filter()->unique()->map(fn ($id) => (int) $id)->values()->all();
+            $this->deliveryRequestService->attachShippingTask($task, $voucherIds);
 
             foreach ($orderIds as $orderId) {
                 $orderPackages = $packagesByOrder[$orderId];
@@ -192,7 +198,7 @@ class ShippingTaskService
             $customerIds = $orders->pluck('customer_id')->filter()->unique()->values();
             $invoiceIds = $packages->map(fn (VnPackage $package) => $package->paymentVoucher?->invoice?->id)
                 ->filter()->unique()->values();
-            $deliveryAddresses = $packages->map(fn (VnPackage $package) => $package->paymentVoucher?->delivery_address)
+            $deliveryAddresses = $packages->map(fn (VnPackage $package) => $package->paymentVoucher?->deliveryRequest?->address?->full_address)
                 ->filter()->unique()->values();
 
             $slip = ExportSlip::query()->create([
@@ -234,7 +240,7 @@ class ShippingTaskService
 
     public function tasks(array $filter, int $page, int $first): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_tasks.read');
         $sortField = in_array($filter['sort_field'] ?? null, ['task_code', 'created_at', 'scheduled_delivery_date'], true)
             ? $filter['sort_field']
             : 'created_at';
@@ -287,7 +293,7 @@ class ShippingTaskService
 
     public function task(int|string $id): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('shipping_tasks.read');
 
         return $this->taskRow($this->loadTask((int) $id));
     }
@@ -295,7 +301,9 @@ class ShippingTaskService
     public function updateStatus(int|string $id, string $status): array
     {
         $status = strtolower(trim($status));
-        $this->ensurePermission($status === ShippingTask::STATUS_CANCELLED ? 'exports.cancel' : 'exports.update');
+        $this->ensurePermission($status === ShippingTask::STATUS_COMPLETED
+            ? 'shipping_tasks.complete'
+            : 'shipping_tasks.update');
 
         $transitions = [
             ShippingTask::STATUS_CREATED => [ShippingTask::STATUS_PREPARING, ShippingTask::STATUS_CANCELLED],
@@ -313,6 +321,24 @@ class ShippingTaskService
             }
 
             $task->update(['status' => $status]);
+            $requestStatus = match ($status) {
+                ShippingTask::STATUS_IN_TRANSIT => 'shipped',
+                ShippingTask::STATUS_COMPLETED => 'delivered',
+                ShippingTask::STATUS_CANCELLED => DeliveryRequest::STATUS_READY_TO_SHIP,
+                default => DeliveryRequest::STATUS_PROCESSING,
+            };
+            $deliveryRequestIds = $task->deliveryRequests()->pluck('id');
+            $task->deliveryRequests()->update([
+                'status' => $requestStatus,
+                'shipping_task_id' => $status === ShippingTask::STATUS_CANCELLED ? null : $task->id,
+            ]);
+            if (in_array($status, [ShippingTask::STATUS_IN_TRANSIT, ShippingTask::STATUS_COMPLETED, ShippingTask::STATUS_CANCELLED], true)) {
+                Shipment::query()->whereIn('delivery_request_id', $deliveryRequestIds)->update(['status' => match ($status) {
+                    ShippingTask::STATUS_IN_TRANSIT => 'in_transit',
+                    ShippingTask::STATUS_COMPLETED => 'delivered',
+                    default => 'cancelled',
+                }]);
+            }
             $slipStatus = match ($status) {
                 ShippingTask::STATUS_IN_TRANSIT => 'in_transit',
                 ShippingTask::STATUS_COMPLETED => 'delivered',
@@ -344,7 +370,7 @@ class ShippingTaskService
 
     public function slips(array $filter, int $page, int $first): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('export_slips.read');
         $sortDirection = strtolower((string) ($filter['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
         $query = ExportSlip::query()
             ->whereNotNull('shipping_task_id')
@@ -398,7 +424,7 @@ class ShippingTaskService
 
     public function slip(int|string $id): array
     {
-        $this->ensurePermission('exports.read');
+        $this->ensurePermission('export_slips.read');
         $slip = ExportSlip::query()
             ->whereNotNull('shipping_task_id')
             ->with([
@@ -633,12 +659,17 @@ class ShippingTaskService
         $row['transport_note'] = $task?->transport_note;
         $row['payment'] = $this->slipPaymentSummary($items);
         $orderValue = (float) $taskOrders->sum(fn (ShippingTaskOrder $taskOrder) => $taskOrder->order?->product_total_vnd ?? 0);
-        $actualShippingFee = (float) $items->sum(function (ExportItem $item) {
+        $weightShippingFee = (float) $items->sum(function (ExportItem $item) {
             $paymentPackage = $item->package?->paymentVoucherPackage;
 
-            return (float) ($paymentPackage?->shipping_fee ?? 0)
-                + (float) ($paymentPackage?->domestic_shipping_fee ?? 0);
+            return (float) ($paymentPackage?->shipping_fee ?? 0);
         });
+        $voucherIds = $items->pluck('package.payment_voucher_id')->filter()->unique()->values();
+        $deliveryFee = (float) PaymentVoucherItem::query()
+            ->whereIn('payment_voucher_id', $voucherIds)
+            ->where('item_type', 'domestic_shipping')
+            ->sum('amount');
+        $actualShippingFee = $weightShippingFee + $deliveryFee;
         $shippingFee = (float) ($task?->estimated_shipping_fee ?? 0) > 0
             ? (float) $task->estimated_shipping_fee
             : $actualShippingFee;
@@ -738,22 +769,7 @@ class ShippingTaskService
 
     private function ensurePermission(string $permission): void
     {
-        $permissions = Auth::user()?->role?->permissions ?? [];
-        if (in_array('all', $permissions, true) || in_array($permission, $permissions, true)) {
-            return;
-        }
-
-        $legacy = [
-            'exports.read' => ['export.view'],
-            'exports.create' => ['export.create'],
-            'exports.update' => ['export.update'],
-            'exports.cancel' => ['export.cancel'],
-        ];
-        if (collect($legacy[$permission] ?? [])->contains(fn ($item) => in_array($item, $permissions, true))) {
-            return;
-        }
-
-        throw new HttpException(403, 'Bạn không có quyền thực hiện thao tác xuất hàng.');
+        app(PermissionService::class)->authorize(Auth::user(), $permission);
     }
 
     private function audit(string $action, object $entity, array $after): void

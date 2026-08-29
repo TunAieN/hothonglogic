@@ -56,6 +56,11 @@ class ShippingTask extends Model
         return $this->hasOne(ExportSlip::class);
     }
 
+    public function deliveryRequests()
+    {
+        return $this->hasMany(DeliveryRequest::class);
+    }
+
     public function deliveryStaff()
     {
         return $this->belongsTo(User::class, 'delivery_staff_id');

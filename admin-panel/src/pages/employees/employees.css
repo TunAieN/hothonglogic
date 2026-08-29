@@ -148,6 +148,11 @@
 .employees-page__name-text {
   font-weight: 600;
   color: #111827;
+  text-decoration: none;
+}
+
+.employees-page__name-text:hover {
+  color: #2563eb;
 }
 
 .employees-page__footer {

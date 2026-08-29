@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import type { ColumnsType } from "antd/es/table";
 import { deactivateShippingRate, fetchShippingRates, getShippingRateErrorMessage, saveShippingRate } from "./api";
 import type { ShippingRate, ShippingRateDetail } from "./api";
+import { Can } from "../../shared/auth/Can";
 
 const { Text, Title } = Typography;
 
@@ -98,14 +99,14 @@ export const ShippingRatesPage = () => {
     { title: "Ngày kết thúc", render: (_, item) => item.effective_to ? dayjs(item.effective_to).format("DD/MM/YYYY") : "Về sau", width: 130 },
     { title: "Trạng thái", render: (_, item) => <Tag color={item.status === "active" ? "green" : "default"}>{item.status === "active" ? "Đang áp dụng" : "Ngừng áp dụng"}</Tag>, width: 140 },
     { title: "Số khung giá", render: (_, item) => item.details?.length ?? 0, width: 120 },
-    { title: "Thao tác", render: (_, item) => <Space><Button type="link" onClick={() => openEdit(item)}>Sửa</Button>{item.status === "active" && <Popconfirm title="Ngừng áp dụng bảng giá này?" onConfirm={async () => { await deactivateShippingRate(item.id); await loadData(); }}><Button type="link" danger>Ngừng áp dụng</Button></Popconfirm>}</Space>, width: 190 },
+    { title: "Thao tác", render: (_, item) => <Can permission="shipping_rates.update"><Space><Button type="link" onClick={() => openEdit(item)}>Sửa</Button>{item.status === "active" && <Popconfirm title="Ngừng áp dụng bảng giá này?" onConfirm={async () => { await deactivateShippingRate(item.id); await loadData(); }}><Button type="link" danger>Ngừng áp dụng</Button></Popconfirm>}</Space></Can>, width: 190 },
   ];
 
   return <Space direction="vertical" size="large" style={{ width: "100%" }}>
     <Card>
       <Space style={{ width: "100%", justifyContent: "space-between" }} align="start">
         <div><Title level={2} style={{ margin: 0 }}>Quản lý bảng giá cước</Title><Text type="secondary">Thiết lập khung cân nặng, đơn giá và thời gian áp dụng cho phí vận chuyển.</Text></div>
-        <Space><Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Tải lại</Button><Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Tạo bảng giá</Button></Space>
+        <Space><Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Tải lại</Button><Can permission="shipping_rates.update"><Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Tạo bảng giá</Button></Can></Space>
       </Space>
     </Card>
     <Card title="Danh sách bảng giá">

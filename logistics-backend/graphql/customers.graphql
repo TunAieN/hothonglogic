@@ -18,6 +18,23 @@ type Customer {
   created_at: DateTime
   orders: [Order!]!
   orders_count: Int!
+  addresses: [CustomerAddress!]! @hasMany
+}
+
+type CustomerAddress {
+  id: ID!
+  label: String
+  receiver_name: String!
+  receiver_phone: String!
+  province_code: String
+  province_name: String
+  district_code: String
+  district_name: String
+  ward_code: String
+  ward_name: String
+  address_line: String
+  full_address: String
+  is_default: Boolean!
 }
 
 input CustomerFilterInput {

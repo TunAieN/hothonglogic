@@ -4,6 +4,9 @@ export type PaymentCustomer = {
   name: string;
   phone?: string | null;
   address?: string | null;
+  province?: string | null;
+  district?: string | null;
+  ward?: string | null;
   email?: string | null;
 };
 
@@ -78,8 +81,7 @@ export type VoucherPreviewPackage = {
   price_type?: string | null;
   rate_description?: string | null;
   shipping_fee: number;
-  domestic_shipping_fee: number;
-  surcharge_amount: number;
+  additional_charge_amount: number;
   total_amount: number;
 };
 
@@ -88,9 +90,9 @@ export type VoucherPreview = {
   packages: VoucherPreviewPackage[];
   order_total: number;
   product_total: number;
-  shipping_fee_total: number;
-  domestic_shipping_fee: number;
-  surcharge_total: number;
+  weight_shipping_total: number;
+  delivery_fee_total: number;
+  additional_charge_total: number;
   gross_total: number;
   deposit_applied: number;
   customer_credit_available: number;
@@ -144,8 +146,6 @@ export type PaymentVoucher = {
   customer: PaymentCustomer;
   warehouse?: { id: string; name: string } | null;
   creator?: { id: string; name: string } | null;
-  receiver_type: string;
-  delivery_address?: string | null;
   payment_method_expected: string;
   payment_account_id?: string | null;
   bank_name_snapshot?: string | null;
@@ -161,9 +161,10 @@ export type PaymentVoucher = {
   deposit_percent?: number | null;
   currency?: string | null;
   status: string;
-  shipping_fee_total: number;
-  domestic_shipping_fee: number;
-  surcharge_total: number;
+  subtotal: number;
+  discount_amount: number;
+  payment_method?: string | null;
+  paid_at?: string | null;
   total_amount: number;
   deposit_applied: number;
   customer_credit_applied: number;
@@ -184,11 +185,42 @@ export type PaymentVoucher = {
     price_type?: string | null;
     rate_description?: string | null;
     shipping_fee: number;
-    surcharge_amount: number;
     total_amount: number;
     vnPackage: EligiblePaymentPackage;
   }>;
-  surcharges: Array<{ id: string; surcharge_type: string; amount: number; note?: string | null }>;
+  items: Array<{
+    id: string;
+    item_type: string;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+    reference_type?: string | null;
+    reference_id?: string | null;
+    created_at: string;
+  }>;
+  deliveryRequest?: {
+    id: string;
+    delivery_method: "pickup_at_warehouse" | "delivery";
+    preferred_carrier?: string | null;
+    delivery_note?: string | null;
+    status: string;
+    shipping_task_id?: string | null;
+    address?: {
+      id: string;
+      receiver_name: string;
+      receiver_phone: string;
+      province_code?: string | null;
+      province_name?: string | null;
+      district_code?: string | null;
+      district_name?: string | null;
+      ward_code?: string | null;
+      ward_name?: string | null;
+      address_line?: string | null;
+      full_address?: string | null;
+    } | null;
+    shipments: Array<{ id: string; carrier_code: string; service_code?: string | null; carrier_order_id?: string | null; tracking_number?: string | null; shipping_fee: number; cod_amount: number; status: string; label_url?: string | null }>;
+  } | null;
   transactions: PaymentTransaction[];
   invoice?: Invoice | null;
   order?: PaymentVoucherRelatedOrder | null;
