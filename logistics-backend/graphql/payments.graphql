@@ -241,6 +241,9 @@ input CreatePaymentVoucherInput {
   vn_warehouse_id: ID
   delivery_method: String!
   customer_address_id: ID
+  save_address: Boolean
+  set_address_default: Boolean
+  address_label: String
   receiver_name: String
   receiver_phone: String
   province_name: String
@@ -254,6 +257,8 @@ input CreatePaymentVoucherInput {
   ward_code: String
   delivery_note: String
   delivery_fee: Float
+  insurance_value: Float
+  cod_amount: Float
   payment_method_expected: String
   note: String
   surcharges: [PaymentVoucherAdditionalChargeInput!]

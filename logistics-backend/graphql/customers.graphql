@@ -23,6 +23,7 @@ type Customer {
 
 type CustomerAddress {
   id: ID!
+  customer_id: ID!
   label: String
   receiver_name: String!
   receiver_phone: String!
@@ -35,6 +36,23 @@ type CustomerAddress {
   address_line: String
   full_address: String
   is_default: Boolean!
+  created_at: DateTime
+  updated_at: DateTime
+}
+
+input CustomerAddressInput {
+  customer_id: ID!
+  label: String
+  receiver_name: String!
+  receiver_phone: String!
+  province_code: String!
+  province_name: String!
+  district_code: String!
+  district_name: String!
+  ward_code: String!
+  ward_name: String!
+  address_line: String!
+  is_default: Boolean = false
 }
 
 input CustomerFilterInput {

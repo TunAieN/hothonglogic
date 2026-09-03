@@ -1,0 +1,52 @@
+type GhnProvince {
+  province_id: Int!
+  name: String!
+}
+
+type GhnDistrict {
+  district_id: Int!
+  province_id: Int!
+  name: String!
+}
+
+type GhnWard {
+  ward_code: String!
+  district_id: Int!
+  name: String!
+}
+
+type GhnShippingQuote {
+  total: Float!
+  service_fee: Float!
+  insurance_fee: Float!
+  service_id: Int!
+  service_type_id: Int!
+  service_name: String!
+}
+
+input GhnShippingQuoteInput {
+  package_ids: [ID!]!
+  to_district_id: Int!
+  to_ward_code: String!
+  insurance_value: Float
+  cod_amount: Float
+}
+
+extend type Query {
+  ghnProvinces: [GhnProvince!]!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\GhnResolver@provinces")
+  ghnDistricts(province_id: Int!): [GhnDistrict!]!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\GhnResolver@districts")
+  ghnWards(district_id: Int!): [GhnWard!]!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\GhnResolver@wards")
+  ghnShippingQuote(input: GhnShippingQuoteInput!): GhnShippingQuote!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\GhnResolver@quote")
+}

@@ -435,11 +435,13 @@
 
 .shipping-slip-identity .ant-card-body {
   display: grid;
-  grid-template-columns: auto minmax(180px, 1.2fr) repeat(3, minmax(130px, 1fr));
+  grid-template-columns: auto minmax(180px, .8fr) minmax(0, 2.2fr);
   align-items: center;
   gap: 20px;
   min-height: 126px;
 }
+
+.shipping-slip-identity__facts { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 18px; }
 
 .shipping-slip-identity__icon {
   display: inline-flex;
@@ -620,6 +622,25 @@
 .shipping-create-info { margin-bottom: 20px; border-color: #bfdbfe; background: #eff6ff; }
 .shipping-create-table-title.ant-typography { margin: 0 0 12px; font-size: 14px; }
 .shipping-tracking-list { display: grid; gap: 2px; color: #1677ff; }
+.shipping-tracking-compact { color: #1677ff; }
+.shipping-tracking-more.ant-btn-link { height: auto; padding: 0; font-weight: 500; }
+.shipping-tracking-more > span { margin-left: 4px; color: #64748b; font-weight: 600; }
+.shipping-tracking-popover { display: grid; gap: 5px; min-width: 150px; color: #1677ff; }
+.shipping-ghn-section { margin-bottom: 20px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+.shipping-ghn-section > .ant-typography { margin: 0 0 16px; color: #334155; font-size: 13px; letter-spacing: .02em; }
+.shipping-readonly-field { display: flex; flex-direction: column; justify-content: center; min-height: 68px; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+.shipping-readonly-field small { margin-bottom: 4px; color: #64748b; font-size: 11px; }
+.shipping-readonly-field strong { color: #0f172a; font-size: 14px; overflow-wrap: anywhere; }
+.shipping-readonly-field > span { margin-top: 3px; color: #64748b; font-size: 12px; }
+.shipping-readonly-field .ant-select { width: 100%; }
+.shipping-ghn-address { padding: 14px; border-left: 3px solid #1677ff; border-radius: 7px; background: #f8fafc; }
+.shipping-ghn-address > strong, .shipping-ghn-address > span { display: block; }
+.shipping-ghn-address > span { margin-top: 3px; color: #475569; }
+.shipping-ghn-address > p { margin: 10px 0; color: #334155; line-height: 1.65; }
+.shipping-ghn-info-grid, .shipping-ghn-fee-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.shipping-ghn-fee-status { margin: 12px 0 16px; }
+.shipping-ghn-error { margin-bottom: 20px; }
+.shipping-ghn-error__actions { display: flex; flex-direction: column; gap: 6px; }
 .shipping-create-orders .ant-table-thead > tr > th { color: #475569; font-size: 12px; background: #f8fafc; }
 .shipping-create-orders__total td { color: #0f172a; font-weight: 700; background: #f8fafc; }
 
@@ -717,11 +738,12 @@
 .shipping-task-overview-card > .ant-card-body { padding: 14px; }
 .shipping-task-overview-card .shipping-create-overview__item { min-height: 76px; }
 
-.shipping-task-detail-bottom-grid { display: grid; grid-template-columns: minmax(320px, 1.08fr) minmax(300px, .95fr) minmax(320px, 1fr); align-items: stretch; gap: 14px; }
+.shipping-task-detail-bottom-grid { display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); align-items: stretch; gap: 14px; }
 .shipping-task-detail-line { display: grid; grid-template-columns: 18px minmax(125px, .8fr) minmax(0, 1.2fr); align-items: start; gap: 8px; padding: 8px 0; }
 .shipping-task-detail-line__icon { display: inline-flex; justify-content: center; padding-top: 2px; color: #365f9d; }
 .shipping-task-detail-line > span:nth-child(2) { color: #64748b; font-size: 12px; line-height: 1.55; }
 .shipping-task-detail-line > strong { color: #172554; font-weight: 600; line-height: 1.55; overflow-wrap: anywhere; }
+.shipping-task-detail-line__subtext { display: block; margin-top: 2px; color: #64748b; font-size: 11px; font-weight: 400; }
 .shipping-task-payment-line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; color: #64748b; }
 .shipping-task-payment-line strong { color: #172554; text-align: right; }
 .shipping-task-payment-card__total { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px 0; color: #172554; font-weight: 650; border-top: 1px solid #e2e8f0; }
@@ -798,8 +820,7 @@
   .shipping-slip-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-task-filter__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-detail-hero-grid { grid-template-columns: 1fr; }
-  .shipping-slip-identity .ant-card-body { grid-template-columns: auto repeat(2, minmax(140px, 1fr)); }
-  .shipping-slip-identity__code { grid-column: span 2; }
+  .shipping-slip-identity .ant-card-body { grid-template-columns: auto minmax(180px, .8fr) minmax(0, 2.2fr); }
   .shipping-detail-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-detail-info-grid > :last-child { grid-column: span 2; }
   .shipping-task-detail-hero-grid,
@@ -829,7 +850,7 @@
   .shipping-detail-info-grid > :last-child { grid-column: auto; }
   .shipping-slip-identity .ant-card-body { grid-template-columns: auto 1fr; }
   .shipping-slip-identity__code { grid-column: auto; }
-  .shipping-slip-identity__meta { grid-column: span 2; }
+  .shipping-slip-identity__facts { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-create-step-grid, .shipping-create-skeleton, .shipping-create-confirm-grid { grid-template-columns: 1fr; }
   .shipping-create-confirm-grid > .shipping-confirm-orders { grid-column: auto; grid-row: auto; }
   .shipping-confirm-line { grid-template-columns: 20px minmax(112px, .8fr) minmax(0, 1.2fr); }
@@ -843,6 +864,7 @@
   .shipping-task-detail-footer { align-items: stretch; flex-direction: column-reverse; gap: 10px; }
   .shipping-task-detail-footer .ant-btn { width: 100%; }
   .shipping-create-steps .ant-steps-item-description { display: none; }
+  .shipping-ghn-info-grid, .shipping-ghn-fee-grid { grid-template-columns: 1fr; }
   .shipping-create-step-footer .ant-btn,
   .shipping-create-confirm-footer .ant-btn { flex: 1; }
 }
@@ -854,7 +876,7 @@
   .shipping-detail-stat-grid { grid-template-columns: 1fr; }
   .shipping-detail-line { grid-template-columns: 1fr; gap: 3px; }
   .shipping-slip-identity .ant-card-body { grid-template-columns: 1fr; }
-  .shipping-slip-identity__meta { grid-column: auto; }
+  .shipping-slip-identity__facts { grid-column: auto; grid-template-columns: 1fr; }
   .shipping-create-overview { grid-template-columns: 1fr; }
   .shipping-create-step-footer, .shipping-create-confirm-footer { gap: 8px; }
   .shipping-create-step-footer .ant-btn, .shipping-create-confirm-footer .ant-btn { width: 100%; }

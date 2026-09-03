@@ -7,6 +7,7 @@
 #import shippingRates.graphql
 #import exchangeRates.graphql
 #import payments.graphql
+#import ghn.graphql
 #import invoices.graphql
 #import reports.graphql
 #import audit.graphql
@@ -76,6 +77,10 @@ type Query {
     @guard(with: ["api"])
     @permission(requires: "customers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@show")
+  customerAddresses(customer_id: ID!): [CustomerAddress!]!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerAddressResolver@list")
 
   # =========================
   # Orders
@@ -241,6 +246,10 @@ type Query {
     @guard(with: ["api"])
     @permission(requires: "shipping_tasks.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@options")
+  shippingTaskGhnPreview(input: ShippingTaskGhnPreviewInput!): ShippingTaskGhnPreview!
+    @guard(with: ["api"])
+    @permission(requires: "shipping_tasks.create")
+    @field(resolver: "App\\GraphQL\\Resolvers\\ShippingTaskResolver@ghnPreview")
   shippingTasks(page: Int = 1, first: Int = 10, filter: ShippingTaskFilterInput): ShippingTaskPage!
     @guard(with: ["api"])
     @permission(requires: "shipping_tasks.read")
@@ -290,6 +299,18 @@ type Mutation {
     @guard(with: ["api"])
     @permission(requires: "customers.delete")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@delete")
+  createCustomerAddress(input: CustomerAddressInput!): CustomerAddress!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.create")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerAddressResolver@create")
+  updateCustomerAddress(id: ID!, input: CustomerAddressInput!): CustomerAddress!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.create")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerAddressResolver@update")
+  setDefaultCustomerAddress(customer_id: ID!, address_id: ID!): CustomerAddress!
+    @guard(with: ["api"])
+    @permission(requires: "payment_vouchers.create")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerAddressResolver@setDefault")
 
   # =========================
   # Employees

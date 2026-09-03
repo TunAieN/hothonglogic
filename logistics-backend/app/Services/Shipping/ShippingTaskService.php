@@ -7,7 +7,7 @@ use App\Models\DeliveryRequest;
 use App\Models\ExportItem;
 use App\Models\ExportSlip;
 use App\Models\Order;
-use App\Models\PaymentVoucherItem;
+use App\Models\PaymentVoucher;
 use App\Models\Shipment;
 use App\Models\ShippingTask;
 use App\Models\ShippingTaskOrder;
@@ -16,6 +16,7 @@ use App\Models\VnPackage;
 use App\Models\VnWarehouse;
 use App\Services\Auth\PermissionService;
 use App\Services\Delivery\DeliveryRequestService;
+use App\Services\Payments\SettledPaymentSummaryService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -28,7 +29,11 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ShippingTaskService
 {
-    public function __construct(private readonly DeliveryRequestService $deliveryRequestService) {}
+    public function __construct(
+        private readonly DeliveryRequestService $deliveryRequestService,
+        private readonly ShippingTaskGhnPreviewService $ghnPreviewService,
+        private readonly SettledPaymentSummaryService $settledPaymentSummaryService,
+    ) {}
 
     public const CARRIERS = [
         'spx' => 'SPX Express',
@@ -109,6 +114,13 @@ class ShippingTaskService
         ];
     }
 
+    public function ghnPreview(array $input): array
+    {
+        $this->ensurePermission('shipping_tasks.create');
+
+        return $this->ghnPreviewService->preview($input);
+    }
+
     public function create(array $input): ShippingTask
     {
         $this->ensurePermission('shipping_tasks.create');
@@ -116,15 +128,17 @@ class ShippingTaskService
             'order_ids' => ['required', 'array', 'min:1'],
             'order_ids.*' => ['required', 'integer', Rule::exists('orders', 'id')],
             'delivery_staff_id' => ['required', Rule::exists('users', 'id')->where('status', 'active')],
-            'carrier_code' => ['required', Rule::in(array_keys(self::CARRIERS))],
+            'carrier_code' => ['required', Rule::in(['ghn'])],
             'carrier_name' => ['nullable', 'string', 'max:100'],
             'scheduled_delivery_date' => ['required', 'date', 'after_or_equal:today'],
             'vn_warehouse_id' => ['required', Rule::exists('vn_warehouses', 'id')],
             'note' => ['nullable', 'string', 'max:250'],
-            'service_type' => ['nullable', Rule::in(['standard', 'express', 'same_day'])],
+            'service_type' => ['nullable', 'string', 'max:100'],
+            'ghn_service_id' => ['nullable', 'integer', 'min:1'],
+            'ghn_service_type_id' => ['nullable', 'integer', 'min:1'],
             'delivery_method' => ['nullable', Rule::in(['door_delivery', 'warehouse_pickup', 'transshipment'])],
             'estimated_shipping_fee' => ['nullable', 'numeric', 'min:0'],
-            'cod_amount' => ['nullable', 'numeric', 'min:0'],
+            'cod_amount' => ['nullable', 'numeric', Rule::in([0])],
             'transport_note' => ['nullable', 'string', 'max:1000'],
         ])->validate();
 
@@ -143,13 +157,30 @@ class ShippingTaskService
             }
 
             $packages = VnPackage::query()
-                ->with(['cnPackage.order.customer', 'paymentVoucher.invoice', 'paymentVoucher.deliveryRequest.address', 'paymentVoucherPackage'])
+                ->with(['cnPackage.order.customer', 'receipt.warehouse', 'cnBatch.vnBatchReceipt.warehouse', 'paymentVoucher.invoice', 'paymentVoucher.warehouse', 'paymentVoucher.deliveryRequest.address', 'paymentVoucherPackage'])
                 ->whereHas('cnPackage', fn (Builder $query) => $query->whereIn('order_id', $orderIds))
                 ->where('payment_status', 'paid')
                 ->where('delivery_status', 'ready_for_delivery')
                 ->whereDoesntHave('exportItem')
                 ->lockForUpdate()
                 ->get();
+
+            if (isset($validated['ghn_service_id'])) {
+                $actualWarehouse = $this->ghnPreviewService->resolveWarehouse($packages);
+                if ((int) $actualWarehouse->id !== (int) $validated['vn_warehouse_id']) {
+                    throw new HttpException(422, 'Kho xuất hàng không khớp với kho thực tế của kiện hàng.');
+                }
+                $invalidAddress = $packages->contains(function (VnPackage $package) {
+                    $request = $package->paymentVoucher?->deliveryRequest;
+                    $address = $request?->address;
+
+                    return ! $request || $request->delivery_method !== DeliveryRequest::METHOD_DELIVERY
+                        || ! $address || (int) $address->district_code <= 0 || trim((string) $address->ward_code) === '';
+                });
+                if ($invalidAddress) {
+                    throw new HttpException(422, 'Địa chỉ giao hàng chưa có mã GHN hợp lệ.');
+                }
+            }
 
             $packagesByOrder = $packages->groupBy(fn (VnPackage $package) => (int) $package->cnPackage?->order_id);
             foreach ($orderIds as $orderId) {
@@ -295,7 +326,7 @@ class ShippingTaskService
     {
         $this->ensurePermission('shipping_tasks.read');
 
-        return $this->taskRow($this->loadTask((int) $id));
+        return $this->taskRow($this->loadTask((int) $id, true), true);
     }
 
     public function updateStatus(int|string $id, string $status): array
@@ -432,9 +463,12 @@ class ShippingTaskService
                 'task.warehouse',
                 'task.creator',
                 'task.taskOrders.order.customer',
+                'task.deliveryRequests.address',
+                'task.deliveryRequests.shipments',
                 'creator',
                 'items.package.cnPackage.order.customer',
                 'items.package.paymentVoucherPackage',
+                'items.package.paymentVoucher.items',
                 'items.package.paymentVoucher.transactions.confirmer',
             ])
             ->findOrFail($id);
@@ -453,6 +487,12 @@ class ShippingTaskService
             $query->where('payment_status', 'paid')
                 ->where('delivery_status', 'ready_for_delivery')
                 ->whereDoesntHave('exportItem')
+                ->where(function (Builder $payment) {
+                    $payment->whereNull('payment_voucher_id')
+                        ->orWhereHas('paymentVoucher', fn (Builder $voucher) => $voucher
+                            ->where('status', PaymentVoucher::STATUS_PAID)
+                            ->where('remaining_amount', '<=', 0));
+                })
                 ->when($this->filled($filter, 'date_from'), fn ($q) => $q->whereHas(
                     'paymentVoucher.invoice',
                     fn (Builder $invoice) => $invoice->whereDate('issued_at', '>=', $filter['date_from'])
@@ -518,6 +558,9 @@ class ShippingTaskService
             'payment_date' => $paidAt instanceof Carbon ? $paidAt : ($paidAt ? Carbon::parse($paidAt) : null),
             'package_count' => $packages->count(),
             'total_weight' => round((float) $packages->sum('actual_weight'), 3),
+            'settled_value' => ($settledValue = $this->settledVoucherValue($packages)) > 0
+                ? $settledValue
+                : (float) ($order->product_total_vnd ?? 0),
             'total_value' => ($paidValue = (float) $packages->sum(fn (VnPackage $package) => $this->packagePaidValue($package))) > 0
                 ? $paidValue
                 : (float) ($order->product_total_vnd ?? 0),
@@ -544,13 +587,27 @@ class ShippingTaskService
             'total_orders' => $rows->count(),
             'total_packages' => (int) $rows->sum('package_count'),
             'total_weight' => round((float) $rows->sum('total_weight'), 3),
-            'total_value' => (float) $rows->sum('total_value'),
+            'total_value' => (float) $rows->sum('settled_value'),
         ];
     }
 
-    private function taskRow(ShippingTask $task): array
+    private function settledVoucherValue(Collection $packages): float
     {
-        return [
+        return (float) $packages
+            ->pluck('paymentVoucher')
+            ->filter(fn (?PaymentVoucher $voucher) => $voucher?->status === PaymentVoucher::STATUS_PAID
+                && (float) $voucher->remaining_amount <= 0)
+            ->unique('id')
+            ->sum(fn (PaymentVoucher $voucher) => (float) $voucher->subtotal);
+    }
+
+    private function taskRow(ShippingTask $task, bool $withDetails = false): array
+    {
+        $vouchers = $withDetails
+            ? $task->deliveryRequests->pluck('paymentVoucher')->filter()->unique('id')->values()
+            : collect();
+        $settledByOrder = $withDetails ? $this->taskOrderSettledValues($task, $vouchers) : [];
+        $row = [
             'id' => (string) $task->id,
             'task_code' => $task->task_code,
             'export_slip_id' => $task->exportSlip ? (string) $task->exportSlip->id : null,
@@ -558,6 +615,7 @@ class ShippingTaskService
             'delivery_staff_name' => $task->deliveryStaff?->name,
             'delivery_staff_id' => $task->deliveryStaff ? (string) $task->deliveryStaff->id : null,
             'delivery_staff_phone' => $task->deliveryStaff?->phone,
+            'carrier_code' => $task->carrier_code,
             'carrier_name' => $task->carrier_name,
             'warehouse_name' => $task->warehouse?->name,
             'order_count' => $task->taskOrders->count(),
@@ -580,8 +638,75 @@ class ShippingTaskService
                 'package_count' => $taskOrder->package_count,
                 'total_weight' => $taskOrder->total_weight,
                 'total_value' => $taskOrder->total_value,
+                'settled_total' => $settledByOrder[(int) $taskOrder->order_id] ?? null,
             ])->values()->all(),
         ];
+
+        if (! $withDetails) {
+            return $row;
+        }
+
+        $financials = $this->settledPaymentSummaryService->summarize($vouchers, (float) ($task->cod_amount ?? 0));
+        $collectedFee = $financials['domestic_shipping_total'];
+        $currentFee = (float) ($task->estimated_shipping_fee ?? 0);
+        $difference = round($currentFee - $collectedFee, 0);
+        $request = $task->deliveryRequests->first();
+        $address = $request?->address;
+        $shipment = $task->deliveryRequests->flatMap->shipments->sortByDesc('id')->first();
+
+        $row['financials'] = $financials;
+        $row['delivery_address'] = $address ? [
+            'receiver_name' => $address->receiver_name,
+            'receiver_phone' => $address->receiver_phone,
+            'province_code' => $address->province_code,
+            'province_name' => $address->province_name,
+            'district_code' => $address->district_code,
+            'district_name' => $address->district_name,
+            'ward_code' => $address->ward_code,
+            'ward_name' => $address->ward_name,
+            'address_line' => $address->address_line,
+            'full_address' => $address->full_address,
+        ] : null;
+        $row['ghn'] = [
+            'mode' => strtolower(trim((string) config('services.ghn.mode', 'preview'))),
+            'service_name' => $task->service_type,
+            'collected_fee' => $collectedFee,
+            'current_fee' => $currentFee,
+            'fee_difference' => $difference,
+            'fee_status' => $difference > 0 ? 'increased' : ($difference < 0 ? 'decreased' : 'matched'),
+        ];
+        $row['shipment'] = [
+            'exists' => $shipment !== null,
+            'carrier_order_id' => $shipment?->carrier_order_id,
+            'tracking_number' => $shipment?->tracking_number,
+            'status' => $shipment?->status,
+        ];
+
+        return $row;
+    }
+
+    private function taskOrderSettledValues(ShippingTask $task, Collection $vouchers): array
+    {
+        $voucherOrders = ($task->exportSlip?->items ?? collect())
+            ->map(fn (ExportItem $item) => $item->package)
+            ->filter()
+            ->groupBy('payment_voucher_id')
+            ->map(fn (Collection $packages) => $packages
+                ->map(fn (VnPackage $package) => (int) $package->cnPackage?->order_id)
+                ->filter()->unique()->sort()->values());
+        $totals = [];
+
+        foreach ($vouchers as $voucher) {
+            // PaymentVoucher stores one gross subtotal. When it covers several orders,
+            // attribute it once to the first task order because the schema has no exact
+            // allocation for voucher-level GHN/surcharge items.
+            $orderId = (int) ($voucherOrders->get($voucher->id)?->first() ?? $voucher->order_id ?? 0);
+            if ($orderId > 0) {
+                $totals[$orderId] = ($totals[$orderId] ?? 0) + (float) $voucher->subtotal;
+            }
+        }
+
+        return $totals;
     }
 
     private function slipRow(ExportSlip $slip, bool $withDetails = false): array
@@ -605,8 +730,10 @@ class ShippingTaskService
             'creator_name' => $slip->creator?->name,
             'delivery_staff_name' => $task?->deliveryStaff?->name,
             'delivery_staff_phone' => $task?->deliveryStaff?->phone,
+            'carrier_code' => $task?->carrier_code,
             'carrier_name' => $task?->carrier_name,
             'warehouse_name' => $task?->warehouse?->name,
+            'warehouse_address' => $task?->warehouse?->address,
             'note' => $task?->note ?? $slip->note,
             'order_count' => $taskOrders->count(),
             'total_packages' => $items->count(),
@@ -657,28 +784,53 @@ class ShippingTaskService
         $row['service_type'] = $task?->service_type;
         $row['delivery_method'] = $task?->delivery_method;
         $row['transport_note'] = $task?->transport_note;
-        $row['payment'] = $this->slipPaymentSummary($items);
-        $orderValue = (float) $taskOrders->sum(fn (ShippingTaskOrder $taskOrder) => $taskOrder->order?->product_total_vnd ?? 0);
-        $weightShippingFee = (float) $items->sum(function (ExportItem $item) {
-            $paymentPackage = $item->package?->paymentVoucherPackage;
-
-            return (float) ($paymentPackage?->shipping_fee ?? 0);
-        });
-        $voucherIds = $items->pluck('package.payment_voucher_id')->filter()->unique()->values();
-        $deliveryFee = (float) PaymentVoucherItem::query()
-            ->whereIn('payment_voucher_id', $voucherIds)
-            ->where('item_type', 'domestic_shipping')
-            ->sum('amount');
-        $actualShippingFee = $weightShippingFee + $deliveryFee;
-        $shippingFee = (float) ($task?->estimated_shipping_fee ?? 0) > 0
-            ? (float) $task->estimated_shipping_fee
-            : $actualShippingFee;
-        $codAmount = $task?->cod_amount !== null ? (float) $task->cod_amount : null;
-        $row['financials'] = [
-            'order_value' => $orderValue,
-            'shipping_fee' => $shippingFee,
-            'cod_amount' => $codAmount,
-            'total_amount' => $orderValue + $shippingFee + (float) ($codAmount ?? 0),
+        $packages = $items->map(fn (ExportItem $item) => $item->package)->filter()->values();
+        $vouchers = $packages->pluck('paymentVoucher')->filter()->unique('id')->values();
+        $financials = $this->settledPaymentSummaryService->summarize($vouchers, (float) ($task?->cod_amount ?? 0));
+        $row['payment'] = [
+            ...$this->slipPaymentSummary($items),
+            'voucher_codes' => $vouchers->pluck('voucher_code')->filter()->values()->all(),
+            'settled_total' => $financials['settled_total'],
+            'remaining_amount' => $financials['remaining_amount'],
+        ];
+        $row['financials'] = $financials;
+        $request = $task?->deliveryRequests?->first();
+        $address = $request?->address;
+        $shipment = $task?->deliveryRequests?->flatMap->shipments->sortByDesc('id')->first();
+        $collectedFee = $financials['domestic_shipping_total'];
+        $currentFee = (float) ($task?->estimated_shipping_fee ?? 0);
+        $difference = round($currentFee - $collectedFee, 0);
+        $row['delivery_address'] = $address ? [
+            'receiver_name' => $address->receiver_name,
+            'receiver_phone' => $address->receiver_phone,
+            'province_code' => $address->province_code,
+            'province_name' => $address->province_name,
+            'district_code' => $address->district_code,
+            'district_name' => $address->district_name,
+            'ward_code' => $address->ward_code,
+            'ward_name' => $address->ward_name,
+            'address_line' => $address->address_line,
+            'full_address' => $address->full_address,
+        ] : null;
+        $row['ghn'] = [
+            'mode' => strtolower(trim((string) config('services.ghn.mode', 'preview'))),
+            'service_id' => null,
+            'service_name' => $task?->service_type,
+            'package_count' => $packages->count(),
+            'total_weight' => round((float) $packages->sum('actual_weight'), 3),
+            'length' => (float) $packages->max('actual_length'),
+            'width' => (float) $packages->max('actual_width'),
+            'height' => (float) $packages->sum('actual_height'),
+            'collected_fee' => $collectedFee,
+            'current_fee' => $currentFee,
+            'fee_difference' => $difference,
+            'fee_status' => $difference > 0 ? 'increased' : ($difference < 0 ? 'decreased' : 'matched'),
+        ];
+        $row['shipment'] = [
+            'exists' => $shipment !== null,
+            'carrier_order_id' => $shipment?->carrier_order_id,
+            'tracking_number' => $shipment?->tracking_number,
+            'status' => $shipment?->status,
         ];
         $row['history'] = $task ? AuditLog::query()
             ->with('user')
@@ -728,10 +880,20 @@ class ShippingTaskService
         ];
     }
 
-    private function loadTask(int $id): ShippingTask
+    private function loadTask(int $id, bool $withDetails = false): ShippingTask
     {
+        $relations = ['deliveryStaff', 'warehouse', 'creator', 'exportSlip', 'taskOrders.order.customer'];
+        if ($withDetails) {
+            $relations = array_merge($relations, [
+                'exportSlip.items.package.cnPackage.order',
+                'deliveryRequests.address',
+                'deliveryRequests.shipments',
+                'deliveryRequests.paymentVoucher.items',
+            ]);
+        }
+
         return ShippingTask::query()
-            ->with(['deliveryStaff', 'warehouse', 'creator', 'exportSlip', 'taskOrders.order.customer'])
+            ->with($relations)
             ->withSum('taskOrders as total_packages', 'package_count')
             ->withSum('taskOrders as total_weight', 'total_weight')
             ->withSum('taskOrders as total_value', 'total_value')

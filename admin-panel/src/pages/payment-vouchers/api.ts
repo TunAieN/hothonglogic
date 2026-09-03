@@ -1,6 +1,6 @@
 import { ClientError } from "graphql-request";
 import { client, syncGraphqlAuthToken } from "../../providers/graphqlClient";
-import type { EligiblePaymentPackage, PaymentAccount, PaymentVoucher, VoucherPreview, VoucherSurchargeInput } from "./types";
+import type { CustomerAddress, EligiblePaymentPackage, GhnDistrict, GhnProvince, GhnShippingQuote, GhnWard, PaymentAccount, PaymentVoucher, VoucherPreview, VoucherSurchargeInput } from "./types";
 
 const PACKAGE_FIELDS = `
   id
@@ -29,6 +29,7 @@ const PAYMENT_ACCOUNT_FIELDS = `
   is_active
   note
 `;
+const CUSTOMER_ADDRESS_FIELDS = `id customer_id label receiver_name receiver_phone province_code province_name district_code district_name ward_code ward_name address_line full_address is_default`;
 const VOUCHER_FIELDS = `
   id
   voucher_code
@@ -129,6 +130,69 @@ export const fetchDefaultPaymentAccount = async () => {
   const res = await requestGraphql<{ defaultPaymentAccount: PaymentAccount | null }, Record<string, never>>(query, {});
   return res.defaultPaymentAccount;
 };
+
+export const fetchGhnProvinces = async () => {
+  const query = `query GhnProvinces { ghnProvinces { province_id name } }`;
+  const res = await requestGraphql<{ ghnProvinces: GhnProvince[] }, Record<string, never>>(query, {});
+  return res.ghnProvinces;
+};
+
+export const fetchCustomerAddresses = async (customerId: string) => {
+  const query = `query CustomerAddresses($customer_id: ID!) { customerAddresses(customer_id: $customer_id) { ${CUSTOMER_ADDRESS_FIELDS} } }`;
+  const res = await requestGraphql<{ customerAddresses: CustomerAddress[] }, { customer_id: string }>(query, { customer_id: customerId });
+  return res.customerAddresses;
+};
+
+export type CustomerAddressInput = Omit<CustomerAddress, "id" | "full_address"> & { customer_id: string };
+
+export const createCustomerAddress = async (input: CustomerAddressInput) => {
+  const mutation = `mutation CreateCustomerAddress($input: CustomerAddressInput!) { createCustomerAddress(input: $input) { ${CUSTOMER_ADDRESS_FIELDS} } }`;
+  const res = await requestGraphql<{ createCustomerAddress: CustomerAddress }, { input: CustomerAddressInput }>(mutation, { input });
+  return res.createCustomerAddress;
+};
+
+export const updateCustomerAddress = async (id: string, input: CustomerAddressInput) => {
+  const mutation = `mutation UpdateCustomerAddress($id: ID!, $input: CustomerAddressInput!) { updateCustomerAddress(id: $id, input: $input) { ${CUSTOMER_ADDRESS_FIELDS} } }`;
+  const res = await requestGraphql<{ updateCustomerAddress: CustomerAddress }, { id: string; input: CustomerAddressInput }>(mutation, { id, input });
+  return res.updateCustomerAddress;
+};
+
+export const setDefaultCustomerAddress = async (customerId: string, addressId: string) => {
+  const mutation = `mutation SetDefaultCustomerAddress($customer_id: ID!, $address_id: ID!) { setDefaultCustomerAddress(customer_id: $customer_id, address_id: $address_id) { ${CUSTOMER_ADDRESS_FIELDS} } }`;
+  const res = await requestGraphql<{ setDefaultCustomerAddress: CustomerAddress }, { customer_id: string; address_id: string }>(mutation, { customer_id: customerId, address_id: addressId });
+  return res.setDefaultCustomerAddress;
+};
+
+export const fetchGhnDistricts = async (provinceId: number) => {
+  if (!Number.isInteger(provinceId) || provinceId <= 0) {
+    throw new Error("Mã Tỉnh/Thành phố GHN không hợp lệ. Vui lòng chọn lại.");
+  }
+  const query = `query GhnDistricts($province_id: Int!) { ghnDistricts(province_id: $province_id) { district_id province_id name } }`;
+  const res = await requestGraphql<{ ghnDistricts: GhnDistrict[] }, { province_id: number }>(query, { province_id: provinceId });
+  return res.ghnDistricts;
+};
+
+export const fetchGhnWards = async (districtId: number) => {
+  if (!Number.isInteger(districtId) || districtId <= 0) {
+    throw new Error("Mã Quận/Huyện GHN không hợp lệ. Vui lòng chọn lại.");
+  }
+  const query = `query GhnWards($district_id: Int!) { ghnWards(district_id: $district_id) { ward_code district_id name } }`;
+  const res = await requestGraphql<{ ghnWards: GhnWard[] }, { district_id: number }>(query, { district_id: districtId });
+  return res.ghnWards;
+};
+
+export const fetchGhnShippingQuote = async (input: {
+  package_ids: string[];
+  to_district_id: number;
+  to_ward_code: string;
+  insurance_value?: number;
+  cod_amount?: number;
+}) => {
+  const query = `query GhnShippingQuote($input: GhnShippingQuoteInput!) { ghnShippingQuote(input: $input) { total service_fee insurance_fee service_id service_type_id service_name } }`;
+  const res = await requestGraphql<{ ghnShippingQuote: GhnShippingQuote }, { input: typeof input }>(query, { input });
+  return res.ghnShippingQuote;
+};
+
 export const previewPaymentVoucher = async (packageIds: string[], surcharges: VoucherSurchargeInput[], deliveryFee = 0) => {
   const query = `
     query PreviewPaymentVoucher($input: PreviewPaymentVoucherInput!) {
@@ -162,6 +226,10 @@ export const createPaymentVoucher = async (input: {
   request_uuid: string;
   vn_warehouse_id?: string;
   delivery_method: "pickup_at_warehouse" | "delivery";
+  customer_address_id?: string;
+  save_address?: boolean;
+  set_address_default?: boolean;
+  address_label?: string;
   receiver_name?: string;
   receiver_phone?: string;
   province_name?: string;
@@ -170,8 +238,13 @@ export const createPaymentVoucher = async (input: {
   address_line?: string;
   full_address?: string;
   preferred_carrier?: string;
+  province_code?: string;
+  district_code?: string;
+  ward_code?: string;
   delivery_note?: string;
   delivery_fee?: number;
+  insurance_value?: number;
+  cod_amount?: number;
   payment_method_expected: string;
   note?: string;
   surcharges: VoucherSurchargeInput[];

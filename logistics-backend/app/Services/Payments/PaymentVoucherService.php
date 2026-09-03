@@ -14,8 +14,11 @@ use App\Models\PaymentVoucherItem;
 use App\Models\PaymentVoucherPackage;
 use App\Models\VnPackage;
 use App\Services\Auth\PermissionService;
+use App\Services\Customers\CustomerAddressService;
 use App\Services\Delivery\DeliveryRequestService;
 use App\Services\Orders\OrderPricingService;
+use App\Services\Shipping\GhnService;
+use App\Services\Shipping\GhnInsuranceValueService;
 use App\Services\Shipping\ShippingRateService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -27,6 +30,9 @@ class PaymentVoucherService
     public function __construct(
         private readonly ShippingRateService $shippingRateService,
         private readonly DeliveryRequestService $deliveryRequestService,
+        private readonly GhnService $ghnService,
+        private readonly CustomerAddressService $customerAddressService,
+        private readonly GhnInsuranceValueService $ghnInsuranceValueService,
     ) {}
 
     public function eligiblePackages(array $filter = [])
@@ -336,7 +342,74 @@ class PaymentVoucherService
             if (! in_array($deliveryMethod, ['pickup_at_warehouse', 'delivery'], true)) {
                 throw new HttpException(422, 'Hình thức nhận hàng không hợp lệ.');
             }
-            $deliveryFee = $deliveryMethod === 'pickup_at_warehouse' ? 0.0 : $this->normalizeDeliveryFee($input);
+            $deliveryFee = 0.0;
+            if ($deliveryMethod === 'delivery') {
+                if (strtolower(trim((string) ($input['preferred_carrier'] ?? ''))) !== 'ghn') {
+                    throw new HttpException(422, 'Đơn vị vận chuyển giao tận nơi phải là GHN.');
+                }
+
+                $customerId = (int) $packages->first()->cnPackage?->order?->customer_id;
+                $sourceAddress = null;
+                $addressWasValidated = false;
+                if (! empty($input['customer_address_id'])) {
+                    $sourceAddress = $this->customerAddressService->findOwned($customerId, (int) $input['customer_address_id']);
+                } elseif ((bool) ($input['save_address'] ?? false)) {
+                    $sourceAddress = $this->customerAddressService->create($customerId, [
+                        ...$input,
+                        'label' => $input['address_label'] ?? null,
+                        'is_default' => (bool) ($input['set_address_default'] ?? false),
+                    ]);
+                    $input['customer_address_id'] = $sourceAddress->id;
+                    $addressWasValidated = true;
+                } elseif ((bool) ($input['set_address_default'] ?? false)) {
+                    throw new HttpException(422, 'Muốn đặt làm mặc định, bạn phải lưu địa chỉ cho lần sau.');
+                }
+
+                if ($sourceAddress) {
+                    foreach (['receiver_name', 'receiver_phone', 'province_code', 'province_name', 'district_code', 'district_name', 'ward_code', 'ward_name', 'address_line', 'full_address'] as $field) {
+                        $input[$field] = $sourceAddress->{$field};
+                    }
+                } else {
+                    $validatedAddress = $this->customerAddressService->validatedValues($input);
+                    $addressWasValidated = true;
+                    foreach (['receiver_name', 'receiver_phone', 'province_code', 'province_name', 'district_code', 'district_name', 'ward_code', 'ward_name', 'address_line', 'full_address'] as $field) {
+                        $input[$field] = $validatedAddress[$field];
+                    }
+                }
+
+                $provinceId = (int) ($input['province_code'] ?? 0);
+                $districtId = (int) ($input['district_code'] ?? 0);
+                $wardCode = trim((string) ($input['ward_code'] ?? ''));
+                $destination = $addressWasValidated ? [
+                    'province' => ['province_id' => $provinceId, 'name' => $input['province_name']],
+                    'district' => ['district_id' => $districtId, 'province_id' => $provinceId, 'name' => $input['district_name']],
+                    'ward' => ['ward_code' => $wardCode, 'district_id' => $districtId, 'name' => $input['ward_name']],
+                ] : $this->ghnService->validateDestination($provinceId, $districtId, $wardCode);
+                $insuranceValue = $this->ghnInsuranceValueService->forPackages($packages);
+                $quote = $this->ghnService->quote([
+                    'package_ids' => $packageIds,
+                    'to_district_id' => $districtId,
+                    'to_ward_code' => $wardCode,
+                    'insurance_value' => $insuranceValue,
+                    'cod_amount' => 0,
+                ], $packages);
+                $deliveryFee = (float) $quote['total'];
+
+                // Persist names resolved from GHN instead of trusting client-provided snapshots.
+                $input['province_name'] = $destination['province']['name'];
+                $input['district_name'] = $destination['district']['name'];
+                $input['ward_name'] = $destination['ward']['name'];
+                $input['province_code'] = (string) $destination['province']['province_id'];
+                $input['district_code'] = (string) $destination['district']['district_id'];
+                $input['ward_code'] = $destination['ward']['ward_code'];
+                $input['preferred_carrier'] = 'ghn';
+                $input['full_address'] = implode(', ', array_filter([
+                    trim((string) ($input['address_line'] ?? '')),
+                    $input['ward_name'],
+                    $input['district_name'],
+                    $input['province_name'],
+                ]));
+            }
             $preview = $this->buildVoucherPreview($packages, $surcharges, $deliveryFee);
             $customer = $preview['customer'];
             $paymentMethodExpected = $input['payment_method_expected'] ?? 'bank_transfer';

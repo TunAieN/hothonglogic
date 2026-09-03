@@ -41,10 +41,68 @@ input CreateShippingTaskInput {
   vn_warehouse_id: ID!
   note: String
   service_type: String
+  ghn_service_id: Int
+  ghn_service_type_id: Int
   delivery_method: String
   estimated_shipping_fee: Float
   cod_amount: Float
   transport_note: String
+}
+
+input ShippingTaskGhnPreviewInput {
+  order_ids: [ID!]!
+  service_id: Int
+}
+
+type ShippingTaskGhnService {
+  service_id: Int!
+  service_type_id: Int!
+  service_name: String!
+}
+
+type ShippingTaskGhnWarehouse {
+  id: ID!
+  name: String!
+  address: String
+}
+
+type ShippingTaskDeliveryAddress {
+  receiver_name: String!
+  receiver_phone: String!
+  province_code: String
+  province_name: String
+  district_code: String!
+  district_name: String
+  ward_code: String!
+  ward_name: String
+  address_line: String!
+  full_address: String
+}
+
+type ShippingTaskGhnPreview {
+  mode: String!
+  validation_status: String!
+  carrier_code: String!
+  carrier_name: String!
+  services: [ShippingTaskGhnService!]!
+  service_id: Int!
+  service_type_id: Int!
+  service_name: String!
+  warehouse: ShippingTaskGhnWarehouse!
+  delivery_request_id: ID!
+  address: ShippingTaskDeliveryAddress!
+  package_count: Int!
+  total_weight: Float!
+  length: Float!
+  width: Float!
+  height: Float!
+  settled_value: Float!
+  collected_fee: Float!
+  current_fee: Float!
+  fee_difference: Float!
+  fee_status: String!
+  cod_amount: Float!
+  estimated_delivery_at: DateTime!
 }
 
 type ShippingPaginatorInfo {
@@ -88,6 +146,7 @@ type ShippingQueueOrder {
   payment_date: DateTime
   package_count: Int!
   total_weight: Float!
+  settled_value: Float!
   total_value: Float!
   status: String!
   packages: [ShippingPackage!]!
@@ -138,6 +197,7 @@ type ShippingTask {
   delivery_staff_id: ID
   delivery_staff_name: String
   delivery_staff_phone: String
+  carrier_code: String
   carrier_name: String!
   warehouse_name: String
   order_count: Int!
@@ -153,7 +213,42 @@ type ShippingTask {
   estimated_shipping_fee: Float!
   cod_amount: Float
   transport_note: String
+  financials: ShippingTaskFinancials
+  delivery_address: ShippingTaskDeliveryAddress
+  ghn: ShippingTaskGhnDetail
+  shipment: ShippingTaskShipmentDetail
   orders: [ExportSlipOrder!]!
+}
+
+type ShippingTaskFinancials {
+  product_total: Float!
+  weight_shipping_total: Float!
+  domestic_shipping_total: Float!
+  surcharge_total: Float!
+  settled_total: Float!
+  deposit_applied: Float!
+  customer_credit_applied: Float!
+  payment_after_deposit: Float!
+  paid_amount: Float!
+  cod_amount: Float!
+  remaining_amount: Float!
+  status: String!
+}
+
+type ShippingTaskGhnDetail {
+  mode: String!
+  service_name: String
+  collected_fee: Float!
+  current_fee: Float!
+  fee_difference: Float!
+  fee_status: String!
+}
+
+type ShippingTaskShipmentDetail {
+  exists: Boolean!
+  carrier_order_id: String
+  tracking_number: String
+  status: String
 }
 
 type ShippingTaskPage {
@@ -176,6 +271,7 @@ type ExportSlipOrder {
   package_count: Int!
   total_weight: Float!
   total_value: Float!
+  settled_total: Float
 }
 
 type ExportSlip {
@@ -189,8 +285,10 @@ type ExportSlip {
   creator_name: String
   delivery_staff_name: String
   delivery_staff_phone: String
+  carrier_code: String
   carrier_name: String
   warehouse_name: String
+  warehouse_address: String
   note: String
   service_type: String
   delivery_method: String
@@ -203,7 +301,10 @@ type ExportSlip {
   orders: [ExportSlipOrder!]
   packages: [ShippingPackage!]
   payment: ExportSlipPayment
-  financials: ExportSlipFinancials
+  financials: ShippingTaskFinancials
+  delivery_address: ShippingTaskDeliveryAddress
+  ghn: ExportSlipGhnDetail
+  shipment: ShippingTaskShipmentDetail
   history: [ExportSlipHistory!]
 }
 
@@ -217,13 +318,24 @@ type ExportSlipPayment {
   bank_name: String
   confirmed_by: String
   paid_amount: Float!
+  voucher_codes: [String!]!
+  settled_total: Float!
+  remaining_amount: Float!
 }
 
-type ExportSlipFinancials {
-  order_value: Float!
-  shipping_fee: Float!
-  cod_amount: Float
-  total_amount: Float!
+type ExportSlipGhnDetail {
+  mode: String!
+  service_id: Int
+  service_name: String
+  package_count: Int!
+  total_weight: Float!
+  length: Float!
+  width: Float!
+  height: Float!
+  collected_fee: Float!
+  current_fee: Float!
+  fee_difference: Float!
+  fee_status: String!
 }
 
 type ExportSlipHistory {

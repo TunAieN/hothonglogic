@@ -12,23 +12,31 @@ import type {
   ShippingTaskFilter,
   ShippingTaskOptions,
   ShippingTaskPage,
+  ShippingTaskGhnPreview,
 } from "./types";
 
 const PAGINATOR_FIELDS = "currentPage lastPage perPage total firstItem lastItem";
 const QUEUE_FIELDS = `
   id order_code tracking_numbers customer_name customer_phone customer_address carrier payment_date
-  package_count total_weight total_value status
+  package_count total_weight settled_value total_value status
   packages { id tracking_number length width height weight }
 `;
 const TASK_FIELDS = `
-  id task_code export_slip_id export_code delivery_staff_id delivery_staff_name delivery_staff_phone carrier_name warehouse_name
+  id task_code export_slip_id export_code delivery_staff_id delivery_staff_name delivery_staff_phone carrier_code carrier_name warehouse_name
   order_count total_packages total_weight total_value created_at scheduled_delivery_date status
   note service_type delivery_method estimated_shipping_fee cod_amount transport_note
-  orders { id order_code customer_name package_count total_weight total_value }
+  orders { id order_code customer_name package_count total_weight total_value settled_total }
+`;
+const TASK_DETAIL_FIELDS = `
+  ${TASK_FIELDS}
+  financials { product_total weight_shipping_total domestic_shipping_total surcharge_total settled_total cod_amount remaining_amount status }
+  delivery_address { receiver_name receiver_phone province_code province_name district_code district_name ward_code ward_name address_line full_address }
+  ghn { mode service_name collected_fee current_fee fee_difference fee_status }
+  shipment { exists carrier_order_id tracking_number status }
 `;
 const SLIP_FIELDS = `
   id export_code task_id task_code status created_at scheduled_delivery_date creator_name
-  delivery_staff_name delivery_staff_phone carrier_name warehouse_name note order_count total_packages total_weight total_value
+  delivery_staff_name delivery_staff_phone carrier_code carrier_name warehouse_name warehouse_address note order_count total_packages total_weight total_value
 `;
 
 const request = async <T, V extends Record<string, unknown>>(query: string, variables: V) => {
@@ -78,6 +86,22 @@ export const fetchShippingTaskOptions = async () => {
   return response.shippingTaskOptions;
 };
 
+export const fetchShippingTaskGhnPreview = async (orderIds: string[], serviceId?: number) => {
+  const query = `query ShippingTaskGhnPreview($input: ShippingTaskGhnPreviewInput!) {
+    shippingTaskGhnPreview(input: $input) {
+      mode validation_status carrier_code carrier_name service_id service_type_id service_name
+      services { service_id service_type_id service_name }
+      warehouse { id name address }
+      delivery_request_id
+      address { receiver_name receiver_phone province_code province_name district_code district_name ward_code ward_name address_line full_address }
+      package_count total_weight length width height settled_value collected_fee current_fee fee_difference fee_status cod_amount estimated_delivery_at
+    }
+  }`;
+  const input = { order_ids: orderIds, ...(serviceId ? { service_id: serviceId } : {}) };
+  const response = await request<{ shippingTaskGhnPreview: ShippingTaskGhnPreview }, { input: { order_ids: string[]; service_id?: number } }>(query, { input });
+  return response.shippingTaskGhnPreview;
+};
+
 export const createShippingTask = async (input: CreateShippingTaskInput) => {
   const mutation = `mutation CreateShippingTask($input: CreateShippingTaskInput!) {
     createShippingTask(input: $input) { message task { ${TASK_FIELDS} } }
@@ -99,7 +123,7 @@ export const fetchShippingTasks = async (page: number, first: number, filter: Sh
 };
 
 export const fetchShippingTask = async (id: string) => {
-  const query = `query ShippingTask($id: ID!) { shippingTask(id: $id) { ${TASK_FIELDS} } }`;
+  const query = `query ShippingTask($id: ID!) { shippingTask(id: $id) { ${TASK_DETAIL_FIELDS} } }`;
   const response = await request<{ shippingTask: ShippingTask }, { id: string }>(query, { id });
   return response.shippingTask;
 };
@@ -132,8 +156,11 @@ export const fetchExportSlip = async (id: string) => {
       orders { id order_code customer_name package_count total_weight total_value }
       packages { id tracking_number order_id order_code customer_name customer_phone length width height weight value }
       service_type delivery_method transport_note
-      payment { status paid_package_count total_package_count paid_at payment_method transaction_code bank_name confirmed_by paid_amount }
-      financials { order_value shipping_fee cod_amount total_amount }
+      payment { status paid_package_count total_package_count paid_at payment_method transaction_code bank_name confirmed_by paid_amount voucher_codes settled_total remaining_amount }
+      financials { product_total weight_shipping_total domestic_shipping_total surcharge_total settled_total deposit_applied customer_credit_applied payment_after_deposit paid_amount cod_amount remaining_amount status }
+      delivery_address { receiver_name receiver_phone province_code province_name district_code district_name ward_code ward_name address_line full_address }
+      ghn { mode service_id service_name package_count total_weight length width height collected_fee current_fee fee_difference fee_status }
+      shipment { exists carrier_order_id tracking_number status }
       history { id action from_status to_status actor_name created_at }
     }
   }`;
