@@ -3,6 +3,8 @@
 namespace App\GraphQL\Resolvers;
 
 use App\Services\Shipping\ShippingTaskService;
+use GraphQL\Error\UserError;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ShippingTaskResolver
 {
@@ -25,6 +27,15 @@ class ShippingTaskResolver
     public function options(): array
     {
         return $this->service->options();
+    }
+
+    public function ghnPreview($_, array $args): array
+    {
+        try {
+            return $this->service->ghnPreview($args['input'] ?? []);
+        } catch (HttpException $exception) {
+            throw new UserError($exception->getMessage());
+        }
     }
 
     public function tasks($_, array $args): array

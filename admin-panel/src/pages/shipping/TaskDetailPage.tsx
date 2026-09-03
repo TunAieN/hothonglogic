@@ -15,7 +15,7 @@ import type { MenuProps, TableColumnsType } from "antd";
 import { Link, useNavigate, useParams } from "react-router";
 import { fetchExportSlip, fetchShippingTask, shippingErrorMessage, updateShippingTaskStatus } from "./api";
 import { downloadExportSlip } from "./exportSlipDocument";
-import { formatVnd, formatWeight, taskStatusLabels } from "./helpers";
+import { formatWeight, taskStatusLabels } from "./helpers";
 import type { ExportSlip, ShippingTask } from "./types";
 import type { User } from "../../shared/types";
 import "./shipping.css";
@@ -27,6 +27,7 @@ const serviceLabels: Record<string, string> = { standard: "Tiêu chuẩn", expre
 const deliveryLabels: Record<string, string> = { door_delivery: "Giao tận nơi", warehouse_pickup: "Nhận tại kho", transshipment: "Trung chuyển" };
 const detailStatusLabels: Record<string, string> = { ...taskStatusLabels, created: "Chờ xử lý", in_transit: "Đang giao hàng" };
 const transitionLabels: Record<string, string> = { preparing: "Chuyển sang Đang chuẩn bị", in_transit: "Chuyển sang Đang giao hàng", completed: "Hoàn thành nhiệm vụ" };
+const formatDetailVnd = (value?: number | null) => `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value ?? 0)} đ`;
 const TaskDetailStatusTag = ({ status }: { status: string }) => <Tag bordered={false} className={`shipping-status-pill shipping-status-pill--${status}`}>{detailStatusLabels[status] || status}</Tag>;
 
 const DetailLine = ({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) => <div className="shipping-task-detail-line">
@@ -65,7 +66,7 @@ export const ShippingTaskDetailPage = () => {
       ...order,
       trackingNumbers: Array.from(new Set(packages.map((item) => item.tracking_number).filter((value): value is string => !!value))),
       customerPhone: packages.find((item) => item.customer_phone)?.customer_phone,
-      paymentStatus: slip?.payment?.status === "paid" ? "paid" : slip?.payment?.status === "unpaid" ? "unpaid" : "unknown",
+      paymentStatus: task?.financials?.status === "paid" ? "paid" : task?.financials?.status === "unpaid" ? "unpaid" : "unknown",
     };
   }), [slip, task]);
 
@@ -114,23 +115,20 @@ export const ShippingTaskDetailPage = () => {
     { title: "Khách hàng", width: 175, render: (_, row) => <div><strong>{row.customer_name || "—"}</strong>{row.customerPhone && <small className="shipping-table__subtext">{row.customerPhone}</small>}</div> },
     { title: "Số kiện", dataIndex: "package_count", align: "center", width: 85 },
     { title: "Khối lượng (kg)", dataIndex: "total_weight", align: "right", width: 125, render: (value) => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(value) },
-    { title: "Giá trị (VND)", dataIndex: "total_value", align: "right", width: 135, render: (value) => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value) },
+    { title: "Giá trị đã tất toán", dataIndex: "settled_total", align: "right", width: 155, render: (value) => formatDetailVnd(value) },
     { title: "Trạng thái đơn", dataIndex: "paymentStatus", width: 135, render: (status) => status === "paid" ? <Tag color="success" bordered={false}>Đã thanh toán</Tag> : status === "unpaid" ? <Tag color="error" bordered={false}>Chưa thanh toán</Tag> : <Tag bordered={false}>Chờ xác minh</Tag> },
   ];
 
   if (loading) return <div className="shipping-page"><Skeleton active paragraph={{ rows: 14 }} /></div>;
   if (!task) return <div className="shipping-page"><Card className="shipping-panel"><Empty description="Không tìm thấy nhiệm vụ xuất hàng"><Button onClick={() => navigate("/shipping/tasks")}>Quay lại danh sách</Button></Empty></Card></div>;
 
-  const financials = slip?.financials;
-  const orderValue = financials?.order_value ?? task.total_value;
-  const shippingFee = financials?.shipping_fee ?? task.estimated_shipping_fee;
+  const financials = task.financials;
   const codAmount = financials?.cod_amount ?? task.cod_amount ?? 0;
-  const totalAmount = financials?.total_amount ?? orderValue + shippingFee + codAmount;
-  const payment = slip?.payment;
-  const paymentPaid = payment?.status === "paid";
-  const paymentAlertType = paymentPaid ? "success" : payment?.status === "partial" ? "warning" : "error";
-  const paymentTitle = paymentPaid ? "Các đơn hàng đã thanh toán" : payment?.status === "partial" ? "Thanh toán chưa hoàn tất" : "Chưa xác nhận thanh toán";
-  const paymentDescription = paymentPaid ? "Tất cả đơn hàng trong nhiệm vụ đều đã thanh toán." : payment ? `${payment.paid_package_count}/${payment.total_package_count} kiện đã được xác nhận thanh toán.` : "Chưa có dữ liệu thanh toán để xác minh.";
+  const settledTotal = financials?.settled_total ?? 0;
+  const paymentPaid = financials?.status === "paid" && (financials?.remaining_amount ?? 0) <= 0;
+  const paymentAlertType = paymentPaid ? "success" : "error";
+  const paymentTitle = paymentPaid ? "Đã thanh toán" : "Thanh toán chưa hoàn tất";
+  const paymentDescription = paymentPaid ? "Tất cả đơn hàng trong nhiệm vụ đều đã thanh toán." : "Dữ liệu phiếu thanh toán còn số tiền phải trả.";
 
   const progressSteps = [
     { status: "created", label: "Chờ xử lý", time: task.created_at },
@@ -178,33 +176,49 @@ export const ShippingTaskDetailPage = () => {
 
     <div className="shipping-task-detail-main-grid">
       <Card title={`Danh sách đơn hàng (${task.order_count})`} className="shipping-panel shipping-task-orders-card" styles={{ body: { padding: 0 } }}>
-        <Table<TaskOrderRow> rowKey="id" columns={columns} dataSource={orderRows} pagination={false} scroll={{ x: 1120 }} locale={{ emptyText: "Nhiệm vụ chưa có đơn hàng." }} summary={() => <Table.Summary.Row className="shipping-detail-table__summary"><Table.Summary.Cell index={0} colSpan={4}>Tổng cộng</Table.Summary.Cell><Table.Summary.Cell index={4} align="center">{task.total_packages}</Table.Summary.Cell><Table.Summary.Cell index={5} align="right">{formatWeight(task.total_weight)}</Table.Summary.Cell><Table.Summary.Cell index={6} align="right">{formatVnd(task.total_value)}</Table.Summary.Cell><Table.Summary.Cell index={7} /></Table.Summary.Row>} />
+        <Table<TaskOrderRow> rowKey="id" columns={columns} dataSource={orderRows} pagination={false} scroll={{ x: 1140 }} locale={{ emptyText: "Nhiệm vụ chưa có đơn hàng." }} summary={() => <Table.Summary.Row className="shipping-detail-table__summary"><Table.Summary.Cell index={0} colSpan={4}>Tổng cộng</Table.Summary.Cell><Table.Summary.Cell index={4} align="center">{task.total_packages}</Table.Summary.Cell><Table.Summary.Cell index={5} align="right">{formatWeight(task.total_weight)}</Table.Summary.Cell><Table.Summary.Cell index={6} align="right">{formatDetailVnd(settledTotal)}</Table.Summary.Cell><Table.Summary.Cell index={7} /></Table.Summary.Row>} />
       </Card>
       <Card title="Tổng quan" className="shipping-panel shipping-task-overview-card"><div className="shipping-create-overview">
         <OverviewItem icon={<FileTextOutlined />} label="Số đơn hàng" value={task.order_count} tone="blue" />
         <OverviewItem icon={<AppstoreOutlined />} label="Tổng kiện" value={task.total_packages} tone="green" />
         <OverviewItem icon={<ColumnHeightOutlined />} label="Tổng khối lượng" value={formatWeight(task.total_weight)} tone="purple" />
-        <OverviewItem icon={<DollarCircleOutlined />} label="Tổng giá trị đơn hàng" value={formatVnd(task.total_value)} tone="orange" />
+        <OverviewItem icon={<DollarCircleOutlined />} label="Tổng giá trị đã tất toán" value={formatDetailVnd(settledTotal)} tone="orange" />
       </div></Card>
     </div>
 
     <div className="shipping-task-detail-bottom-grid">
-      <Card title="Thông tin giao hàng & vận chuyển" className="shipping-panel shipping-task-delivery-card">
-        <DetailLine icon={<UserOutlined />} label="Nhân viên giao hàng">{task.delivery_staff_name ? `${task.delivery_staff_name}${task.delivery_staff_phone ? ` - ${task.delivery_staff_phone}` : ""}` : "—"}</DetailLine>
-        <DetailLine icon={<CarOutlined />} label="Đơn vị vận chuyển">{task.carrier_name || "—"}</DetailLine>
-        <DetailLine icon={<RocketOutlined />} label="Dịch vụ vận chuyển">{task.service_type ? serviceLabels[task.service_type] || task.service_type : "—"}</DetailLine>
-        <DetailLine icon={<SwapOutlined />} label="Hình thức giao hàng">{task.delivery_method ? deliveryLabels[task.delivery_method] || task.delivery_method : "—"}</DetailLine>
-        <DetailLine icon={<EnvironmentOutlined />} label="Giao hàng từ">{task.warehouse_name || "—"}</DetailLine>
-        <DetailLine icon={<DollarCircleOutlined />} label="Phí vận chuyển (dự kiến)">{formatVnd(shippingFee)}</DetailLine>
-        <DetailLine icon={<WalletOutlined />} label="Thu hộ (COD)">{formatVnd(codAmount)}</DetailLine>
-        <DetailLine icon={<FileTextOutlined />} label="Ghi chú giao hàng">{task.note || "Không có ghi chú"}</DetailLine>
+      <Card title="Thông tin xuất hàng & GHN" className="shipping-panel shipping-task-delivery-card">
+        <DetailLine icon={<UserOutlined />} label="Nhân viên phụ trách xuất hàng">{task.delivery_staff_name ? `${task.delivery_staff_name}${task.delivery_staff_phone ? ` - ${task.delivery_staff_phone}` : ""}` : "—"}</DetailLine>
+        <DetailLine icon={<EnvironmentOutlined />} label="Kho xuất hàng">{task.warehouse_name || "—"}</DetailLine>
+        <DetailLine icon={<CarOutlined />} label="Đơn vị vận chuyển">{task.carrier_code === "ghn" ? "Giao Hàng Nhanh (GHN)" : task.carrier_name || "—"}</DetailLine>
+        <DetailLine icon={<RocketOutlined />} label="Dịch vụ GHN">{task.ghn?.service_name || (task.service_type ? serviceLabels[task.service_type] || task.service_type : "—")}</DetailLine>
+        <DetailLine icon={<SwapOutlined />} label="Hình thức giao">{task.delivery_method ? deliveryLabels[task.delivery_method] || task.delivery_method : "—"}</DetailLine>
+        <DetailLine icon={<CalendarOutlined />} label="Dự kiến giao"><span>{task.scheduled_delivery_date ? dayjs(task.scheduled_delivery_date).format("DD/MM/YYYY") : "—"}<small className="shipping-task-detail-line__subtext">Theo dự kiến của GHN</small></span></DetailLine>
+        <DetailLine icon={<DollarCircleOutlined />} label="Cước GHN đã thu khách">{formatDetailVnd(task.ghn?.collected_fee)}</DetailLine>
+        <DetailLine icon={<DollarCircleOutlined />} label="Cước GHN khi tạo nhiệm vụ">{formatDetailVnd(task.ghn?.current_fee)}</DetailLine>
+        <DetailLine icon={<SwapOutlined />} label="Chênh lệch">{formatDetailVnd(task.ghn?.fee_difference)}</DetailLine>
+        <DetailLine icon={<WalletOutlined />} label="COD">{formatDetailVnd(codAmount)}</DetailLine>
+        <DetailLine icon={<FileTextOutlined />} label="Ghi chú giao hàng">{task.transport_note || task.note || "Không có ghi chú"}</DetailLine>
+        <DetailLine icon={<RocketOutlined />} label="Chế độ GHN"><Tag color={task.ghn?.mode === "production" ? "success" : "processing"}>{task.ghn?.mode === "production" ? "GHN Production" : "GHN Preview"}</Tag></DetailLine>
+        <DetailLine icon={<CarOutlined />} label="Vận đơn GHN">{task.shipment?.exists ? task.shipment.tracking_number || task.shipment.carrier_order_id || "Đã tạo" : "Chưa tạo"}</DetailLine>
       </Card>
-      <Card title="Thông tin thanh toán" className="shipping-panel shipping-task-payment-card">
-        <FinancialLine label="Tổng giá trị đơn hàng" value={formatVnd(orderValue)} />
-        <FinancialLine label="Phí vận chuyển dự kiến" value={formatVnd(shippingFee)} />
-        <FinancialLine label="Thu hộ COD" value={formatVnd(codAmount)} />
-        <div className="shipping-task-payment-card__total"><span>Tổng cộng dự kiến</span><strong>{formatVnd(totalAmount)}</strong></div>
+      <Card title="Thông tin tài chính đã tất toán" className="shipping-panel shipping-task-payment-card">
+        <FinancialLine label="Tiền hàng" value={formatDetailVnd(financials?.product_total)} />
+        <FinancialLine label="Cước TQ → VN" value={formatDetailVnd(financials?.weight_shipping_total)} />
+        <FinancialLine label="Cước GHN đã thu" value={formatDetailVnd(financials?.domestic_shipping_total)} />
+        <FinancialLine label="Phụ phí" value={formatDetailVnd(financials?.surcharge_total)} />
+        <div className="shipping-task-payment-card__total"><span>Giá trị đã tất toán</span><strong>{formatDetailVnd(settledTotal)}</strong></div>
+        <FinancialLine label="COD" value={formatDetailVnd(codAmount)} />
+        <FinancialLine label="Còn phải trả" value={formatDetailVnd(financials?.remaining_amount)} />
+        <FinancialLine label="Trạng thái" value={paymentPaid ? "Đã thanh toán" : "Chưa hoàn tất"} />
         <Alert className="shipping-task-payment-card__alert" type={paymentAlertType} showIcon message={paymentTitle} description={paymentDescription} />
+      </Card>
+      <Card title="Địa chỉ giao hàng" className="shipping-panel shipping-task-address-card">
+        <DetailLine icon={<UserOutlined />} label="Người nhận">{task.delivery_address?.receiver_name || "—"}</DetailLine>
+        <DetailLine icon={<UserOutlined />} label="Số điện thoại">{task.delivery_address?.receiver_phone || "—"}</DetailLine>
+        <DetailLine icon={<EnvironmentOutlined />} label="Địa chỉ">{task.delivery_address?.full_address || [task.delivery_address?.address_line, task.delivery_address?.ward_name, task.delivery_address?.district_name, task.delivery_address?.province_name].filter(Boolean).join(", ") || "—"}</DetailLine>
+        <DetailLine icon={<EnvironmentOutlined />} label="GHN District ID">{task.delivery_address?.district_code || "—"}</DetailLine>
+        <DetailLine icon={<EnvironmentOutlined />} label="GHN Ward Code">{task.delivery_address?.ward_code || "—"}</DetailLine>
       </Card>
       <Card title={<span><HistoryOutlined /> Lịch sử xử lý</span>} className="shipping-panel shipping-task-history-card">
         {history.length ? <Timeline items={history.map((item) => { const text = historyText(item.action, item.to_status); return { color: item.to_status === "cancelled" ? "red" : "blue", children: <div className="shipping-history-item"><strong>{text.title}</strong><p>{item.created_at ? dayjs(item.created_at).format("DD/MM/YYYY HH:mm") : "—"}</p><span>{item.actor_name ? `Người thực hiện: ${item.actor_name}` : text.description}</span></div> }; })} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có lịch sử xử lý" />}

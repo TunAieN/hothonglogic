@@ -6,6 +6,7 @@ use App\Models\CnBatch;
 use App\Models\CnPackage;
 use App\Models\CnWarehouse;
 use App\Models\Customer;
+use App\Models\CustomerAddress;
 use App\Models\CustomerBalanceLedger;
 use App\Models\Order;
 use App\Models\PaymentAccount;
@@ -18,11 +19,14 @@ use App\Models\User;
 use App\Models\VnBatchReceipt;
 use App\Models\VnPackage;
 use App\Models\VnWarehouse;
+use App\Services\Customers\CustomerAddressService;
 use App\Services\Payments\PaymentVoucherService;
+use App\Services\Shipping\GhnService;
 use App\Services\Shipping\ShipmentService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class PaymentVoucherAmountsTest extends TestCase
@@ -277,14 +281,25 @@ class PaymentVoucherAmountsTest extends TestCase
         $this->assertSame($preview['remaining_amount'], $voucher->remaining_amount);
     }
 
-    public function test_delivery_fee_is_included_once_and_persisted(): void
+    public function test_delivery_fee_is_rechecked_with_ghn_and_client_value_is_ignored(): void
     {
         $this->setShippingFee(30000);
         $order = $this->createOrder(120000, 20000);
         $packages = [$this->createPackage($order), $this->createPackage($order)];
 
         $preview = $this->preview($packages, [], 52000);
-        $voucher = $this->createVoucher($packages, [], 'delivery', 52000);
+        $this->mock(GhnService::class, function ($mock) {
+            $mock->shouldReceive('validateDestination')->once()->andReturn([
+                'province' => ['province_id' => 201, 'name' => 'Hà Nội'],
+                'district' => ['district_id' => 1482, 'province_id' => 201, 'name' => 'Nam Từ Liêm'],
+                'ward' => ['ward_code' => '1A0607', 'district_id' => 1482, 'name' => 'Mỹ Đình 2'],
+            ]);
+            $mock->shouldReceive('quote')->once()->andReturn([
+                'total' => 52000, 'service_fee' => 52000, 'insurance_fee' => 0,
+                'service_id' => 53320, 'service_type_id' => 2, 'service_name' => 'Hàng nhẹ',
+            ]);
+        });
+        $voucher = $this->createVoucher($packages, [], 'delivery', 1);
 
         $this->assertSame(52000.0, $preview['delivery_fee_total']);
         $this->assertSame(232000.0, $preview['gross_total']);
@@ -296,9 +311,9 @@ class PaymentVoucherAmountsTest extends TestCase
         $this->assertSame(212000.0, app(PaymentVoucherService::class)->calculateVoucherTotal($voucher));
         $this->assertSame(52000.0, (float) $voucher->items()->where('item_type', 'domestic_shipping')->sum('amount'));
         $this->assertSame('delivery', $voucher->deliveryRequest?->delivery_method);
-        $this->assertSame('SPX', $voucher->deliveryRequest?->preferred_carrier);
+        $this->assertSame('GHN', $voucher->deliveryRequest?->preferred_carrier);
         $this->assertSame('Người nhận kiểm thử', $voucher->deliveryRequest?->address?->receiver_name);
-        $this->assertSame('12 Lê Đức Thọ, Hà Nội', $voucher->deliveryRequest?->address?->full_address);
+        $this->assertSame('12 Lê Đức Thọ, Mỹ Đình 2, Nam Từ Liêm, Hà Nội', $voucher->deliveryRequest?->address?->full_address);
 
         $task = ShippingTask::query()->create([
             'task_code' => 'SHIP-'.uniqid(), 'delivery_staff_id' => $this->user->id,
@@ -318,6 +333,35 @@ class PaymentVoucherAmountsTest extends TestCase
         $this->assertCount(1, $shipment->trackingEvents);
     }
 
+    public function test_ghn_delivery_fee_remains_in_preview_and_created_voucher_totals(): void
+    {
+        $this->setShippingFee(10000000);
+        $order = $this->createOrder(788040, 551628);
+        $package = $this->createPackage($order);
+
+        $preview = $this->preview([$package], [], 1031620);
+
+        $this->assertSame(788040.0, $preview['product_total']);
+        $this->assertSame(10000000.0, $preview['weight_shipping_total']);
+        $this->assertSame(1031620.0, $preview['delivery_fee_total']);
+        $this->assertSame(11819660.0, $preview['gross_total']);
+        $this->assertSame(551628.0, $preview['deposit_applied']);
+        $this->assertSame(11268032.0, $preview['remaining_amount']);
+
+        $refreshedPreview = $this->preview([$package], [], 1031620);
+        $this->assertSame(1031620.0, $refreshedPreview['delivery_fee_total']);
+        $this->assertSame(11819660.0, $refreshedPreview['gross_total']);
+        $this->assertSame(11268032.0, $refreshedPreview['remaining_amount']);
+
+        $this->mockGhnQuote(1031620, 1, null, 788040);
+        $voucher = $this->createVoucher([$package], [], 'delivery', 1);
+
+        $this->assertSame(11819660.0, $voucher->subtotal);
+        $this->assertSame(11268032.0, $voucher->total_amount);
+        $this->assertSame(11268032.0, $voucher->remaining_amount);
+        $this->assertSame(1031620.0, (float) $voucher->items()->where('item_type', 'domestic_shipping')->sum('amount'));
+    }
+
     public function test_pickup_ignores_a_submitted_delivery_fee(): void
     {
         $this->setShippingFee(30000);
@@ -329,6 +373,106 @@ class PaymentVoucherAmountsTest extends TestCase
         $this->assertSame(150000.0, $voucher->remaining_amount);
         $this->assertSame('pickup_at_warehouse', $voucher->deliveryRequest?->delivery_method);
         $this->assertNull($voucher->deliveryRequest?->address);
+    }
+
+    public function test_existing_customer_address_is_copied_to_an_immutable_delivery_snapshot(): void
+    {
+        $package = $this->createPackage($this->createOrder(120000));
+        $source = $this->createCustomerAddress($this->customer, true);
+        $this->mockGhnQuote(34000);
+
+        $voucher = $this->createVoucher([$package], [], 'delivery', 1, [
+            'customer_address_id' => $source->id,
+            'receiver_name' => 'Dữ liệu client không được tin',
+        ]);
+        $snapshot = $voucher->deliveryRequest?->address;
+
+        $this->assertSame($source->id, $snapshot?->source_customer_address_id);
+        $this->assertSame('Người nhận sổ địa chỉ', $snapshot?->receiver_name);
+        $this->assertSame('12 Lê Đức Thọ, Mỹ Đình 2, Nam Từ Liêm, Hà Nội', $snapshot?->full_address);
+
+        $this->mock(GhnService::class, function ($mock) {
+            $mock->shouldReceive('validateDestination')->once()->andReturn([
+                'province' => ['province_id' => 201, 'name' => 'Hà Nội'],
+                'district' => ['district_id' => 1482, 'province_id' => 201, 'name' => 'Nam Từ Liêm'],
+                'ward' => ['ward_code' => '1A0607', 'district_id' => 1482, 'name' => 'Mỹ Đình 2'],
+            ]);
+        });
+        app(CustomerAddressService::class)->update($this->customer->id, $source->id, [
+            'label' => 'Nhà đã sửa',
+            'receiver_name' => 'Tên đã sửa',
+            'receiver_phone' => '0900000000',
+            'province_code' => '201', 'province_name' => 'Hà Nội',
+            'district_code' => '1482', 'district_name' => 'Nam Từ Liêm',
+            'ward_code' => '1A0607', 'ward_name' => 'Mỹ Đình 2',
+            'address_line' => 'Địa chỉ đã sửa',
+            'is_default' => true,
+        ]);
+        $this->assertSame('Người nhận sổ địa chỉ', $snapshot?->fresh()->receiver_name);
+        $this->assertSame('12 Lê Đức Thọ', $snapshot?->fresh()->address_line);
+    }
+
+    public function test_customer_cannot_use_an_address_owned_by_another_customer(): void
+    {
+        $package = $this->createPackage($this->createOrder(120000));
+        $other = Customer::query()->create([
+            'code' => 'OTHER-'.uniqid(), 'name' => 'Khách khác', 'phone' => '0911111111', 'status' => 'active',
+        ]);
+        $foreignAddress = $this->createCustomerAddress($other);
+
+        $this->expectException(HttpException::class);
+        $this->expectExceptionMessage('Địa chỉ không thuộc khách hàng đã chọn.');
+
+        $this->createVoucher([$package], [], 'delivery', 1, ['customer_address_id' => $foreignAddress->id]);
+    }
+
+    public function test_new_saved_default_address_and_snapshot_are_created_in_the_voucher_transaction(): void
+    {
+        $package = $this->createPackage($this->createOrder(120000));
+        $oldDefault = $this->createCustomerAddress($this->customer, true);
+        $this->mockGhnQuote(34000);
+
+        $voucher = $this->createVoucher([$package], [], 'delivery', 1, [
+            'save_address' => true,
+            'set_address_default' => true,
+            'address_label' => 'Công ty',
+        ]);
+
+        $newAddress = CustomerAddress::query()->where('customer_id', $this->customer->id)->where('label', 'Công ty')->firstOrFail();
+        $this->assertFalse((bool) $oldDefault->fresh()->is_default);
+        $this->assertTrue((bool) $newAddress->is_default);
+        $this->assertSame($newAddress->id, $voucher->deliveryRequest?->address?->source_customer_address_id);
+    }
+
+    public function test_one_off_address_creates_only_delivery_snapshot(): void
+    {
+        $package = $this->createPackage($this->createOrder(120000));
+        $this->mockGhnQuote(34000);
+
+        $voucher = $this->createVoucher([$package], [], 'delivery', 1, ['save_address' => false]);
+
+        $this->assertSame(0, CustomerAddress::query()->where('customer_id', $this->customer->id)->count());
+        $this->assertNull($voucher->deliveryRequest?->address?->source_customer_address_id);
+        $this->assertSame('Người nhận kiểm thử', $voucher->deliveryRequest?->address?->receiver_name);
+    }
+
+    public function test_saved_address_rolls_back_when_ghn_quote_fails(): void
+    {
+        $package = $this->createPackage($this->createOrder(120000));
+        $this->mockGhnQuote(0, 1, new HttpException(504, 'GHN timeout'));
+
+        try {
+            $this->createVoucher([$package], [], 'delivery', 1, [
+                'save_address' => true,
+                'address_label' => 'Không được lưu dở dang',
+            ]);
+            $this->fail('Expected GHN failure.');
+        } catch (HttpException $exception) {
+            $this->assertSame('GHN timeout', $exception->getMessage());
+        }
+
+        $this->assertFalse(CustomerAddress::query()->where('customer_id', $this->customer->id)->exists());
+        $this->assertFalse(PaymentVoucher::query()->where('customer_id', $this->customer->id)->where('voucher_type', 'shipping')->exists());
     }
 
     private function createOrder(int $productTotal, int $depositPaid = 0, ?int $depositRequired = null): Order
@@ -370,6 +514,9 @@ class PaymentVoucherAmountsTest extends TestCase
             'cn_package_id' => $cnPackage->id,
             'tracking_number_snapshot' => $cnPackage->tracking_number,
             'actual_weight' => 1,
+            'actual_length' => 20,
+            'actual_width' => 15,
+            'actual_height' => 10,
             'inspection_status' => VnPackage::STATUS_INSPECTED,
             'payment_status' => 'unpaid',
             'delivery_status' => 'inspected',
@@ -406,7 +553,7 @@ class PaymentVoucherAmountsTest extends TestCase
         ]);
     }
 
-    private function createVoucher(array $packages, array $surcharges = [], string $deliveryMethod = 'pickup_at_warehouse', int $deliveryFee = 0): PaymentVoucher
+    private function createVoucher(array $packages, array $surcharges = [], string $deliveryMethod = 'pickup_at_warehouse', int $deliveryFee = 0, array $overrides = []): PaymentVoucher
     {
         return app(PaymentVoucherService::class)->create([
             'package_ids' => collect($packages)->pluck('id')->all(),
@@ -419,10 +566,56 @@ class PaymentVoucherAmountsTest extends TestCase
             'ward_name' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'Mỹ Đình 2',
             'address_line' => $deliveryMethod === 'pickup_at_warehouse' ? null : '12 Lê Đức Thọ',
             'full_address' => $deliveryMethod === 'pickup_at_warehouse' ? null : '12 Lê Đức Thọ, Hà Nội',
-            'preferred_carrier' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'spx',
+            'preferred_carrier' => $deliveryMethod === 'pickup_at_warehouse' ? null : 'ghn',
+            'province_code' => $deliveryMethod === 'pickup_at_warehouse' ? null : '201',
+            'district_code' => $deliveryMethod === 'pickup_at_warehouse' ? null : '1482',
+            'ward_code' => $deliveryMethod === 'pickup_at_warehouse' ? null : '1A0607',
             'delivery_fee' => $deliveryFee,
             'payment_method_expected' => 'bank_transfer',
             'surcharges' => $surcharges,
+            ...$overrides,
         ]);
+    }
+
+    private function createCustomerAddress(Customer $customer, bool $isDefault = false): CustomerAddress
+    {
+        return CustomerAddress::query()->create([
+            'customer_id' => $customer->id,
+            'label' => 'Nhà riêng',
+            'receiver_name' => 'Người nhận sổ địa chỉ',
+            'receiver_phone' => '0900000000',
+            'province_code' => '201',
+            'province_name' => 'Hà Nội',
+            'district_code' => '1482',
+            'district_name' => 'Nam Từ Liêm',
+            'ward_code' => '1A0607',
+            'ward_name' => 'Mỹ Đình 2',
+            'address_line' => '12 Lê Đức Thọ',
+            'full_address' => '12 Lê Đức Thọ, Mỹ Đình 2, Nam Từ Liêm, Hà Nội',
+            'is_default' => $isDefault,
+        ]);
+    }
+
+    private function mockGhnQuote(int $fee, int $validationCalls = 1, ?\Throwable $quoteException = null, ?int $expectedInsuranceValue = null): void
+    {
+        $this->mock(GhnService::class, function ($mock) use ($fee, $validationCalls, $quoteException, $expectedInsuranceValue) {
+            $mock->shouldReceive('validateDestination')->times($validationCalls)->andReturn([
+                'province' => ['province_id' => 201, 'name' => 'Hà Nội'],
+                'district' => ['district_id' => 1482, 'province_id' => 201, 'name' => 'Nam Từ Liêm'],
+                'ward' => ['ward_code' => '1A0607', 'district_id' => 1482, 'name' => 'Mỹ Đình 2'],
+            ]);
+            $quote = $mock->shouldReceive('quote')->once();
+            if ($expectedInsuranceValue !== null) {
+                $quote->withArgs(fn (array $input) => ($input['insurance_value'] ?? null) === $expectedInsuranceValue);
+            }
+            if ($quoteException) {
+                $quote->andThrow($quoteException);
+            } else {
+                $quote->andReturn([
+                    'total' => $fee, 'service_fee' => $fee, 'insurance_fee' => 0,
+                    'service_id' => 53320, 'service_type_id' => 2, 'service_name' => 'Hàng nhẹ',
+                ]);
+            }
+        });
     }
 }

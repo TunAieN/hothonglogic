@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Key } from "react";
 import { useNavigate } from "react-router";
-import { Alert, Button, Card, Col, Descriptions, Form, Input, InputNumber, Modal, Popover, Radio, Result, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Form, Input, InputNumber, Modal, Popover, Radio, Result, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, message } from "antd";
 import { ArrowLeftOutlined, ArrowRightOutlined, BankOutlined, CalculatorOutlined, CheckOutlined, CopyOutlined, CreditCardOutlined, DeleteOutlined, DollarOutlined, EnvironmentOutlined, FileDoneOutlined, FileTextOutlined, HomeOutlined, InfoCircleOutlined, PhoneOutlined, PlusOutlined, ReloadOutlined, RightOutlined, SafetyCertificateOutlined, ShopOutlined, ShoppingCartOutlined, ShoppingOutlined, TruckOutlined, UserOutlined, WalletOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import { createPaymentVoucher, fetchDefaultPaymentAccount, fetchEligiblePaymentPackages, fetchPaymentVouchers, getPaymentErrorMessage, previewPaymentVoucher } from "./api";
-import type { EligiblePaymentPackage, PaymentAccount, PaymentVoucher, VoucherPreview, VoucherSurchargeInput } from "./types";
-import { shippingQuotationService } from "./shippingQuotation";
-import type { ShippingQuotation } from "./shippingQuotation";
+import { createCustomerAddress, createPaymentVoucher, fetchCustomerAddresses, fetchDefaultPaymentAccount, fetchEligiblePaymentPackages, fetchGhnDistricts, fetchGhnProvinces, fetchGhnShippingQuote, fetchGhnWards, fetchPaymentVouchers, getPaymentErrorMessage, previewPaymentVoucher, updateCustomerAddress } from "./api";
+import type { CustomerAddress, EligiblePaymentPackage, GhnDistrict, GhnProvince, GhnShippingQuote, GhnWard, PaymentAccount, PaymentVoucher, VoucherPreview, VoucherSurchargeInput } from "./types";
 import { Can } from "../../shared/auth/Can";
 import "./payment-vouchers.css";
 
@@ -16,6 +14,14 @@ const { Text, Title } = Typography;
 
 const money = (value?: number | null) => `${Number(value ?? 0).toLocaleString("vi-VN")} đ`;
 const kg = (value?: number | null) => `${Number(value ?? 0).toLocaleString("vi-VN")} kg`;
+const positiveGhnId = (value: unknown) => {
+  const id = Number(String(value ?? "").trim());
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+};
+const buildFullAddress = (...parts: unknown[]) => parts
+  .map((part) => String(part ?? "").trim())
+  .filter(Boolean)
+  .join(", ");
 const getCustomer = (item?: EligiblePaymentPackage) => item?.cn_package?.order?.customer;
 const getOrderCode = (item?: EligiblePaymentPackage) => item?.cn_package?.order?.order_code ?? item?.order_code_snapshot ?? "-";
 const getChargeableWeight = (item: EligiblePaymentPackage) => {
@@ -45,6 +51,8 @@ const panelStyle: CSSProperties = {
   borderRadius: 8,
   background: "#fff",
 };
+
+const getPaymentVoucherModalContainer = () => document.body;
 
 const softPanelStyle: CSSProperties = {
   ...panelStyle,
@@ -305,16 +313,6 @@ const DeliveryMethodOption = ({ selected, icon, title, description, onClick }: {
     </span>
   </button>
 );
-
-const EditableLocationSelect = ({ value, onChange, options = [], disabled, placeholder }: { value?: string; onChange?: (value?: string) => void; options?: Array<{ value: string; label: string }>; disabled?: boolean; placeholder: string }) => {
-  const [searchValue, setSearchValue] = useState("");
-  const mergedOptions = [...options];
-  if (searchValue.trim() && !mergedOptions.some((option) => option.value.toLocaleLowerCase("vi-VN") === searchValue.trim().toLocaleLowerCase("vi-VN"))) {
-    mergedOptions.push({ value: searchValue.trim(), label: searchValue.trim() });
-  }
-
-  return <Select value={value} onChange={onChange} showSearch allowClear disabled={disabled} placeholder={placeholder} options={mergedOptions} filterOption={false} onSearch={setSearchValue} onOpenChange={(open: boolean) => { if (!open) setSearchValue(""); }} />;
-};
 
 const getUniqueOrders = (items: EligiblePaymentPackage[]) => {
   const ordersById = new Map<string, NonNullable<NonNullable<EligiblePaymentPackage["cn_package"]>["order"]>>();
@@ -583,12 +581,47 @@ export const PaymentVouchersPage = () => {
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const [shippingQuote, setShippingQuote] = useState<ShippingQuotation | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<GhnShippingQuote | null>(null);
   const [shippingQuoteError, setShippingQuoteError] = useState("");
+  const [ghnProvinces, setGhnProvinces] = useState<GhnProvince[]>([]);
+  const [ghnDistricts, setGhnDistricts] = useState<GhnDistrict[]>([]);
+  const [ghnWards, setGhnWards] = useState<GhnWard[]>([]);
+  const [ghnLocationLoading, setGhnLocationLoading] = useState(false);
+  const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<CustomerAddress | null>(null);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [addressesLoaded, setAddressesLoaded] = useState(false);
+  const [addressPickerOpen, setAddressPickerOpen] = useState(false);
+  const [addressEditorOpen, setAddressEditorOpen] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<CustomerAddress | null>(null);
+  const [editorDistricts, setEditorDistricts] = useState<GhnDistrict[]>([]);
+  const [editorWards, setEditorWards] = useState<GhnWard[]>([]);
+  const [addressSaving, setAddressSaving] = useState(false);
+  const addressSavingRef = useRef(false);
+  const addressEditorValuesRef = useRef<Record<string, unknown>>({});
   const [activeVoucherTab, setActiveVoucherTab] = useState("waiting_payment");
   const [form] = Form.useForm();
-  const deliveryMethod = Form.useWatch("delivery_method", form) ?? "pickup_at_warehouse";
+  const [addressForm] = Form.useForm();
+  const watchedDeliveryMethod = Form.useWatch("delivery_method", form);
+  const deliveryMethod = watchedDeliveryMethod ?? form.getFieldValue("delivery_method") ?? "pickup_at_warehouse";
   const wizardValues = Form.useWatch([], form) ?? {};
+  const saveAddressForLater = Form.useWatch("save_for_later", addressForm) ?? false;
+
+  useEffect(() => {
+    if (!addressEditorOpen && !addressPickerOpen) return;
+
+    const closeTopAddressModal = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (addressEditorOpen) setAddressEditorOpen(false);
+      else setAddressPickerOpen(false);
+    };
+
+    document.addEventListener("keydown", closeTopAddressModal, true);
+    return () => document.removeEventListener("keydown", closeTopAddressModal, true);
+  }, [addressEditorOpen, addressPickerOpen]);
 
   const selectedPackages = useMemo(
     () => packages.filter((item) => selectedKeys.includes(item.id)),
@@ -615,6 +648,17 @@ export const PaymentVouchersPage = () => {
       setDefaultPaymentAccount(await fetchDefaultPaymentAccount());
     } catch (error) {
       message.error(getPaymentErrorMessage(error));
+    }
+  }, []);
+
+  const loadGhnProvinces = useCallback(async () => {
+    setGhnLocationLoading(true);
+    try {
+      setGhnProvinces(await fetchGhnProvinces());
+    } catch (error) {
+      message.error(getPaymentErrorMessage(error));
+    } finally {
+      setGhnLocationLoading(false);
     }
   }, []);
 
@@ -660,34 +704,53 @@ export const PaymentVouchersPage = () => {
       return;
     }
     const first = selectedPackages[0];
+    form.resetFields();
     form.setFieldsValue({
       delivery_method: "pickup_at_warehouse",
       payment_method_expected: "bank_transfer",
       receiver_name: getCustomer(first)?.name ?? "",
       receiver_phone: getCustomer(first)?.phone ?? "",
-      province: getCustomer(first)?.province ?? undefined,
-      district: getCustomer(first)?.district ?? undefined,
-      ward: getCustomer(first)?.ward ?? undefined,
+      province_id: undefined,
+      district_id: undefined,
+      ward_code: undefined,
       address_line: getCustomer(first)?.address ?? "",
       delivery_note: "",
-      carrier: "spx",
+      carrier: "ghn",
       package_count: selectedPackages.length,
       length_cm: Math.max(...selectedPackages.map((item) => Number(item.actual_length ?? 0)), 0) || undefined,
       width_cm: Math.max(...selectedPackages.map((item) => Number(item.actual_width ?? 0)), 0) || undefined,
-      height_cm: Math.max(...selectedPackages.map((item) => Number(item.actual_height ?? 0)), 0) || undefined,
+      height_cm: selectedPackages.reduce((sum, item) => sum + Number(item.actual_height ?? 0), 0) || undefined,
       cod_amount: 0,
       note: "",
+      customer_address_id: undefined,
+      save_address: false,
+      set_address_default: false,
+      address_label: undefined,
     });
     setPreview(null);
     setShippingQuote(null);
     setShippingQuoteError("");
+    setGhnDistricts([]);
+    setGhnWards([]);
+    setCustomerAddresses([]);
+    setSelectedAddress(null);
+    setAddressesLoaded(false);
     setSurcharges([]);
     setActiveStep(0);
     setWizardOpen(true);
     void loadDefaultPaymentAccount();
+    void loadGhnProvinces();
+    const customerId = getCustomer(first)?.id;
+    if (customerId) void loadCustomerAddresses(customerId);
   };
 
-  const refreshPreview = async (deliveryFee = deliveryMethod === "pickup_at_warehouse" ? 0 : shippingQuote?.fee ?? 0) => {
+  const getCurrentDeliveryFee = () => {
+    const currentDeliveryMethod = form.getFieldValue("delivery_method") ?? deliveryMethod;
+    return currentDeliveryMethod === "pickup_at_warehouse" ? 0 : Number(shippingQuote?.total ?? 0);
+  };
+
+  const refreshPreview = async (deliveryFeeOverride?: number) => {
+    const deliveryFee = deliveryFeeOverride ?? getCurrentDeliveryFee();
     setLoading(true);
     try {
       const data = await previewPaymentVoucher(selectedPackages.map((item) => item.id), surcharges, deliveryFee);
@@ -712,34 +775,236 @@ export const PaymentVouchersPage = () => {
     }
   };
 
+  const applyDeliveryAddress = async (address: CustomerAddress) => {
+    const provinceId = positiveGhnId(address.province_code);
+    const districtId = positiveGhnId(address.district_code);
+    setSelectedAddress(address);
+    form.setFieldsValue({
+      customer_address_id: address.id,
+      receiver_name: address.receiver_name,
+      receiver_phone: address.receiver_phone,
+      province_id: provinceId,
+      district_id: districtId,
+      ward_code: districtId ? address.ward_code : undefined,
+      address_line: address.address_line,
+      save_address: !address.id,
+      set_address_default: false,
+      address_label: address.label,
+    });
+    invalidateShippingQuote();
+
+    if (!provinceId || !districtId) {
+      setGhnDistricts([]);
+      setGhnWards([]);
+      setShippingQuoteError("Địa chỉ này chưa có mã GHN hợp lệ. Vui lòng chỉnh sửa và chọn lại Tỉnh/Quận/Phường.");
+      message.warning("Địa chỉ đã lưu chưa có mã GHN hợp lệ. Vui lòng bấm Chỉnh sửa để cập nhật.");
+      return;
+    }
+
+    setGhnLocationLoading(true);
+    try {
+      const [districts, wards] = await Promise.all([fetchGhnDistricts(provinceId), fetchGhnWards(districtId)]);
+      setGhnDistricts(districts);
+      setGhnWards(wards);
+    } catch (error) {
+      message.error(getPaymentErrorMessage(error));
+    } finally {
+      setGhnLocationLoading(false);
+    }
+  };
+
+  const loadCustomerAddresses = async (customerId: string) => {
+    setAddressesLoading(true);
+    try {
+      const rows = await fetchCustomerAddresses(customerId);
+      setCustomerAddresses(rows);
+      setAddressesLoaded(true);
+      const initial = rows.find((item) => item.is_default) ?? rows[0];
+      if (initial) await applyDeliveryAddress(initial);
+    } catch (error) {
+      message.error(getPaymentErrorMessage(error));
+    } finally {
+      setAddressesLoading(false);
+    }
+  };
+
+  const openAddressEditor = async (address?: CustomerAddress) => {
+    const currentCustomer = getCustomer(selectedPackages[0]);
+    const currentCustomerName = currentCustomer?.name?.trim() || preview?.customer?.name?.trim() || String(form.getFieldValue("receiver_name") ?? "").trim();
+    const currentCustomerPhone = currentCustomer?.phone?.trim() || preview?.customer?.phone?.trim() || String(form.getFieldValue("receiver_phone") ?? "").trim();
+    const provinceId = address ? positiveGhnId(address.province_code) : undefined;
+    const districtId = address ? positiveGhnId(address.district_code) : undefined;
+    const addressValues = address ? {
+      ...address,
+      receiver_name: address.receiver_name?.trim() ? address.receiver_name : currentCustomerName,
+      receiver_phone: address.receiver_phone?.trim() ? address.receiver_phone : currentCustomerPhone,
+      province_id: provinceId,
+      district_id: provinceId ? districtId : undefined,
+      ward_code: provinceId && districtId ? address.ward_code : undefined,
+      save_for_later: address.id ? true : Boolean(form.getFieldValue("save_address")),
+      delivery_note: form.getFieldValue("delivery_note"),
+    } : {
+      label: "Nhà riêng",
+      receiver_name: currentCustomerName,
+      receiver_phone: currentCustomerPhone,
+      save_for_later: true,
+      is_default: false,
+      delivery_note: form.getFieldValue("delivery_note"),
+    };
+
+    addressEditorValuesRef.current = addressValues;
+    addressForm.resetFields();
+    addressForm.setFieldsValue(addressValues);
+    setEditingAddress(address ?? null);
+    setEditorDistricts([]);
+    setEditorWards([]);
+    setAddressEditorOpen(true);
+    window.requestAnimationFrame(() => addressForm.setFieldsValue(addressValues));
+    if (address && provinceId) {
+      setGhnLocationLoading(true);
+      try {
+        const districts = await fetchGhnDistricts(provinceId);
+        setEditorDistricts(districts);
+        if (districtId) {
+          setEditorWards(await fetchGhnWards(districtId));
+        }
+      } catch (error) {
+        message.error(getPaymentErrorMessage(error));
+      } finally {
+        setGhnLocationLoading(false);
+      }
+    }
+  };
+
+  const saveAddressEditor = async () => {
+    if (addressSavingRef.current) return;
+    addressSavingRef.current = true;
+    setAddressSaving(true);
+    try {
+      const values = await addressForm.validateFields();
+      const province = ghnProvinces.find((item) => item.province_id === Number(values.province_id));
+      const district = editorDistricts.find((item) => item.district_id === Number(values.district_id));
+      const ward = editorWards.find((item) => item.ward_code === values.ward_code);
+      if (!province || !district || !ward) {
+        message.error("Vui lòng chọn địa chỉ từ dữ liệu GHN.");
+        return;
+      }
+      if (values.is_default && !values.save_for_later) {
+        message.error("Muốn đặt làm mặc định, bạn phải lưu địa chỉ cho lần sau.");
+        return;
+      }
+
+      const customerId = getCustomer(selectedPackages[0])?.id;
+      if (!customerId) {
+        message.error("Không xác định được khách hàng để lưu địa chỉ.");
+        return;
+      }
+      const address: CustomerAddress = {
+        ...(editingAddress?.id ? { id: editingAddress.id } : {}),
+        label: values.label,
+        receiver_name: values.receiver_name,
+        receiver_phone: values.receiver_phone,
+        province_code: String(province.province_id), province_name: province.name,
+        district_code: String(district.district_id), district_name: district.name,
+        ward_code: ward.ward_code, ward_name: ward.name,
+        address_line: values.address_line,
+        full_address: buildFullAddress(values.address_line, ward.name, district.name, province.name),
+        is_default: Boolean(values.is_default),
+      };
+      const addressInput = {
+        customer_id: customerId,
+        label: address.label,
+        receiver_name: address.receiver_name,
+        receiver_phone: address.receiver_phone,
+        province_code: address.province_code, province_name: address.province_name,
+        district_code: address.district_code, district_name: address.district_name,
+        ward_code: address.ward_code, ward_name: address.ward_name,
+        address_line: address.address_line,
+        is_default: address.is_default,
+      };
+
+      let applied = address;
+      if (editingAddress?.id) {
+        applied = await updateCustomerAddress(editingAddress.id, addressInput);
+        setCustomerAddresses((rows) => rows.map((row) => row.id === applied.id ? applied : (applied.is_default ? { ...row, is_default: false } : row)));
+      } else if (values.save_for_later) {
+        applied = await createCustomerAddress(addressInput);
+        setCustomerAddresses((rows) => [
+          ...(applied.is_default ? rows.map((row) => ({ ...row, is_default: false })) : rows),
+          applied,
+        ]);
+      }
+      await applyDeliveryAddress(applied);
+      form.setFieldsValue({
+        save_address: false,
+        set_address_default: false,
+        address_label: address.label,
+        delivery_note: values.delivery_note,
+      });
+      setAddressEditorOpen(false);
+      setAddressPickerOpen(false);
+    } catch (error) {
+      if (!(typeof error === "object" && error !== null && "errorFields" in error)) {
+        message.error(`Không thể lưu địa chỉ. ${getPaymentErrorMessage(error)}`);
+      }
+    } finally {
+      addressSavingRef.current = false;
+      setAddressSaving(false);
+    }
+  };
+
+  const selectEditorProvince = async (provinceId?: number) => {
+    addressForm.setFieldsValue({ province_id: provinceId, district_id: undefined, ward_code: undefined });
+    setEditorDistricts([]);
+    setEditorWards([]);
+    const validProvinceId = positiveGhnId(provinceId);
+    if (!validProvinceId) return;
+    setGhnLocationLoading(true);
+    try {
+      setEditorDistricts(await fetchGhnDistricts(validProvinceId));
+    } catch (error) {
+      message.error(getPaymentErrorMessage(error));
+    } finally {
+      setGhnLocationLoading(false);
+    }
+  };
+
+  const selectEditorDistrict = async (districtId?: number) => {
+    addressForm.setFieldsValue({ district_id: districtId, ward_code: undefined });
+    setEditorWards([]);
+    const validDistrictId = positiveGhnId(districtId);
+    if (!validDistrictId) return;
+    setGhnLocationLoading(true);
+    try {
+      setEditorWards(await fetchGhnWards(validDistrictId));
+    } catch (error) {
+      message.error(getPaymentErrorMessage(error));
+    } finally {
+      setGhnLocationLoading(false);
+    }
+  };
+
   const calculateShippingQuote = async () => {
     setShippingQuoteError("");
     try {
       const values = await form.validateFields([
-        "receiver_name", "receiver_phone", "province", "district", "ward", "address_line",
+        "receiver_name", "receiver_phone", "province_id", "district_id", "ward_code", "address_line",
         "carrier", "package_count", "length_cm", "width_cm", "height_cm",
       ]);
       setQuoteLoading(true);
-      const quote = await shippingQuotationService.quote({
-        carrier: values.carrier,
-        province: values.province,
-        district: values.district,
-        ward: values.ward,
-        addressLine: values.address_line,
-        packageCount: Number(values.package_count),
-        actualWeightKg: selectedActualWeight,
-        chargeableWeightKg: selectedChargeableWeight,
-        lengthCm: Number(values.length_cm),
-        widthCm: Number(values.width_cm),
-        heightCm: Number(values.height_cm),
-        codAmount: Number(values.cod_amount ?? 0),
+      const quote = await fetchGhnShippingQuote({
+        package_ids: selectedPackages.map((item) => item.id),
+        to_district_id: Number(values.district_id),
+        to_ward_code: String(values.ward_code),
+        insurance_value: paymentBreakdown.productAmount,
+        cod_amount: 0,
       });
       setShippingQuote(quote);
-      await refreshPreview(quote.fee);
+      await refreshPreview(quote.total);
     } catch (error) {
       const hasFieldErrors = typeof error === "object" && error !== null && "errorFields" in error;
       if (!hasFieldErrors) {
-        setShippingQuoteError("Không thể lấy cước vận chuyển. Vui lòng thử lại.");
+        setShippingQuoteError(getPaymentErrorMessage(error));
       }
     } finally {
       setQuoteLoading(false);
@@ -754,16 +1019,16 @@ export const PaymentVouchersPage = () => {
     }
     if (activeStep === 1) {
       if (deliveryMethod === "delivery") {
-        await form.validateFields(["receiver_name", "receiver_phone", "province", "district", "ward", "address_line", "carrier"]);
+        await form.validateFields(["receiver_name", "receiver_phone", "province_id", "district_id", "ward_code", "address_line", "carrier"]);
         if (!shippingQuote) {
           setShippingQuoteError("Vui lòng tính phí vận chuyển trước khi tiếp tục.");
           return;
         }
       }
-      await refreshPreview(deliveryMethod === "pickup_at_warehouse" ? 0 : shippingQuote?.fee ?? 0);
+      await refreshPreview(getCurrentDeliveryFee());
     }
     if (activeStep === 2) {
-      await refreshPreview();
+      await refreshPreview(getCurrentDeliveryFee());
     }
     setActiveStep((step) => Math.min(step + 1, 4));
   };
@@ -783,23 +1048,32 @@ export const PaymentVouchersPage = () => {
       if (!values.payment_method_expected) values.payment_method_expected = "bank_transfer";
       const fullAddress = values.delivery_method === "pickup_at_warehouse"
         ? undefined
-        : [values.address_line, values.ward, values.district, values.province].filter(Boolean).join(", ");
+        : [values.address_line, ghnWards.find((item) => item.ward_code === values.ward_code)?.name, ghnDistricts.find((item) => item.district_id === Number(values.district_id))?.name, ghnProvinces.find((item) => item.province_id === Number(values.province_id))?.name].filter(Boolean).join(", ");
 
       const voucher = await createPaymentVoucher({
         package_ids: selectedPackages.map((item) => item.id),
         request_uuid: crypto.randomUUID(),
         vn_warehouse_id: selectedPackages[0]?.receipt?.warehouse?.id,
         delivery_method: values.delivery_method,
+        customer_address_id: values.delivery_method === "delivery" ? values.customer_address_id : undefined,
+        save_address: values.delivery_method === "delivery" ? Boolean(values.save_address) : false,
+        set_address_default: values.delivery_method === "delivery" ? Boolean(values.set_address_default) : false,
+        address_label: values.address_label,
         receiver_name: values.receiver_name,
         receiver_phone: values.receiver_phone,
-        province_name: values.province,
-        district_name: values.district,
-        ward_name: values.ward,
+        province_name: ghnProvinces.find((item) => item.province_id === Number(values.province_id))?.name,
+        district_name: ghnDistricts.find((item) => item.district_id === Number(values.district_id))?.name,
+        ward_name: ghnWards.find((item) => item.ward_code === values.ward_code)?.name,
+        province_code: values.province_id ? String(values.province_id) : undefined,
+        district_code: values.district_id ? String(values.district_id) : undefined,
+        ward_code: values.ward_code,
         address_line: values.address_line,
         full_address: fullAddress,
         preferred_carrier: values.carrier,
         delivery_note: values.delivery_note,
-        delivery_fee: values.delivery_method === "pickup_at_warehouse" ? 0 : shippingQuote?.fee ?? 0,
+        delivery_fee: values.delivery_method === "pickup_at_warehouse" ? 0 : shippingQuote?.total ?? 0,
+        insurance_value: values.delivery_method === "delivery" ? paymentBreakdown.productAmount : 0,
+        cod_amount: 0,
         payment_method_expected: values.payment_method_expected,
         note: values.note,
         surcharges,
@@ -884,11 +1158,8 @@ export const PaymentVouchersPage = () => {
       const depositStatus = getDepositStatus(paymentBreakdown.depositPaid, paymentBreakdown.orderTotal);
       const voucherCreatedAt = new Date().toISOString();
 
-      const quoteFee = deliveryMethod === "delivery" ? shippingQuote?.fee ?? 0 : 0;
+      const quoteFee = deliveryMethod === "delivery" ? shippingQuote?.total ?? 0 : 0;
       const provisionalTotal = paymentBreakdown.productAmount + paymentBreakdown.weightShippingFee + quoteFee + paymentBreakdown.shippingSurcharge;
-      const customerProvinceOptions = customer?.province ? [{ value: customer.province, label: customer.province }] : [];
-      const customerDistrictOptions = customer?.district ? [{ value: customer.district, label: customer.district }] : [];
-      const customerWardOptions = customer?.ward ? [{ value: customer.ward, label: customer.ward }] : [];
 
       return <Form
         form={form}
@@ -896,7 +1167,7 @@ export const PaymentVouchersPage = () => {
         requiredMark
         className="payment-vouchers__wizard-step-form"
         onValuesChange={(changed) => {
-          if (["province", "district", "ward", "address_line", "carrier", "package_count", "length_cm", "width_cm", "height_cm"].some((key) => key in changed)) {
+          if (["province_id", "district_id", "ward_code", "carrier", "package_count", "length_cm", "width_cm", "height_cm"].some((key) => key in changed)) {
             invalidateShippingQuote();
           }
         }}
@@ -922,7 +1193,7 @@ export const PaymentVouchersPage = () => {
                 return <>
                   <div className="payment-vouchers__delivery-options" aria-label="Hình thức nhận hàng">
                     <DeliveryMethodOption selected={isPickup} icon={<HomeOutlined />} title="Nhận tại kho" description="Khách hàng đến kho để nhận hàng" onClick={() => { form.setFieldsValue({ delivery_method: "pickup_at_warehouse" }); setShippingQuote(null); setShippingQuoteError(""); void refreshPreview(0); }} />
-                    <DeliveryMethodOption selected={!isPickup} icon={<TruckOutlined />} title="Giao tận nơi" description="Giao hàng đến địa chỉ khách hàng" onClick={() => form.setFieldsValue({ delivery_method: "delivery" })} />
+                    <DeliveryMethodOption selected={!isPickup} icon={<TruckOutlined />} title="Giao tận nơi" description="Giao hàng đến địa chỉ khách hàng" onClick={() => { form.setFieldsValue({ delivery_method: "delivery" }); if (addressesLoaded && customerAddresses.length === 0 && !selectedAddress) void openAddressEditor(); }} />
                   </div>
                   {isPickup ? <div className="payment-vouchers__pickup-section">
                     <Form.Item label="Kho nhận hàng" required>
@@ -935,16 +1206,18 @@ export const PaymentVouchersPage = () => {
                     </div> : null}
                     <div className="payment-vouchers__delivery-status"><CheckOutlined /> Khách hàng sẽ đến kho để nhận hàng</div>
                   </div> : <div className="payment-vouchers__delivery-form">
-                    <div className="payment-vouchers__two-field-grid">
-                      <Form.Item name="receiver_name" label="Người nhận" rules={[{ required: true, whitespace: true, message: "Vui lòng nhập người nhận" }]}><Input prefix={<UserOutlined />} placeholder="Tên người nhận" /></Form.Item>
-                      <Form.Item name="receiver_phone" label="Số điện thoại nhận" rules={[{ required: true, whitespace: true, message: "Vui lòng nhập số điện thoại" }, { pattern: /^(?:\+?84|0)[0-9]{9,10}$/, message: "Số điện thoại chưa đúng định dạng" }]}><Input prefix={<PhoneOutlined />} placeholder="Số điện thoại" /></Form.Item>
-                    </div>
-                    <div className="payment-vouchers__three-field-grid">
-                      <Form.Item name="province" label="Tỉnh/Thành phố" rules={[{ required: true, message: "Vui lòng chọn tỉnh/thành" }]}><EditableLocationSelect placeholder="Chọn hoặc nhập tỉnh/thành" options={customerProvinceOptions} onChange={() => form.setFieldsValue({ district: undefined, ward: undefined })} /></Form.Item>
-                      <Form.Item shouldUpdate noStyle>{({ getFieldValue }) => <Form.Item name="district" label="Quận/Huyện" rules={[{ required: true, message: "Vui lòng chọn quận/huyện" }]}><EditableLocationSelect disabled={!getFieldValue("province")} placeholder="Chọn hoặc nhập quận/huyện" options={customerDistrictOptions} onChange={() => form.setFieldValue("ward", undefined)} /></Form.Item>}</Form.Item>
-                      <Form.Item shouldUpdate noStyle>{({ getFieldValue }) => <Form.Item name="ward" label="Phường/Xã" rules={[{ required: true, message: "Vui lòng chọn phường/xã" }]}><EditableLocationSelect disabled={!getFieldValue("district")} placeholder="Chọn hoặc nhập phường/xã" options={customerWardOptions} /></Form.Item>}</Form.Item>
-                    </div>
-                    <Form.Item name="address_line" label="Địa chỉ chi tiết" rules={[{ required: true, whitespace: true, message: "Vui lòng nhập địa chỉ chi tiết" }]}><Input prefix={<EnvironmentOutlined />} placeholder="Số nhà, tên đường..." /></Form.Item>
+                    {(["customer_address_id", "receiver_name", "receiver_phone", "province_id", "district_id", "ward_code", "address_line", "save_address", "set_address_default", "address_label"] as const).map((name) => <Form.Item key={name} hidden name={name}><Input /></Form.Item>)}
+                    <div className="payment-vouchers__address-heading"><Text strong>Địa chỉ giao hàng</Text><Button type="link" icon={<PlusOutlined />} onClick={() => void openAddressEditor()}>Thêm địa chỉ</Button></div>
+                    {addressesLoading ? <div className="payment-vouchers__address-empty"><Text type="secondary">Đang tải sổ địa chỉ...</Text></div> : selectedAddress ? <div className="payment-vouchers__address-card">
+                      <div className="payment-vouchers__address-card-top"><Tag color="blue">{selectedAddress.label || "Địa chỉ giao hàng"}</Tag>{selectedAddress.is_default ? <Tag color="green">Mặc định</Tag> : null}</div>
+                      <Text strong>{selectedAddress.receiver_name}</Text>
+                      <Text>{selectedAddress.receiver_phone}</Text>
+                      <Text type="secondary">{selectedAddress.full_address}</Text>
+                      <Space wrap><Button size="small" onClick={() => setAddressPickerOpen(true)}>Đổi địa chỉ</Button>{selectedAddress.id ? <Button size="small" onClick={() => void openAddressEditor(selectedAddress)}>Chỉnh sửa</Button> : <Button size="small" onClick={() => void openAddressEditor(selectedAddress)}>Chỉnh sửa địa chỉ mới</Button>}</Space>
+                    </div> : <div className="payment-vouchers__address-empty">
+                      <Text type="secondary">Khách hàng chưa có địa chỉ giao hàng.</Text>
+                      <Button type="primary" ghost icon={<PlusOutlined />} onClick={() => void openAddressEditor()}>Thêm địa chỉ giao hàng</Button>
+                    </div>}
                     <Form.Item name="delivery_note" label="Ghi chú giao hàng"><Input placeholder="Ví dụ: Giao giờ hành chính" /></Form.Item>
                   </div>}
                 </>;
@@ -962,7 +1235,7 @@ export const PaymentVouchersPage = () => {
             </WizardInfoCard>
             {deliveryMethod === "delivery" ? <WizardInfoCard title="Thông tin tính phí giao tận nơi" index={5} icon={<CalculatorOutlined />} tone="green">
               <div className="payment-vouchers__two-field-grid">
-                <Form.Item name="carrier" label="Đơn vị vận chuyển" rules={[{ required: true, message: "Vui lòng chọn đơn vị vận chuyển" }]}><Select options={[{ value: "spx", label: "SPX Express" }]} /></Form.Item>
+                <Form.Item name="carrier" label="Đơn vị vận chuyển" rules={[{ required: true, message: "Vui lòng chọn đơn vị vận chuyển" }]}><Select options={[{ value: "ghn", label: "Giao Hàng Nhanh (GHN)" }]} /></Form.Item>
                 <Form.Item label="Hình thức giao"><Input value="Giao tận nơi" readOnly /></Form.Item>
               </div>
               <div className="payment-vouchers__shipping-stats"><span>Số kiện<strong>{selectedPackages.length}</strong></span><span>Cân thực tế<strong>{kg(selectedActualWeight)}</strong></span><span>Cân tính phí<strong>{kg(Number(selectedChargeableWeight.toFixed(2)))}</strong></span></div>
@@ -974,7 +1247,7 @@ export const PaymentVouchersPage = () => {
               <Form.Item name="cod_amount" label="Giá trị thu hộ COD"><InputNumber min={0} addonAfter="đ" disabled /></Form.Item>
               <Button type="primary" block icon={<CalculatorOutlined />} loading={quoteLoading} onClick={() => void calculateShippingQuote()}>Tính phí vận chuyển</Button>
               {shippingQuoteError ? <Alert type="error" showIcon message={shippingQuoteError} action={<Button size="small" onClick={() => void calculateShippingQuote()}>Thử lại</Button>} /> : null}
-              {shippingQuote ? <div className="payment-vouchers__quote-result"><div><Text strong>Kết quả tính phí SPX</Text>{shippingQuote.source === "development_mock" ? <Tag color="gold">Mock development</Tag> : null}</div><div className="payment-vouchers__quote-values"><span>Cước dự kiến<strong>{money(shippingQuote.fee)}</strong></span><span>Thời gian giao dự kiến<strong>{shippingQuote.estimatedDelivery}</strong></span></div><Text type="success"><CheckOutlined /> Đã lấy được cước vận chuyển</Text></div> : null}
+              {shippingQuote ? <div className="payment-vouchers__quote-result"><div><Text strong>Giao Hàng Nhanh (GHN)</Text></div><div className="payment-vouchers__quote-values"><span>Cước dự kiến<strong>{money(shippingQuote.total)}</strong></span><span>Service<strong>{shippingQuote.service_name || (shippingQuote.service_type_id === 2 ? "Hàng nhẹ" : `#${shippingQuote.service_id}`)}</strong></span></div><Text type="success"><CheckOutlined /> Đã lấy cước từ GHN</Text></div> : null}
             </WizardInfoCard> : null}
           </div>
 
@@ -990,7 +1263,7 @@ export const PaymentVouchersPage = () => {
             <WizardInfoRow label="Đã đặt cọc" value={paymentBreakdown.depositPaid > 0 ? "-" + money(paymentBreakdown.depositPaid) : money(0)} valueClassName="payment-vouchers__negative-value" />
             <WizardInfoRow label="Công nợ đơn hàng" value={money(orderDebt)} valueClassName={orderDebt > 0 ? "payment-vouchers__debt-value" : "payment-vouchers__paid-value"} />
           </WizardInfoCard>
-            <div className="payment-vouchers__estimate-card"><Text strong className="payment-vouchers__estimate-title">Tạm tính thanh toán</Text><WizardInfoRow label="Tiền hàng" value={money(paymentBreakdown.productAmount)} /><WizardInfoRow label="Cước TQ → VN" value={money(paymentBreakdown.weightShippingFee)} /><WizardInfoRow label="Phí nội địa VN (SPX)" value={money(quoteFee)} /><WizardInfoRow label="Phụ phí khác" value={money(paymentBreakdown.shippingSurcharge)} /><div className="payment-vouchers__wizard-divider" /><WizardInfoRow label="Tổng tạm tính" value={money(provisionalTotal)} valueClassName="payment-vouchers__estimate-total" /></div>
+            <div className="payment-vouchers__estimate-card"><Text strong className="payment-vouchers__estimate-title">Tạm tính thanh toán</Text><WizardInfoRow label="Tiền hàng" value={money(paymentBreakdown.productAmount)} /><WizardInfoRow label="Cước TQ → VN" value={money(paymentBreakdown.weightShippingFee)} /><WizardInfoRow label="Phí nội địa VN (GHN)" value={money(quoteFee)} /><WizardInfoRow label="Phụ phí khác" value={money(paymentBreakdown.shippingSurcharge)} /><div className="payment-vouchers__wizard-divider" /><WizardInfoRow label="Tổng tạm tính" value={money(provisionalTotal)} valueClassName="payment-vouchers__estimate-total" /></div>
           </div>
         </div>
       </Form>;
@@ -1116,6 +1389,10 @@ export const PaymentVouchersPage = () => {
         </ConfirmationSectionCard>
 
         <ConfirmationSectionCard title="Tổng quan thanh toán" icon={<WalletOutlined />} tone="green">
+          <ConfirmationInfoRow label="Tiền hàng" value={money(paymentBreakdown.productAmount)} />
+          <ConfirmationInfoRow label="Cước TQ → VN" value={money(paymentBreakdown.weightShippingFee)} />
+          <ConfirmationInfoRow label="Phí giao nội địa Việt Nam (GHN)" value={money(paymentBreakdown.localShippingFee)} />
+          <ConfirmationInfoRow label="Phụ phí" value={money(paymentBreakdown.shippingSurcharge)} />
           <ConfirmationInfoRow label="Tổng phải trả" value={money(paymentBreakdown.totalPayable)} />
           <ConfirmationInfoRow label="Đã trả tiền đặt cọc" value={money(paymentBreakdown.depositPaid)} tone={paymentBreakdown.depositPaid > 0 ? "success" : "default"} />
           <ConfirmationInfoRow label="Đã trừ tiền dư/cọc" value={money(paymentBreakdown.balanceApplied)} tone={paymentBreakdown.balanceApplied > 0 ? "success" : "default"} />
@@ -1134,7 +1411,7 @@ export const PaymentVouchersPage = () => {
     </div>;
   };
 
-  const hasDeliveryFields = ["receiver_name", "receiver_phone", "province", "district", "ward", "address_line", "carrier", "length_cm", "width_cm", "height_cm"]
+  const hasDeliveryFields = ["receiver_name", "receiver_phone", "province_id", "district_id", "ward_code", "address_line", "carrier", "length_cm", "width_cm", "height_cm"]
     .every((key) => String((wizardValues as Record<string, unknown>)[key] ?? "").trim().length > 0);
   const canContinueCurrentStep = canCreate && (activeStep !== 1 || deliveryMethod === "pickup_at_warehouse" || (hasDeliveryFields && Boolean(shippingQuote)));
 
@@ -1184,11 +1461,64 @@ export const PaymentVouchersPage = () => {
       onCancel={() => setWizardOpen(false)}
       centered
       destroyOnHidden
-      
+      zIndex={1000}
+      getContainer={getPaymentVoucherModalContainer}
+      keyboard={!addressPickerOpen && !addressEditorOpen}
+      mask={{ closable: !addressPickerOpen && !addressEditorOpen }}
       footer={<div className="payment-vouchers__wizard-footer"><Button icon={<ArrowLeftOutlined />} onClick={() => activeStep === 0 ? setWizardOpen(false) : setActiveStep((step) => step - 1)}>{activeStep === 0 ? "Hủy" : "Quay lại"}</Button>{activeStep < 4 ? <Button type="primary" icon={<ArrowRightOutlined />} disabled={!canContinueCurrentStep} loading={loading} onClick={() => void handleNext()}>Tiếp tục</Button> : <Button type="primary" icon={<CheckOutlined />} disabled={!canCreate || submitLoading} loading={submitLoading} onClick={() => void handleCreate()}>Xác nhận tạo phiếu</Button>}</div>}
       styles={{ body: modalBodyStyle }}
     >
       {renderStep()}
+    </Modal>
+
+    <Modal title="Chọn địa chỉ giao hàng" open={addressPickerOpen} onCancel={() => { if (!addressEditorOpen) setAddressPickerOpen(false); }} footer={null} width={620} destroyOnHidden zIndex={1100} getContainer={getPaymentVoucherModalContainer} keyboard={!addressEditorOpen} mask={{ closable: !addressEditorOpen }}>
+      <Radio.Group className="payment-vouchers__address-list" value={selectedAddress?.id} onChange={(event) => {
+        const address = customerAddresses.find((item) => item.id === event.target.value);
+        if (address) { void applyDeliveryAddress(address); setAddressPickerOpen(false); }
+      }}>
+        {customerAddresses.map((address) => <Radio key={address.id} value={address.id} className="payment-vouchers__address-choice">
+          <span className="payment-vouchers__address-choice-title"><strong>{address.label || "Địa chỉ giao hàng"}</strong>{address.is_default ? <Tag color="green">Mặc định</Tag> : null}</span>
+          <span>{address.receiver_name} - {address.receiver_phone}</span>
+          <span>{address.full_address}</span>
+        </Radio>)}
+      </Radio.Group>
+      <Button type="dashed" block icon={<PlusOutlined />} onClick={() => void openAddressEditor()}>Thêm địa chỉ mới</Button>
+    </Modal>
+
+    <Modal
+      rootClassName="payment-vouchers__address-modal"
+      title={editingAddress?.id ? "Chỉnh sửa địa chỉ" : "Thêm địa chỉ giao hàng"}
+      open={addressEditorOpen}
+      onCancel={() => setAddressEditorOpen(false)}
+      onOk={() => void saveAddressEditor()}
+      okText={editingAddress?.id ? "Lưu thay đổi" : "Dùng địa chỉ này"}
+      confirmLoading={addressSaving}
+      width={760}
+      centered
+      forceRender
+      afterOpenChange={(open) => { if (open) addressForm.setFieldsValue(addressEditorValuesRef.current); }}
+      zIndex={1200}
+      getContainer={getPaymentVoucherModalContainer}
+      styles={{ body: { maxHeight: "calc(100vh - 220px)", overflowY: "auto" } }}
+    >
+      <Form form={addressForm} layout="vertical" preserve={false}>
+        <Form.Item name="label" label="Nhãn địa chỉ" rules={[{ required: true, whitespace: true, message: "Nhập nhãn địa chỉ" }]}><Input placeholder="Ví dụ: Nhà riêng, Công ty, Kho hàng" /></Form.Item>
+        <div className="payment-vouchers__two-field-grid">
+          <Form.Item name="receiver_name" label="Người nhận" rules={[{ required: true, whitespace: true, message: "Nhập người nhận" }]}><Input prefix={<UserOutlined />} /></Form.Item>
+          <Form.Item name="receiver_phone" label="Số điện thoại" rules={[{ required: true, whitespace: true, message: "Nhập số điện thoại" }, { pattern: /^(?:\+?84|0)[0-9]{9,10}$/, message: "Số điện thoại chưa đúng định dạng" }]}><Input prefix={<PhoneOutlined />} /></Form.Item>
+        </div>
+        <div className="payment-vouchers__three-field-grid">
+          <Form.Item name="province_id" label="Tỉnh/Thành phố" rules={[{ required: true, message: "Chọn tỉnh/thành" }]}><Select showSearch optionFilterProp="label" loading={ghnLocationLoading} options={ghnProvinces.map((item) => ({ value: item.province_id, label: item.name }))} onChange={(value) => void selectEditorProvince(value)} /></Form.Item>
+          <Form.Item name="district_id" label="Quận/Huyện" rules={[{ required: true, message: "Chọn quận/huyện" }]}><Select showSearch optionFilterProp="label" loading={ghnLocationLoading} disabled={!addressForm.getFieldValue("province_id")} options={editorDistricts.map((item) => ({ value: item.district_id, label: item.name }))} onChange={(value) => void selectEditorDistrict(value)} /></Form.Item>
+          <Form.Item name="ward_code" label="Phường/Xã" rules={[{ required: true, message: "Chọn phường/xã" }]}><Select showSearch optionFilterProp="label" loading={ghnLocationLoading} disabled={!addressForm.getFieldValue("district_id")} options={editorWards.map((item) => ({ value: item.ward_code, label: item.name }))} /></Form.Item>
+        </div>
+        <Form.Item name="address_line" label="Địa chỉ chi tiết" rules={[{ required: true, whitespace: true, message: "Nhập địa chỉ chi tiết" }]}><Input prefix={<EnvironmentOutlined />} placeholder="Số nhà, tên đường..." /></Form.Item>
+        <Form.Item name="delivery_note" label="Ghi chú giao hàng"><Input placeholder="Ví dụ: Giao giờ hành chính" /></Form.Item>
+        <Space direction="vertical">
+          <Form.Item name="save_for_later" valuePropName="checked" noStyle><Checkbox disabled={Boolean(editingAddress?.id)}>Lưu địa chỉ này cho lần sau</Checkbox></Form.Item>
+          <Form.Item name="is_default" valuePropName="checked" noStyle><Checkbox disabled={!saveAddressForLater && !editingAddress?.id} onChange={(event) => { if (event.target.checked) addressForm.setFieldValue("save_for_later", true); }}>Đặt làm địa chỉ mặc định</Checkbox></Form.Item>
+        </Space>
+      </Form>
     </Modal>
 
     <Modal open={Boolean(successVoucher)} footer={null} onCancel={() => setSuccessVoucher(null)}>

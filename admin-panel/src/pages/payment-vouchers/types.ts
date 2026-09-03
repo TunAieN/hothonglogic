@@ -53,6 +53,35 @@ export type VoucherSurchargeInput = {
   note?: string;
 };
 
+export type GhnProvince = { province_id: number; name: string };
+export type GhnDistrict = { district_id: number; province_id: number; name: string };
+export type GhnWard = { ward_code: string; district_id: number; name: string };
+export type GhnShippingQuote = {
+  total: number;
+  service_fee: number;
+  insurance_fee: number;
+  service_id: number;
+  service_type_id: number;
+  service_name: string;
+};
+
+export type CustomerAddress = {
+  id?: string;
+  customer_id?: string;
+  label?: string | null;
+  receiver_name: string;
+  receiver_phone: string;
+  province_code: string;
+  province_name: string;
+  district_code: string;
+  district_name: string;
+  ward_code: string;
+  ward_name: string;
+  address_line: string;
+  full_address: string;
+  is_default: boolean;
+};
+
 export type PaymentAccount = {
   id: string;
   bank_name: string;

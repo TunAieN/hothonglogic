@@ -1148,6 +1148,68 @@
   font-weight: 500;
 }
 
+.payment-vouchers__address-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.payment-vouchers__address-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.payment-vouchers__address-card-top,
+.payment-vouchers__address-choice-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payment-vouchers__address-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.payment-vouchers__address-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.payment-vouchers__address-choice {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.payment-vouchers__address-choice .ant-radio-label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .payment-vouchers__note-card {
   margin-top: 16px;
 }

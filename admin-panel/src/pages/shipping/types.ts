@@ -23,6 +23,7 @@ export type ShippingQueueOrder = {
   payment_date?: string | null;
   package_count: number;
   total_weight: number;
+  settled_value: number;
   total_value: number;
   status: string;
   packages: ShippingPackage[];
@@ -73,10 +74,49 @@ export type CreateShippingTaskInput = {
   vn_warehouse_id: string;
   note?: string;
   service_type?: string;
+  ghn_service_id?: number;
+  ghn_service_type_id?: number;
   delivery_method?: string;
   estimated_shipping_fee?: number;
   cod_amount?: number;
   transport_note?: string;
+};
+
+export type ShippingTaskGhnPreview = {
+  mode: "preview" | "test" | "production";
+  validation_status: string;
+  carrier_code: "ghn";
+  carrier_name: string;
+  services: Array<{ service_id: number; service_type_id: number; service_name: string }>;
+  service_id: number;
+  service_type_id: number;
+  service_name: string;
+  warehouse: { id: string; name: string; address?: string | null };
+  delivery_request_id: string;
+  address: {
+    receiver_name: string;
+    receiver_phone: string;
+    province_code?: string | null;
+    province_name?: string | null;
+    district_code: string;
+    district_name?: string | null;
+    ward_code: string;
+    ward_name?: string | null;
+    address_line: string;
+    full_address?: string | null;
+  };
+  package_count: number;
+  total_weight: number;
+  length: number;
+  width: number;
+  height: number;
+  settled_value: number;
+  collected_fee: number;
+  current_fee: number;
+  fee_difference: number;
+  fee_status: "matched" | "increased" | "decreased";
+  cod_amount: number;
+  estimated_delivery_at: string;
 };
 
 export type ShippingTask = {
@@ -87,6 +127,7 @@ export type ShippingTask = {
   delivery_staff_id?: string | null;
   delivery_staff_name?: string | null;
   delivery_staff_phone?: string | null;
+  carrier_code?: string | null;
   carrier_name: string;
   warehouse_name?: string | null;
   order_count: number;
@@ -102,6 +143,31 @@ export type ShippingTask = {
   estimated_shipping_fee: number;
   cod_amount?: number | null;
   transport_note?: string | null;
+  financials?: {
+    product_total: number;
+    weight_shipping_total: number;
+    domestic_shipping_total: number;
+    surcharge_total: number;
+    settled_total: number;
+    cod_amount: number;
+    remaining_amount: number;
+    status: "paid" | "unpaid";
+  } | null;
+  delivery_address?: ShippingTaskGhnPreview["address"] | null;
+  ghn?: {
+    mode: "preview" | "test" | "production";
+    service_name?: string | null;
+    collected_fee: number;
+    current_fee: number;
+    fee_difference: number;
+    fee_status: "matched" | "increased" | "decreased";
+  } | null;
+  shipment?: {
+    exists: boolean;
+    carrier_order_id?: string | null;
+    tracking_number?: string | null;
+    status?: string | null;
+  } | null;
   orders: Array<{
     id: string;
     order_code?: string | null;
@@ -109,6 +175,7 @@ export type ShippingTask = {
     package_count: number;
     total_weight: number;
     total_value: number;
+    settled_total?: number | null;
   }>;
 };
 
@@ -153,8 +220,10 @@ export type ExportSlip = {
   creator_name?: string | null;
   delivery_staff_name?: string | null;
   delivery_staff_phone?: string | null;
+  carrier_code?: string | null;
   carrier_name?: string | null;
   warehouse_name?: string | null;
+  warehouse_address?: string | null;
   note?: string | null;
   service_type?: string | null;
   delivery_method?: string | null;
@@ -183,13 +252,40 @@ export type ExportSlip = {
     bank_name?: string | null;
     confirmed_by?: string | null;
     paid_amount: number;
+    voucher_codes: string[];
+    settled_total: number;
+    remaining_amount: number;
   } | null;
   financials?: {
-    order_value: number;
-    shipping_fee: number;
-    cod_amount?: number | null;
-    total_amount: number;
+    product_total: number;
+    weight_shipping_total: number;
+    domestic_shipping_total: number;
+    surcharge_total: number;
+    settled_total: number;
+    deposit_applied: number;
+    customer_credit_applied: number;
+    payment_after_deposit: number;
+    paid_amount: number;
+    cod_amount: number;
+    remaining_amount: number;
+    status: "paid" | "unpaid";
   } | null;
+  delivery_address?: ShippingTaskGhnPreview["address"] | null;
+  ghn?: {
+    mode: "preview" | "test" | "production";
+    service_id?: number | null;
+    service_name?: string | null;
+    package_count: number;
+    total_weight: number;
+    length: number;
+    width: number;
+    height: number;
+    collected_fee: number;
+    current_fee: number;
+    fee_difference: number;
+    fee_status: "matched" | "increased" | "decreased";
+  } | null;
+  shipment?: ShippingTask["shipment"];
   history?: Array<{
     id: string;
     action: string;

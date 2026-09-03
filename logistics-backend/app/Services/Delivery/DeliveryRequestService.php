@@ -41,22 +41,28 @@ class DeliveryRequestService
 
     public function saveDeliveryAddressSnapshot(DeliveryRequest $request, array $input): DeliveryAddress
     {
-        $source = ! empty($input['customer_address_id'])
-            ? CustomerAddress::query()->where('customer_id', $request->customer_id)->find($input['customer_address_id'])
-            : null;
+        $source = null;
+        if (! empty($input['customer_address_id'])) {
+            $source = CustomerAddress::query()
+                ->where('customer_id', $request->customer_id)
+                ->find($input['customer_address_id']);
+            if (! $source) {
+                throw new HttpException(422, 'Địa chỉ không thuộc khách hàng đã chọn.');
+            }
+        }
         $values = [
-            'receiver_name' => $input['receiver_name'] ?? $source?->receiver_name,
-            'receiver_phone' => $input['receiver_phone'] ?? $source?->receiver_phone,
-            'province_code' => $input['province_code'] ?? $source?->province_code,
-            'province_name' => $input['province_name'] ?? $source?->province_name,
-            'district_code' => $input['district_code'] ?? $source?->district_code,
-            'district_name' => $input['district_name'] ?? $source?->district_name,
-            'ward_code' => $input['ward_code'] ?? $source?->ward_code,
-            'ward_name' => $input['ward_name'] ?? $source?->ward_name,
-            'address_line' => $input['address_line'] ?? $source?->address_line,
-            'full_address' => $input['full_address'] ?? $source?->full_address,
+            'receiver_name' => $source?->receiver_name ?? $input['receiver_name'] ?? null,
+            'receiver_phone' => $source?->receiver_phone ?? $input['receiver_phone'] ?? null,
+            'province_code' => $source?->province_code ?? $input['province_code'] ?? null,
+            'province_name' => $source?->province_name ?? $input['province_name'] ?? null,
+            'district_code' => $source?->district_code ?? $input['district_code'] ?? null,
+            'district_name' => $source?->district_name ?? $input['district_name'] ?? null,
+            'ward_code' => $source?->ward_code ?? $input['ward_code'] ?? null,
+            'ward_name' => $source?->ward_name ?? $input['ward_name'] ?? null,
+            'address_line' => $source?->address_line ?? $input['address_line'] ?? null,
+            'full_address' => $source?->full_address ?? $input['full_address'] ?? null,
         ];
-        foreach (['receiver_name', 'receiver_phone', 'province_name', 'district_name', 'ward_name', 'address_line'] as $field) {
+        foreach (['receiver_name', 'receiver_phone', 'province_code', 'province_name', 'district_code', 'district_name', 'ward_code', 'ward_name', 'address_line'] as $field) {
             if (trim((string) ($values[$field] ?? '')) === '') {
                 throw new HttpException(422, 'Thông tin giao tận nơi chưa đầy đủ.');
             }

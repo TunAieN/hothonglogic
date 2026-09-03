@@ -32,7 +32,7 @@ import {
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router";
 import { fetchShippingQueue, shippingErrorMessage } from "./api";
-import { formatVnd, formatWeight } from "./helpers";
+import { formatWeight } from "./helpers";
 import type { ShippingQueueFilter, ShippingQueueOrder, ShippingQueuePage as ShippingQueuePageData } from "./types";
 import { Can } from "../../shared/auth/Can";
 import "./shipping.css";
@@ -52,6 +52,7 @@ type FilterDraft = {
 };
 
 const initialDraft: FilterDraft = { search: "", status: "pending", carrier: undefined, dates: null };
+const formatSettledValue = (value?: number | null) => `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value ?? 0)} đ`;
 
 export const ShippingQueuePage = () => {
   const navigate = useNavigate();
@@ -98,7 +99,7 @@ export const ShippingQueuePage = () => {
   const selectedSummary = useMemo(() => ({
     packages: selected.reduce((sum, row) => sum + row.package_count, 0),
     weight: selected.reduce((sum, row) => sum + row.total_weight, 0),
-    value: selected.reduce((sum, row) => sum + row.total_value, 0),
+    value: selected.reduce((sum, row) => sum + row.settled_value, 0),
   }), [selected]);
 
   const createTask = () => {
@@ -134,7 +135,7 @@ export const ShippingQueuePage = () => {
     },
     { title: "Tổng kiện", dataIndex: "package_count", align: "center", width: 100, render: (value) => `${value} kiện` },
     { title: "Tổng khối lượng", dataIndex: "total_weight", align: "right", width: 140, render: formatWeight },
-    { title: "Giá trị (VND)", dataIndex: "total_value", align: "right", width: 150, render: (value) => new Intl.NumberFormat("vi-VN").format(value) },
+    { title: "Giá trị đã tất toán", dataIndex: "settled_value", align: "right", width: 165, render: formatSettledValue },
     { title: "Trạng thái", dataIndex: "status", width: 160, render: () => <Tag color="gold">Chưa tạo nhiệm vụ</Tag> },
     {
       title: "Thao tác",
@@ -155,7 +156,7 @@ export const ShippingQueuePage = () => {
     { label: "Tổng đơn chờ xuất", value: `${pageData.stats.total_orders} đơn hàng`, icon: <AppstoreAddOutlined />, color: "#2563eb", bg: "#eff6ff" },
     { label: "Tổng kiện", value: `${pageData.stats.total_packages} kiện`, icon: <InboxOutlined />, color: "#16a34a", bg: "#ecfdf5" },
     { label: "Tổng khối lượng", value: formatWeight(pageData.stats.total_weight), icon: <ShoppingOutlined />, color: "#7c3aed", bg: "#f5f3ff" },
-    { label: "Tổng giá trị", value: formatVnd(pageData.stats.total_value), icon: <WalletOutlined />, color: "#ea580c", bg: "#fff7ed" },
+    { label: "Tổng giá trị", value: formatSettledValue(pageData.stats.total_value), icon: <WalletOutlined />, color: "#ea580c", bg: "#fff7ed" },
   ];
 
   return <div className="shipping-page">
@@ -183,7 +184,7 @@ export const ShippingQueuePage = () => {
     </Card>
 
     <Card className="shipping-panel" styles={{ body: { padding: 16 } }}>
-      {selectedKeys.length > 0 && <div className="shipping-selection-bar"><div><strong>Đã chọn {selectedKeys.length} đơn hàng</strong><div className="shipping-selection-bar__meta">{selectedSummary.packages} kiện • {formatWeight(selectedSummary.weight)} • {formatVnd(selectedSummary.value)}</div></div><Can permission="shipping_tasks.create"><Button type="primary" icon={<PlusOutlined />} onClick={createTask}>Tạo nhiệm vụ xuất hàng</Button></Can></div>}
+      {selectedKeys.length > 0 && <div className="shipping-selection-bar"><div><strong>Đã chọn {selectedKeys.length} đơn hàng</strong><div className="shipping-selection-bar__meta">{selectedSummary.packages} kiện • {formatWeight(selectedSummary.weight)} • {formatSettledValue(selectedSummary.value)}</div></div><Can permission="shipping_tasks.create"><Button type="primary" icon={<PlusOutlined />} onClick={createTask}>Tạo nhiệm vụ xuất hàng</Button></Can></div>}
       {loading && !pageData.data.length ? <><Skeleton active paragraph={{ rows: 2 }} /><Skeleton active paragraph={{ rows: 7 }} /></> : <Table<ShippingQueueOrder>
         className="shipping-table"
         rowKey="id"
