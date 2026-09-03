@@ -24,8 +24,7 @@ class SettledPaymentSummaryService
             'paid_amount' => (float) $vouchers->sum('paid_amount'),
             'cod_amount' => $codAmount,
             'remaining_amount' => (float) $vouchers->sum('remaining_amount'),
-            'status' => $vouchers->isNotEmpty() && $vouchers->every(fn (PaymentVoucher $voucher) =>
-                $voucher->status === PaymentVoucher::STATUS_PAID && (float) $voucher->remaining_amount <= 0)
+            'status' => $vouchers->isNotEmpty() && $vouchers->every(fn (PaymentVoucher $voucher) => $voucher->status === PaymentVoucher::STATUS_PAID && (float) $voucher->remaining_amount <= 0)
                     ? 'paid'
                     : 'unpaid',
         ];
