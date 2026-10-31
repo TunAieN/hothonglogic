@@ -23,6 +23,7 @@ use App\Services\Shipping\ShippingRateService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PaymentVoucherService
@@ -154,21 +155,14 @@ class PaymentVoucherService
                 'bank_account_number_snapshot' => $paymentAccount->account_number,
                 'bank_account_holder_snapshot' => $paymentAccount->account_holder,
                 'bank_branch_name_snapshot' => $paymentAccount->branch_name,
-                'base_amount_cny' => $baseAmountCny,
                 'exchange_rate' => $lockedOrder->exchange_rate,
-                'base_amount_vnd' => $baseAmountVnd,
-                'deposit_percent' => $percent,
                 'currency' => 'VND',
                 'transfer_content' => 'COC '.$lockedOrder->order_code,
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
                 'subtotal' => $depositAmount,
                 'discount_amount' => 0,
-                'payment_method' => 'bank_transfer',
                 'total_amount' => $depositAmount,
-                'deposit_applied' => 0,
-                'customer_credit_applied' => 0,
                 'paid_amount' => 0,
-                'remaining_amount' => $depositAmount,
                 'note' => 'Deposit for order '.$lockedOrder->order_code,
             ]);
 
@@ -181,7 +175,23 @@ class PaymentVoucherService
                 'amount' => $depositAmount,
                 'reference_type' => 'Order',
                 'reference_id' => $lockedOrder->id,
-                'metadata' => ['deposit_percent' => $percent],
+                'metadata' => [
+                    'amount_cny' => number_format((float) $baseAmountCny, 2, '.', ''),
+                    'base_amount_vnd' => $baseAmountVnd,
+                    'exchange_rate' => (string) $lockedOrder->exchange_rate,
+                    'deposit_percent' => number_format($percent, 2, '.', ''),
+                ],
+            ]);
+
+            $this->syncLegacyColumns($voucher, [
+                'base_amount_cny' => $baseAmountCny,
+                'base_amount_vnd' => $baseAmountVnd,
+                'deposit_percent' => $percent,
+                'deposit_applied' => 0,
+                'customer_credit_applied' => 0,
+                'payment_method' => 'bank_transfer',
+                'paid_at' => null,
+                'remaining_amount' => $depositAmount,
             ]);
 
             $this->syncOrderDepositSnapshot($lockedOrder, $voucher);
@@ -284,10 +294,12 @@ class PaymentVoucherService
             $before = $voucher->toArray();
             $voucher->update([
                 'paid_amount' => $this->money((float) $voucher->total_amount),
-                'remaining_amount' => 0,
                 'status' => PaymentVoucher::STATUS_PAID,
+            ]);
+            $this->syncLegacyColumns($voucher, [
                 'payment_method' => $voucher->payment_method_expected ?: 'bank_transfer',
                 'paid_at' => $receivedAt,
+                'remaining_amount' => 0,
             ]);
 
             $order->forceFill([
@@ -430,7 +442,6 @@ class PaymentVoucherService
                 'vn_warehouse_id' => $input['vn_warehouse_id'] ?? $packages->first()->receipt?->vn_warehouse_id,
                 'created_by' => Auth::id(),
                 'payment_method_expected' => $paymentMethodExpected,
-                'payment_method' => $paymentMethodExpected,
                 'payment_account_id' => $paymentAccount?->id,
                 'bank_name_snapshot' => $paymentAccount?->bank_name,
                 'bank_code_snapshot' => $paymentAccount?->bank_code,
@@ -442,14 +453,9 @@ class PaymentVoucherService
                 'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
                 'subtotal' => $preview['gross_total'],
                 'discount_amount' => $preview['deposit_applied'] + $preview['customer_credit_applied'],
-                'base_amount_cny' => $preview['product_total_cny'],
-                'base_amount_vnd' => $preview['product_total'],
                 'currency' => 'VND',
                 'total_amount' => $preview['total_amount'],
-                'deposit_applied' => $preview['deposit_applied'],
-                'customer_credit_applied' => $preview['customer_credit_applied'],
                 'paid_amount' => 0,
-                'remaining_amount' => $preview['remaining_amount'],
                 'note' => $input['note'] ?? null,
             ]);
 
@@ -473,6 +479,16 @@ class PaymentVoucherService
             }
 
             $this->persistVoucherItems($voucher, $preview);
+            $this->syncLegacyColumns($voucher, [
+                'base_amount_cny' => $preview['product_total_cny'],
+                'base_amount_vnd' => $preview['product_total'],
+                'deposit_percent' => null,
+                'deposit_applied' => $preview['deposit_applied'],
+                'customer_credit_applied' => $preview['customer_credit_applied'],
+                'payment_method' => $paymentMethodExpected,
+                'paid_at' => null,
+                'remaining_amount' => $preview['remaining_amount'],
+            ]);
             $calculatedTotal = $this->calculateVoucherTotal($voucher);
             if ($calculatedTotal !== $this->money((float) $preview['total_amount'])) {
                 throw new HttpException(422, 'Chi tiết phiếu không khớp với tổng thanh toán.');
@@ -559,11 +575,13 @@ class PaymentVoucherService
             $before = $voucher->toArray();
 
             $voucher->update([
-                'paid_amount' => $this->money(min($paid, (float) $voucher->total_amount)),
-                'remaining_amount' => $this->money($remaining),
+                'paid_amount' => $this->money($paid),
                 'status' => $status,
+            ]);
+            $this->syncLegacyColumns($voucher, [
                 'payment_method' => $method,
                 'paid_at' => $status === PaymentVoucher::STATUS_PAID ? $transaction->received_at : null,
+                'remaining_amount' => $this->money($remaining),
             ]);
 
             if ($overpaid > 0) {
@@ -670,8 +688,8 @@ class PaymentVoucherService
             'issued_by' => Auth::id(),
             'issued_at' => now(),
             'total_amount' => $voucher->total_amount,
-            'paid_amount' => $voucher->paid_amount,
-            'status' => 'issued',
+            'paid_amount' => min((float) $voucher->paid_amount, (float) $voucher->total_amount),
+            'status' => Invoice::STATUS_ISSUED,
             'note' => $isDeposit
                 ? 'Hóa đơn đặt cọc cho đơn hàng '.($voucher->order?->order_code ?? $voucher->order_id)
                 : 'Hóa đơn từ phiếu thanh toán '.$voucher->voucher_code,
@@ -704,10 +722,6 @@ class PaymentVoucherService
                 : null;
             InvoiceItem::query()->create([
                 'invoice_id' => $invoice->id,
-                'vn_package_id' => $package?->vn_package_id,
-                'weight' => $item->item_type === 'weight_fee' ? $item->quantity : 0,
-                'volume' => $package?->vnPackage?->actual_volume ?? 0,
-                'shipping_fee' => $item->amount,
                 'payment_voucher_package_id' => $package?->id,
                 'item_type' => $item->item_type,
                 'description' => $item->description,
@@ -715,6 +729,12 @@ class PaymentVoucherService
                 'unit_price' => $item->unit_price,
                 'amount' => $item->amount,
                 'metadata' => $item->metadata,
+                ...$this->existingInvoiceItemColumns([
+                    'vn_package_id' => $package?->vn_package_id,
+                    'weight' => $item->item_type === 'weight_fee' ? $item->quantity : 0,
+                    'volume' => $package?->vnPackage?->actual_volume ?? 0,
+                    'shipping_fee' => $item->amount,
+                ]),
             ]);
         }
 
@@ -739,9 +759,14 @@ class PaymentVoucherService
         $paid = (float) $voucher->transactions()->where('status', PaymentTransaction::STATUS_CONFIRMED)->sum('amount');
         $remaining = max(0, (float) $voucher->total_amount - $paid);
         $voucher->update([
-            'paid_amount' => $this->money(min($paid, (float) $voucher->total_amount)),
-            'remaining_amount' => $this->money($remaining),
+            'paid_amount' => $this->money($paid),
             'status' => $remaining <= 0 ? PaymentVoucher::STATUS_PAID : ($paid > 0 ? PaymentVoucher::STATUS_PARTIAL_PAID : PaymentVoucher::STATUS_WAITING_PAYMENT),
+        ]);
+        $this->syncLegacyColumns($voucher, [
+            'remaining_amount' => $this->money($remaining),
+            'paid_at' => $remaining <= 0
+                ? $voucher->transactions()->where('status', PaymentTransaction::STATUS_CONFIRMED)->max('received_at')
+                : null,
         ]);
     }
 
@@ -978,6 +1003,10 @@ class PaymentVoucherService
             'amount' => $preview['product_total'],
             'reference_type' => 'PaymentVoucher',
             'reference_id' => $voucher->id,
+            'metadata' => [
+                'amount_cny' => number_format((float) $preview['product_total_cny'], 2, '.', ''),
+                'base_amount_vnd' => (int) round((float) $preview['product_total']),
+            ],
         ]);
 
         $packageModels = $voucher->packages()->get()->keyBy(fn (PaymentVoucherPackage $package) => (string) $package->vn_package_id);
@@ -1023,15 +1052,43 @@ class PaymentVoucherService
             ]);
         }
 
+        if ((float) $preview['deposit_applied'] > 0) {
+            PaymentVoucherItem::query()->create([
+                'payment_voucher_id' => $voucher->id,
+                'item_type' => PaymentVoucherItem::TYPE_DEPOSIT_APPLIED,
+                'description' => 'Tiền đặt cọc đã áp dụng',
+                'quantity' => 1,
+                'unit_price' => -$preview['deposit_applied'],
+                'amount' => -$preview['deposit_applied'],
+                'reference_type' => 'PaymentVoucher',
+                'reference_id' => $voucher->id,
+            ]);
+        }
+
+        if ((float) $preview['customer_credit_applied'] > 0) {
+            PaymentVoucherItem::query()->create([
+                'payment_voucher_id' => $voucher->id,
+                'item_type' => PaymentVoucherItem::TYPE_CUSTOMER_CREDIT,
+                'description' => 'Số dư khách hàng đã áp dụng',
+                'quantity' => 1,
+                'unit_price' => -$preview['customer_credit_applied'],
+                'amount' => -$preview['customer_credit_applied'],
+                'reference_type' => 'PaymentVoucher',
+                'reference_id' => $voucher->id,
+            ]);
+        }
+
         $voucher->update([
-            'subtotal' => $this->money((float) $voucher->items()->sum('amount')),
-            'discount_amount' => $this->money((float) $voucher->deposit_applied + (float) $voucher->customer_credit_applied),
+            'subtotal' => $voucher->fresh('items')->componentSubtotal(),
+            'discount_amount' => $voucher->fresh('items')->itemDiscountTotal(),
         ]);
     }
 
     public function calculateVoucherTotal(PaymentVoucher $voucher): float
     {
-        return $this->money(max(0, (float) $voucher->items()->sum('amount') - (float) $voucher->discount_amount));
+        $voucher->loadMissing('items');
+
+        return $this->money(max(0, $voucher->componentSubtotal() - $voucher->itemDiscountTotal()));
     }
 
     private function normalizeSurcharges(array $surcharges): array
@@ -1074,7 +1131,7 @@ class PaymentVoucherService
 
     private function customerCreditBalance(int $customerId): float
     {
-        $last = CustomerBalanceLedger::query()->where('customer_id', $customerId)->latest('id')->first();
+        $last = CustomerBalanceLedger::query()->where('customer_id', $customerId)->lockForUpdate()->latest('id')->first();
 
         return max(0, (float) ($last?->balance_after ?? 0));
     }
@@ -1112,6 +1169,31 @@ class PaymentVoucherService
         } while (DB::table($table)->where($column, $code)->exists());
 
         return $code;
+    }
+
+    /**
+     * Dual-write only while the guarded V2 contract migration has not run yet.
+     * This keeps rolling deployments safe; after contract it becomes a no-op.
+     */
+    private function syncLegacyColumns(PaymentVoucher $voucher, array $values): void
+    {
+        $existing = array_filter(
+            $values,
+            fn (mixed $value, string $column) => Schema::hasColumn('payment_vouchers', $column),
+            ARRAY_FILTER_USE_BOTH,
+        );
+        if ($existing !== []) {
+            DB::table('payment_vouchers')->where('id', $voucher->id)->update($existing);
+        }
+    }
+
+    private function existingInvoiceItemColumns(array $values): array
+    {
+        return array_filter(
+            $values,
+            fn (mixed $value, string $column) => Schema::hasColumn('invoice_items', $column),
+            ARRAY_FILTER_USE_BOTH,
+        );
     }
 
     private function audit(string $action, object $entity, ?array $before, ?array $after): void

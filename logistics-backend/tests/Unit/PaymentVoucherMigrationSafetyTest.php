@@ -99,6 +99,48 @@ class PaymentVoucherMigrationSafetyTest extends TestCase
         $this->assertStringNotContainsString('PaymentVoucherSurcharge', $paymentVoucherModel.$paymentService.$paymentSchema.$frontend);
     }
 
+    public function test_v2_contract_is_guarded_and_preserves_graphql_compatibility(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $expand = file_get_contents($root.'/database/migrations/2026_09_08_000046_expand_payment_voucher_v2_items_and_integrity.php');
+        $contract = file_get_contents($root.'/database/migrations/2026_09_08_000047_contract_payment_voucher_v2_derived_columns.php');
+        $schema = file_get_contents($root.'/graphql/payments.graphql');
+        $model = file_get_contents($root.'/app/Models/PaymentVoucher.php');
+
+        $this->assertStringContainsString('chunkById', $expand);
+        $this->assertStringContainsString('assertIntegrityBeforeForeignKeys', $expand);
+        $this->assertStringContainsString('assertReadyForCleanup', $contract);
+        foreach (['base_amount_cny', 'base_amount_vnd', 'deposit_percent', 'deposit_applied', 'customer_credit_applied', 'payment_method', 'paid_at', 'remaining_amount'] as $field) {
+            $this->assertStringContainsString($field, $schema, "GraphQL compatibility field {$field} was removed");
+        }
+        foreach (['getBaseAmountCnyAttribute', 'getBaseAmountVndAttribute', 'getDepositPercentAttribute', 'getRemainingAmountAttribute', 'getPaymentMethodAttribute', 'getPaidAtAttribute'] as $accessor) {
+            $this->assertStringContainsString($accessor, $model);
+        }
+    }
+
+    public function test_legacy_payments_retirement_is_separate_and_guarded(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $migration = file_get_contents($root.'/database/migrations/2026_09_08_000048_retire_empty_legacy_payments_table.php');
+        $production = file_get_contents($root.'/app/Services/Payments/PaymentVoucherService.php')
+            .file_get_contents($root.'/graphql/payments.graphql')
+            .file_get_contents($root.'/app/GraphQL/Resolvers/PaymentVoucherResolver.php');
+
+        $this->assertStringContainsString("DB::table('payments')->count()", $migration);
+        $this->assertStringContainsString("Schema::drop('payments')", $migration);
+        $this->assertStringNotContainsString("DB::table('payments')", $production);
+    }
+
+    public function test_production_queries_do_not_reference_removed_remaining_column(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $shipping = file_get_contents($root.'/app/Services/Shipping/ShippingTaskService.php')
+            .file_get_contents($root.'/app/Services/Shipping/ShippingTaskGhnPreviewService.php');
+
+        $this->assertStringNotContainsString("where('remaining_amount'", $shipping);
+        $this->assertStringContainsString("whereColumn('paid_amount', '>=', 'total_amount')", $shipping);
+    }
+
     private function extractMethodBody(string $source, string $method): string
     {
         $start = strpos($source, 'function '.$method);

@@ -2,10 +2,21 @@
 
 namespace App\Models;
 
+use App\Domain\Payments\Enums\InvoiceStatus;
 use Illuminate\Database\Eloquent\Model;
 
 class Invoice extends Model
 {
+    public const STATUS_PENDING = InvoiceStatus::PENDING->value;
+
+    public const STATUS_CONFIRMED = InvoiceStatus::CONFIRMED->value;
+
+    public const STATUS_CANCELLED = InvoiceStatus::CANCELLED->value;
+
+    public const STATUS_ISSUED = InvoiceStatus::ISSUED->value;
+
+    public const STATUS_VOIDED = InvoiceStatus::VOIDED->value;
+
     protected $fillable = [
         'payment_voucher_id',
         'invoice_type',

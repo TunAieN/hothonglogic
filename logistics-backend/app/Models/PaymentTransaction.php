@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Domain\Payments\Enums\PaymentTransactionStatus;
 use Illuminate\Database\Eloquent\Model;
 
 class PaymentTransaction extends Model
 {
-    public const STATUS_CONFIRMED = 'confirmed';
+    public const STATUS_CONFIRMED = PaymentTransactionStatus::CONFIRMED->value;
 
-    public const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_CANCELLED = PaymentTransactionStatus::CANCELLED->value;
 
     protected $fillable = [
         'transaction_code',

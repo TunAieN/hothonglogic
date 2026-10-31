@@ -110,7 +110,7 @@ class ShippingTaskGhnPreviewService
             ->whereDoesntHave('exportItem')
             ->whereHas('paymentVoucher', fn (Builder $query) => $query
                 ->where('status', PaymentVoucher::STATUS_PAID)
-                ->where('remaining_amount', '<=', 0))
+                ->whereColumn('paid_amount', '>=', 'total_amount'))
             ->get();
     }
 
