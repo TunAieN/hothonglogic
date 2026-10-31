@@ -2,24 +2,26 @@
 
 namespace App\Models;
 
+use App\Domain\Payments\Enums\PaymentVoucherStatus;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 class PaymentVoucher extends Model
 {
-    public const STATUS_DRAFT = 'draft';
+    public const STATUS_DRAFT = PaymentVoucherStatus::DRAFT->value;
 
-    public const STATUS_WAITING_PAYMENT = 'waiting_payment';
+    public const STATUS_WAITING_PAYMENT = PaymentVoucherStatus::WAITING_PAYMENT->value;
 
-    public const STATUS_PARTIAL_PAID = 'partial_paid';
+    public const STATUS_PARTIAL_PAID = PaymentVoucherStatus::PARTIAL_PAID->value;
 
-    public const STATUS_PAID = 'paid';
+    public const STATUS_PAID = PaymentVoucherStatus::PAID->value;
 
-    public const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_CANCELLED = PaymentVoucherStatus::CANCELLED->value;
 
     public const ACTIVE_STATUSES = [
-        self::STATUS_DRAFT,
-        self::STATUS_WAITING_PAYMENT,
-        self::STATUS_PARTIAL_PAID,
+        PaymentVoucherStatus::DRAFT->value,
+        PaymentVoucherStatus::WAITING_PAYMENT->value,
+        PaymentVoucherStatus::PARTIAL_PAID->value,
     ];
 
     protected $fillable = [
@@ -37,22 +39,14 @@ class PaymentVoucher extends Model
         'bank_account_number_snapshot',
         'bank_account_holder_snapshot',
         'bank_branch_name_snapshot',
-        'base_amount_cny',
         'exchange_rate',
-        'base_amount_vnd',
-        'deposit_percent',
         'currency',
         'transfer_content',
         'status',
         'subtotal',
         'discount_amount',
-        'payment_method',
-        'paid_at',
         'total_amount',
-        'deposit_applied',
-        'customer_credit_applied',
         'paid_amount',
-        'remaining_amount',
         'note',
         'cancelled_reason',
         'cancelled_by',
@@ -61,21 +55,116 @@ class PaymentVoucher extends Model
     ];
 
     protected $casts = [
-        'base_amount_cny' => 'float',
-        'exchange_rate' => 'float',
-        'base_amount_vnd' => 'integer',
-        'deposit_percent' => 'float',
+        'exchange_rate' => 'decimal:4',
         'total_amount' => 'float',
-        'deposit_applied' => 'float',
-        'customer_credit_applied' => 'float',
         'paid_amount' => 'float',
-        'remaining_amount' => 'float',
         'subtotal' => 'float',
         'discount_amount' => 'float',
-        'paid_at' => 'datetime',
         'cancelled_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
+
+    public function getBaseAmountCnyAttribute(mixed $legacyValue): float
+    {
+        $metadataValue = $this->compatibilityMetadataValue('amount_cny');
+
+        return (float) ($metadataValue ?? $legacyValue ?? 0);
+    }
+
+    public function getBaseAmountVndAttribute(mixed $legacyValue): int
+    {
+        $items = $this->compatibilityItems();
+        $orderAmount = $items->where('item_type', 'order_amount')->sum('amount');
+        $metadataValue = $this->compatibilityMetadataValue('base_amount_vnd');
+
+        return (int) round((float) ($orderAmount ?: $metadataValue ?? $legacyValue ?? 0));
+    }
+
+    public function getDepositPercentAttribute(mixed $legacyValue): ?float
+    {
+        $value = $this->compatibilityMetadataValue('deposit_percent') ?? $legacyValue;
+
+        return $value === null ? null : (float) $value;
+    }
+
+    public function getDepositAppliedAttribute(mixed $legacyValue): float
+    {
+        return $this->adjustmentAmount(PaymentVoucherItem::TYPE_DEPOSIT_APPLIED, $legacyValue);
+    }
+
+    public function getCustomerCreditAppliedAttribute(mixed $legacyValue): float
+    {
+        return $this->adjustmentAmount(PaymentVoucherItem::TYPE_CUSTOMER_CREDIT, $legacyValue);
+    }
+
+    public function getRemainingAmountAttribute(mixed $legacyValue): float
+    {
+        return (float) max(0, (int) round((float) $this->total_amount) - (int) round((float) $this->paid_amount));
+    }
+
+    public function getPaymentMethodAttribute(mixed $legacyValue): ?string
+    {
+        $transaction = $this->confirmedTransactionsForCompatibility()->sortByDesc('id')->first();
+
+        return $transaction?->payment_method ?? $legacyValue ?? $this->payment_method_expected;
+    }
+
+    public function getPaidAtAttribute(mixed $legacyValue): mixed
+    {
+        if ($this->status !== self::STATUS_PAID) {
+            return null;
+        }
+
+        return $this->confirmedTransactionsForCompatibility()->max('received_at') ?? $legacyValue;
+    }
+
+    public function componentSubtotal(): int
+    {
+        return (int) round((float) $this->compatibilityItems()
+            ->reject(fn (PaymentVoucherItem $item) => in_array($item->item_type, PaymentVoucherItem::ADJUSTMENT_TYPES, true))
+            ->sum('amount'));
+    }
+
+    public function itemDiscountTotal(): int
+    {
+        return (int) round(abs((float) $this->compatibilityItems()
+            ->whereIn('item_type', PaymentVoucherItem::ADJUSTMENT_TYPES)
+            ->sum('amount')));
+    }
+
+    private function adjustmentAmount(string $type, mixed $legacyValue): float
+    {
+        $items = $this->compatibilityItems()->where('item_type', $type);
+        if ($items->isEmpty()) {
+            return (float) round((float) ($legacyValue ?? 0));
+        }
+
+        return (float) round(abs((float) $items->sum('amount')));
+    }
+
+    private function compatibilityMetadataValue(string $key): mixed
+    {
+        foreach ($this->compatibilityItems() as $item) {
+            $metadata = is_array($item->metadata) ? $item->metadata : [];
+            if (array_key_exists($key, $metadata)) {
+                return $metadata[$key];
+            }
+        }
+
+        return null;
+    }
+
+    private function compatibilityItems(): Collection
+    {
+        return $this->relationLoaded('items') ? $this->items : $this->items()->get();
+    }
+
+    private function confirmedTransactionsForCompatibility(): Collection
+    {
+        $transactions = $this->relationLoaded('transactions') ? $this->transactions : $this->transactions()->get();
+
+        return $transactions->where('status', PaymentTransaction::STATUS_CONFIRMED);
+    }
 
     public function order()
     {

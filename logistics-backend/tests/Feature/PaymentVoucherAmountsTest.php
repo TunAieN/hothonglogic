@@ -10,6 +10,7 @@ use App\Models\CustomerAddress;
 use App\Models\CustomerBalanceLedger;
 use App\Models\Order;
 use App\Models\PaymentAccount;
+use App\Models\PaymentTransaction;
 use App\Models\PaymentVoucher;
 use App\Models\Role;
 use App\Models\ShippingRate;
@@ -26,6 +27,7 @@ use App\Services\Shipping\ShipmentService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -52,7 +54,7 @@ class PaymentVoucherAmountsTest extends TestCase
         $suffix = strtoupper(substr(uniqid(), -8));
         $role = Role::query()->create([
             'name' => 'Payment voucher test '.$suffix,
-            'permissions' => ['payment_vouchers.create'],
+            'permissions' => ['payment_vouchers.read', 'payment_vouchers.create', 'payment_vouchers.update', 'payments.confirm', 'invoices.create'],
         ]);
         $this->user = User::query()->create([
             'name' => 'Payment voucher tester',
@@ -473,6 +475,134 @@ class PaymentVoucherAmountsTest extends TestCase
 
         $this->assertFalse(CustomerAddress::query()->where('customer_id', $this->customer->id)->exists());
         $this->assertFalse(PaymentVoucher::query()->where('customer_id', $this->customer->id)->where('voucher_type', 'shipping')->exists());
+    }
+
+    public function test_adjustments_are_owned_by_voucher_items(): void
+    {
+        $this->setShippingFee(20000);
+        $order = $this->createOrder(100000, 30000);
+        $this->giveCustomerCredit(15000);
+
+        $voucher = $this->createVoucher([$this->createPackage($order)]);
+
+        $this->assertSame(-30000.0, (float) $voucher->items()->where('item_type', 'deposit_applied')->sum('amount'));
+        $this->assertSame(-15000.0, (float) $voucher->items()->where('item_type', 'customer_credit')->sum('amount'));
+        $this->assertSame(120000, $voucher->componentSubtotal());
+        $this->assertSame(45000, $voucher->itemDiscountTotal());
+        $this->assertSame(75000.0, $voucher->total_amount);
+    }
+
+    public function test_partial_and_multiple_transactions_materialize_paid_amount_and_derive_remaining(): void
+    {
+        $this->setShippingFee(20000);
+        $voucher = $this->createVoucher([$this->createPackage($this->createOrder(100000))]);
+        $service = app(PaymentVoucherService::class);
+
+        $partial = $service->confirmTransaction($voucher->id, [
+            'amount' => 50000,
+            'payment_method' => 'cash',
+        ]);
+        $this->assertSame(PaymentVoucher::STATUS_PARTIAL_PAID, $partial->status);
+        $this->assertSame(50000.0, $partial->paid_amount);
+        $this->assertSame(70000.0, $partial->remaining_amount);
+        $this->assertSame('cash', $partial->payment_method);
+
+        $paid = $service->confirmTransaction($voucher->id, [
+            'amount' => 70000,
+            'payment_method' => 'bank_transfer',
+            'bank_name' => 'Ngân hàng kiểm thử',
+            'bank_transaction_code' => 'PAY-'.uniqid(),
+        ]);
+        $this->assertSame(PaymentVoucher::STATUS_PAID, $paid->status);
+        $this->assertSame(120000.0, $paid->paid_amount);
+        $this->assertSame(0.0, $paid->remaining_amount);
+        $this->assertSame('bank_transfer', $paid->payment_method);
+        $this->assertNotNull($paid->paid_at);
+        $this->assertCount(2, $paid->transactions);
+        $this->assertNotNull($paid->invoice);
+        $this->assertSame($paid->total_amount, $paid->invoice->total_amount);
+        $this->assertSame($paid->invoice->total_amount, (float) $paid->invoice->items->sum('amount'));
+    }
+
+    public function test_overpayment_cache_matches_confirmed_transactions_and_creates_credit(): void
+    {
+        $this->setShippingFee(20000);
+        $voucher = $this->createVoucher([$this->createPackage($this->createOrder(100000))]);
+
+        $paid = app(PaymentVoucherService::class)->confirmTransaction($voucher->id, [
+            'amount' => 130000,
+            'payment_method' => 'cash',
+        ]);
+
+        $this->assertSame(130000.0, $paid->paid_amount);
+        $this->assertSame(130000.0, (float) $paid->transactions->where('status', PaymentTransaction::STATUS_CONFIRMED)->sum('amount'));
+        $this->assertSame(0.0, $paid->remaining_amount);
+        $this->assertSame(10000.0, (float) CustomerBalanceLedger::query()->where('customer_id', $this->customer->id)->latest('id')->value('balance_after'));
+        $this->assertSame(120000.0, $paid->invoice->paid_amount);
+    }
+
+    public function test_cancelled_voucher_rejects_new_payment(): void
+    {
+        $voucher = $this->createVoucher([$this->createPackage($this->createOrder(100000))]);
+        $service = app(PaymentVoucherService::class);
+        $cancelled = $service->cancel($voucher->id, 'Khách đổi kế hoạch');
+        $this->assertSame(PaymentVoucher::STATUS_CANCELLED, $cancelled->status);
+
+        $this->expectException(HttpException::class);
+        $service->confirmTransaction($voucher->id, [
+            'amount' => 1000,
+            'payment_method' => 'cash',
+        ]);
+    }
+
+    public function test_payment_account_snapshot_remains_readable_after_account_changes(): void
+    {
+        $voucher = $this->createVoucher([$this->createPackage($this->createOrder(100000))]);
+        $account = $voucher->paymentAccount;
+        $oldName = $voucher->bank_name_snapshot;
+        $oldNumber = $voucher->bank_account_number_snapshot;
+
+        $account->update(['bank_name' => 'Ngân hàng mới', 'account_number' => '999999999']);
+
+        $historical = $voucher->fresh();
+        $this->assertSame($oldName, $historical->bank_name_snapshot);
+        $this->assertSame($oldNumber, $historical->bank_account_number_snapshot);
+    }
+
+    public function test_reconciliation_command_passes_for_new_v2_voucher(): void
+    {
+        $voucher = $this->createVoucher([$this->createPackage($this->createOrder(100000, 30000))]);
+
+        $this->artisan('payments:audit', ['--voucher' => $voucher->id])
+            ->expectsOutputToContain('Vouchers checked: 1')
+            ->expectsOutputToContain('Payment mismatches: 0')
+            ->expectsOutputToContain('PASS')
+            ->assertSuccessful();
+    }
+
+    public function test_graphql_keeps_derived_voucher_fields_after_contract(): void
+    {
+        $voucher = $this->createVoucher([$this->createPackage($this->createOrder(100000, 30000))]);
+        Sanctum::actingAs($this->user, ['*'], 'api');
+
+        $response = $this->postJson('/graphql', [
+            'query' => <<<'GRAPHQL'
+                query VoucherCompatibility($id: ID!) {
+                  paymentVoucher(id: $id) {
+                    id base_amount_cny base_amount_vnd deposit_percent
+                    deposit_applied customer_credit_applied
+                    payment_method paid_at paid_amount remaining_amount
+                  }
+                }
+                GRAPHQL,
+            'variables' => ['id' => (string) $voucher->id],
+        ]);
+
+        $response->assertOk()->assertJsonMissingPath('errors');
+        $response->assertJsonPath('data.paymentVoucher.base_amount_vnd', 100000);
+        $response->assertJsonPath('data.paymentVoucher.deposit_applied', 30000);
+        $response->assertJsonPath('data.paymentVoucher.remaining_amount', 470000);
+        $response->assertJsonPath('data.paymentVoucher.payment_method', 'bank_transfer');
     }
 
     private function createOrder(int $productTotal, int $depositPaid = 0, ?int $depositRequired = null): Order

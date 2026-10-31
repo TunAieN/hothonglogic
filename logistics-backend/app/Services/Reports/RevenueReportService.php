@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 class RevenueReportService
 {
-    private const VALID_INVOICE_STATUSES = ['issued', 'confirmed'];
+    private const VALID_INVOICE_STATUSES = [Invoice::STATUS_ISSUED, Invoice::STATUS_CONFIRMED];
 
     private const EXCLUDED_VOUCHER_TYPES = ['deposit'];
 

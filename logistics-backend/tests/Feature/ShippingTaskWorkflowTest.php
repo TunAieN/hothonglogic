@@ -248,11 +248,11 @@ class ShippingTaskWorkflowTest extends TestCase
             'unit_price' => 10000000,
             'amount' => 10000000,
         ]);
-        $voucher->update(['subtotal' => 11802159, 'paid_amount' => 20, 'remaining_amount' => 0]);
+        $voucher->update(['subtotal' => 11802159, 'paid_amount' => $voucher->total_amount]);
         PaymentTransaction::query()->create([
             'transaction_code' => 'GD-'.uniqid(),
             'payment_voucher_id' => $voucher->id,
-            'amount' => 20,
+            'amount' => $voucher->total_amount,
             'payment_method' => 'bank_transfer',
             'received_at' => now(),
             'confirmed_by' => $user->id,

@@ -1,0 +1,35 @@
+
+:root {
+  /* 1. Màu thương hiệu */
+  --color-primary: #f45124;
+  --color-primary-hover: #df421a;
+  --color-primary-light: #fff1eb;
+
+  /* 2. Màu chữ */
+  --color-heading: #241d1b;
+  --color-text: #393533;
+  --color-text-muted: #77716d;
+
+  /* 3. Màu nền và đường viền */
+  --color-background: #fffdf9;
+  --color-surface: #ffffff;
+  --color-border: #eee8e2;
+
+  /* 4. Font chữ */
+  --font-body: "Be Vietnam Pro", sans-serif;
+  --font-heading: "Be Vietnam Pro", sans-serif;
+
+  /* 5. Kích thước bố cục */
+  --container-width: 1280px;
+  --header-height: 80px;
+  --section-spacing: 88px;
+
+  /* 6. Bo góc */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+
+  /* 7. Đổ bóng */
+  --shadow-card: 0 8px 30px rgba(42, 29, 20, 0.05);
+}

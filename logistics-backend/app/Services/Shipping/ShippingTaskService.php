@@ -491,7 +491,7 @@ class ShippingTaskService
                     $payment->whereNull('payment_voucher_id')
                         ->orWhereHas('paymentVoucher', fn (Builder $voucher) => $voucher
                             ->where('status', PaymentVoucher::STATUS_PAID)
-                            ->where('remaining_amount', '<=', 0));
+                            ->whereColumn('paid_amount', '>=', 'total_amount'));
                 })
                 ->when($this->filled($filter, 'date_from'), fn ($q) => $q->whereHas(
                     'paymentVoucher.invoice',
