@@ -1,0 +1,4 @@
+import { BadgeDollarSign, ClipboardList, PackageCheck, Radar } from "lucide-react";
+import styles from "./ProcessSection.module.css";
+const steps=[[ClipboardList,"Gửi link hoặc yêu cầu","Cung cấp thông tin sản phẩm cần hỗ trợ."],[BadgeDollarSign,"Nhận báo giá","Kiểm tra báo giá trước khi xác nhận."],[PackageCheck,"Đặt cọc và xử lý đơn","Đơn được tiếp nhận theo quy trình."],[Radar,"Theo dõi và nhận hàng","Nắm rõ các mốc kho vận quan trọng."]];
+export default function ProcessSection(){return <section className={`section ${styles.section}`} id="quy-trinh"><div className="container"><span className="sectionEyebrow">Quy trình đặt hàng</span><h2 className="sectionTitle">Bốn bước đơn giản, dễ bắt đầu</h2><ol>{steps.map(([Icon,title,text],i)=><li key={title}><span className={styles.number}>0{i+1}</span><span className={styles.icon}><Icon/></span><div><h3>{title}</h3><p>{text}</p></div>{i<3&&<b aria-hidden="true">→</b>}</li>)}</ol></div></section>}

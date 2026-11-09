@@ -1,0 +1,4 @@
+import { ArrowRight } from "lucide-react";
+import { services } from "../../data/services.js";
+import styles from "./ServicesSection.module.css";
+export default function ServicesSection(){return <section className={`section ${styles.section}`} id="dich-vu"><div className="container"><div className={styles.heading}><div><span className="sectionEyebrow">Dịch vụ</span><h2 className="sectionTitle">Dịch vụ của VietTrung Order</h2><p className="sectionDescription">Các giải pháp cần thiết cho hành trình nhập hàng và vận chuyển.</p></div><a href="#giai-phap">Xem tất cả dịch vụ <ArrowRight size={15}/></a></div><div className={styles.grid}>{services.map(({icon:Icon,title,description})=><article key={title}><span><Icon/></span><h3>{title}</h3><p>{description}</p><a href="#giai-phap" aria-label={`Xem ${title}`}><ArrowRight/></a></article>)}</div></div></section>}

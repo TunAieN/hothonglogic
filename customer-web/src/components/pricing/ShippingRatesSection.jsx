@@ -1,0 +1,8 @@
+import { Box, Scale, Truck } from "lucide-react";
+import { pricingConfig } from "../../data/pricingConfig.js";
+import styles from "./PricingPage.module.css";
+
+export default function ShippingRatesSection({ mode, onModeChange, customerType }) {
+  const rates = pricingConfig.shippingRates[mode] || [];
+  return <section className={styles.shipping}><div className={styles.sectionHeading}><span><Truck /></span><div><h2>Bảng giá vận chuyển Trung Quốc – Việt Nam</h2><p>{customerType === "wholesale" ? "Bảng giá khách sỉ/ký gửi cần báo giá riêng." : "Linh hoạt theo hình thức và đặc tính hàng hóa."}</p></div></div><div className={styles.modeTabs} role="tablist" aria-label="Đơn vị tính vận chuyển"><button type="button" role="tab" aria-selected={mode === "kg"} className={mode === "kg" ? styles.activeTab : ""} onClick={() => onModeChange("kg")}><Scale /> Hàng tính theo cân nặng (kg)</button><button type="button" role="tab" aria-selected={mode === "m3"} className={mode === "m3" ? styles.activeTab : ""} onClick={() => onModeChange("m3")}><Box /> Hàng khối / Cồng kềnh (m³)</button></div><div className={styles.tableWrap}><table><thead><tr><th>{mode === "kg" ? "Bậc trọng lượng" : "Khoảng thể tích"}</th><th>Điểm nhận áp dụng</th><th>Đơn giá</th><th>Ghi chú</th></tr></thead><tbody>{rates.length ? rates.map((rate) => <tr key={rate.id}><td>{rate.label}</td><td>{rate.destinationLabel}</td><td>{rate.displayPrice}</td><td>{rate.note || "—"}</td></tr>) : <tr><td colSpan="4" className={styles.emptyCell}>Đơn giá theo {mode === "kg" ? "kg" : "m³"} chưa được cấu hình cho khách hàng. Vui lòng liên hệ báo giá.</td></tr>}</tbody></table></div><p className={styles.tableNote}>Giá cước phụ thuộc tuyến, loại hàng và chính sách đang áp dụng tại thời điểm xác nhận.</p></section>;
+}

@@ -1,0 +1,8 @@
+import { Banknote, Boxes, CreditCard, ShoppingCart, Truck, Wallet, Warehouse } from "lucide-react";
+
+export const services = [
+  { id: "ordering", title: "Mua hộ và đặt hàng", catalogTitle: "Mua hộ & đặt hàng", description: "Tiếp nhận yêu cầu, hỗ trợ kiểm tra thông tin và quản lý đơn mua tập trung.", catalogDescription: "Hỗ trợ tìm nguồn hàng, đặt mua theo link hoặc yêu cầu.", benefits: ["Tìm nguồn theo yêu cầu", "Đặt mua theo link", "Theo dõi xử lý đơn"], image: null, icon: CreditCard, catalogIcon: ShoppingCart },
+  { id: "china-warehouse", title: "Kho Trung Quốc", catalogTitle: "Kho Trung Quốc", description: "Tiếp nhận, gom và quản lý kiện hàng tại kho trước khi vận chuyển về Việt Nam.", catalogDescription: "Tiếp nhận, kiểm tra, gom kiện và quản lý hàng tại kho.", benefits: ["Tiếp nhận hàng", "Kiểm tra và gom kiện", "Quản lý trạng thái kho"], image: null, icon: Boxes, catalogIcon: Warehouse },
+  { id: "payments", title: "Thanh toán và công nợ", catalogTitle: "Thanh toán & công nợ", description: "Theo dõi các khoản cần thanh toán, đặt cọc và đối soát theo từng đơn.", catalogDescription: "Hỗ trợ thanh toán, quản lý số dư và đối soát giao dịch.", benefits: ["Hỗ trợ thanh toán", "Theo dõi công nợ", "Tra cứu giao dịch"], image: null, icon: Banknote, catalogIcon: Wallet },
+  { id: "shipping", title: "Vận chuyển Trung – Việt", catalogTitle: "Vận chuyển Trung – Việt", description: "Quản lý hành trình từ kho Trung Quốc đến điểm nhận tại Việt Nam.", catalogDescription: "Quản lý vận chuyển và theo dõi hành trình giao nhận.", benefits: ["Hỗ trợ vận chuyển", "Theo dõi hành trình", "Quản lý giao nhận"], image: null, icon: Truck, catalogIcon: Truck },
+];

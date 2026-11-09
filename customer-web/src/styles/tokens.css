@@ -1,35 +1,49 @@
-
 :root {
-  /* 1. Màu thương hiệu */
   --color-primary: #f45124;
   --color-primary-hover: #df421a;
   --color-primary-light: #fff1eb;
-
-  /* 2. Màu chữ */
-  --color-heading: #241d1b;
+  --color-primary-soft: #fff8f5;
+  --color-heading: #20252b;
   --color-text: #393533;
   --color-text-muted: #77716d;
-
-  /* 3. Màu nền và đường viền */
-  --color-background: #fffdf9;
+  --color-background: #ffffff;
+  --color-background-secondary: #f6f7f9;
   --color-surface: #ffffff;
-  --color-border: #eee8e2;
-
-  /* 4. Font chữ */
+  --color-border: #e8eaed;
+  --color-footer: #16202d;
+  --color-success: #198754;
+  --color-warning: #b56a0b;
+  --color-danger: #c9392b;
   --font-body: "Be Vietnam Pro", sans-serif;
   --font-heading: "Be Vietnam Pro", sans-serif;
-
-  /* 5. Kích thước bố cục */
   --container-width: 1280px;
-  --header-height: 80px;
-  --section-spacing: 88px;
-
-  /* 6. Bo góc */
+  --header-height: 78px;
+  --section-spacing: clamp(64px, 7vw, 88px);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
   --radius-sm: 8px;
   --radius-md: 14px;
-  --radius-lg: 22px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
   --radius-pill: 999px;
+  --shadow-sm: 0 4px 16px rgba(31, 38, 46, 0.05);
+  --shadow-card: 0 16px 42px rgba(31, 38, 46, 0.08);
+  --shadow-header: 0 8px 30px rgba(31, 38, 46, 0.07);
+  --transition-fast: 180ms ease;
+  --transition-base: 220ms ease;
+}
 
-  /* 7. Đổ bóng */
-  --shadow-card: 0 8px 30px rgba(42, 29, 20, 0.05);
+@media (max-width: 767px) {
+  :root {
+    --header-height: 70px;
+    --section-spacing: 48px;
+  }
 }
