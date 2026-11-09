@@ -1,0 +1,6 @@
+import { useState } from "react";
+import { ChevronDown, Headphones } from "lucide-react";
+import { faqs } from "../../data/faq.js";
+import Button from "../ui/Button.jsx";
+import styles from "./FAQSection.module.css";
+export default function FAQSection(){const[open,setOpen]=useState(0);return <section className={`section ${styles.section}`} id="faq"><div className={`container ${styles.grid}`}><div className={styles.intro}><span className="sectionEyebrow">FAQ</span><h2 className="sectionTitle">Câu hỏi thường gặp</h2><p className="sectionDescription">Giải đáp những thắc mắc phổ biến trước khi sử dụng dịch vụ.</p><Button href="#top" variant="secondary">Quay lại trang đầu</Button></div><div className={styles.list}>{faqs.map((item,i)=>{const expanded=i===open;return <article key={item.question}><h3><button type="button" aria-expanded={expanded} aria-controls={`answer-${i}`} onClick={()=>setOpen(expanded?-1:i)}>{item.question}<ChevronDown/></button></h3><div id={`answer-${i}`} hidden={!expanded}><p>{item.answer}</p></div></article>})}</div><aside id="ho-tro"><span><Headphones/></span><h2>Bạn cần hỗ trợ?</h2><p>Kênh liên hệ sẽ hiển thị sau khi thông tin chính thức được cấu hình và xác minh.</p><Button href="#top">Quay lại trang đầu</Button><small>Không hiển thị thông tin liên hệ chưa xác minh.</small></aside></div></section>}
