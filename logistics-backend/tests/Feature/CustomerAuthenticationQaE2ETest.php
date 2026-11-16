@@ -18,8 +18,7 @@ class CustomerAuthenticationQaE2ETest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertSame(3311, (int) DB::selectOne('SELECT @@port AS port')->port);
-        $this->assertSame('logistics_system_test', DB::connection()->getDatabaseName());
+        $this->assertApprovedMysqlTestConnection();
         Config::set('customer_auth.email_verification_required', true);
         Mail::fake();
     }

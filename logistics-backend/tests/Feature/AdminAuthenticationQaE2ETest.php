@@ -7,7 +7,6 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdminAuthenticationQaE2ETest extends TestCase
@@ -16,7 +15,7 @@ class AdminAuthenticationQaE2ETest extends TestCase
 
     public function test_admin_login_token_principal_and_permission_are_isolated_to_qa(): void
     {
-        $this->assertSame(3311, (int) DB::selectOne('SELECT @@port AS port')->port);
+        $this->assertApprovedMysqlTestConnection();
         $role = Role::create([
             'key' => 'qa-reader',
             'name' => 'QA Reader',
