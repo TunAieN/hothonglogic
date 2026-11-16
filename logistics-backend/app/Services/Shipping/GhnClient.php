@@ -2,6 +2,7 @@
 
 namespace App\Services\Shipping;
 
+use App\Support\BusinessWriteGuard;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -45,6 +46,8 @@ class GhnClient
 
     public function createOrder(array $payload): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $mode = strtolower(trim((string) config('services.ghn.mode', 'preview')));
         if ($mode !== 'production') {
             throw new HttpException(403, 'GHN production order creation is disabled in '.$mode.' mode.');

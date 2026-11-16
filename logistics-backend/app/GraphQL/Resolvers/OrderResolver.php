@@ -9,6 +9,7 @@ use App\Models\OrderTracking;
 use App\Models\OrderTrackingItem;
 use App\Services\Orders\OrderPricingService;
 use App\Services\Payments\PaymentVoucherService;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -78,6 +79,8 @@ class OrderResolver
 
     public function create($_, array $args)
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         if (! Auth::check()) {
             throw new \Exception('Unauthenticated. Please login to create an order.');
         }
@@ -114,6 +117,8 @@ class OrderResolver
 
     public function update($_, array $args)
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $order = Order::findOrFail($args['id']);
             $input = $args['input'];
@@ -193,12 +198,16 @@ class OrderResolver
 
     public function confirmDepositPayment($_, array $args): Order
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return $this->paymentVoucherService->confirmDepositPayment($args['order_id'], $args['input'] ?? [])
             ->load($this->orderRelations());
     }
 
     public function delete($_, array $args): Order
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $order = Order::query()
                 ->with($this->orderRelations())
@@ -221,6 +230,8 @@ class OrderResolver
 
     public function mockReceiveAtGuangzhouWarehouse($_, array $args): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $package = CnPackage::query()
                 ->with(['warehouse', 'order.items', 'order.customer', 'order.creator', 'orderTracking.trackingItems.orderItem'])
@@ -262,6 +273,8 @@ class OrderResolver
 
     public function createPackagesByShop($_, array $args): Order
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $order = Order::query()
                 ->with(['items', 'customer', 'creator', 'orderTrackings.trackingItems'])

@@ -5,6 +5,7 @@ namespace App\GraphQL\Resolvers;
 use App\Models\CnBatch;
 use App\Models\CnPackage;
 use App\Models\CnWarehouse;
+use App\Support\BusinessWriteGuard;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -31,6 +32,8 @@ class CnBatchResolver
 
     public function addPackages($_, array $args): CnBatch
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $input = $args['input'];
             $packageIds = collect($input['cn_package_ids'] ?? [])
@@ -109,6 +112,8 @@ class CnBatchResolver
 
     public function update($_, array $args): CnBatch
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $batch = CnBatch::query()->lockForUpdate()->findOrFail($args['id']);
 
@@ -179,6 +184,8 @@ class CnBatchResolver
 
     public function delete($_, array $args): CnBatch
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $batch = CnBatch::query()
                 ->with($this->relations())
@@ -197,6 +204,8 @@ class CnBatchResolver
 
     public function dispatch($_, array $args): CnBatch
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $batch = CnBatch::query()
                 ->with($this->relations())
@@ -345,6 +354,8 @@ class CnBatchResolver
 
     public function createVietnamInboundTask($_, array $args): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $batchIds = collect($args['input']['cn_batch_ids'] ?? [])
                 ->map(fn ($id) => (string) $id)

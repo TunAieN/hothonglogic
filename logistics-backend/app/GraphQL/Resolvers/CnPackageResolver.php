@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderTracking;
 use App\Models\OrderTrackingItem;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,8 @@ class CnPackageResolver
 
     public function create($_, array $args): CnPackage
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $input = $args['input'];
             $warehouse = $this->resolveWarehouse($input);
@@ -82,6 +85,8 @@ class CnPackageResolver
 
     public function update($_, array $args): CnPackage
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $package = CnPackage::query()->findOrFail($args['id']);
 
@@ -148,6 +153,8 @@ class CnPackageResolver
 
     public function confirmItems($_, array $args): CnPackage
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $package = CnPackage::query()
                 ->with(['order.items', 'orderTracking.packages.packageItems', 'packageItems'])
@@ -223,6 +230,8 @@ class CnPackageResolver
 
     public function delete($_, array $args): CnPackage
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($args) {
             $package = CnPackage::query()
                 ->with(['warehouse', 'order.customer', 'orderTracking'])

@@ -5,6 +5,7 @@ namespace App\Services\Shipping;
 use App\Models\DeliveryRequest;
 use App\Models\Shipment;
 use App\Models\ShipmentTrackingEvent;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -12,6 +13,8 @@ class ShipmentService
 {
     public function createPending(DeliveryRequest $request, array $input): Shipment
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         if (! $request->shipping_task_id || ! in_array($request->status, [DeliveryRequest::STATUS_PROCESSING, DeliveryRequest::STATUS_READY_TO_SHIP], true)) {
             throw new HttpException(422, 'Yêu cầu giao hàng chưa gắn với nhiệm vụ xuất hợp lệ.');
         }

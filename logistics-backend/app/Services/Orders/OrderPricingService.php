@@ -6,6 +6,7 @@ use App\Models\ExchangeRate;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\Auth\PermissionService;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,8 @@ class OrderPricingService
 
     public function createExchangeRate(array $input): ExchangeRate
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $this->ensurePermission('exchange_rates.update');
         $rate = $this->normalizeRate($input['rate'] ?? null);
         if ($rate <= 0) {
@@ -78,6 +81,8 @@ class OrderPricingService
 
     public function activateExchangeRate(int|string $id): ExchangeRate
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $this->ensurePermission('exchange_rates.update');
 
         return DB::transaction(function () use ($id) {
@@ -96,6 +101,8 @@ class OrderPricingService
 
     public function deactivateExchangeRate(int|string $id): ExchangeRate
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $this->ensurePermission('exchange_rates.update');
         $rate = ExchangeRate::query()->findOrFail($id);
         $rate->update(['is_active' => false, 'effective_to' => $rate->effective_to ?? now()]);
@@ -105,6 +112,8 @@ class OrderPricingService
 
     public function lockExchangeRateForOrder(Order $order): Order
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($order) {
             $lockedOrder = Order::query()->with('items')->lockForUpdate()->findOrFail($order->id);
             if ($lockedOrder->exchange_rate_locked_at) {
@@ -132,6 +141,8 @@ class OrderPricingService
 
     public function recalculateOrderItemAmounts(OrderItem $item, ?string $exchangeRate = null): OrderItem
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $this->assertOrderItemAmountIsValid($item);
 
         if ($exchangeRate === null) {
@@ -151,6 +162,8 @@ class OrderPricingService
 
     public function recalculateOrderTotals(Order $order, ?string $exchangeRate = null, bool $lock = false, bool $preserveLegacyFields = false): Order
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $items = $order->items()->get();
         $productTotalCny = $this->sumDecimalStrings($items->map(fn (OrderItem $item) => $this->multiplyCnyByQuantity((string) $item->price_cny, (int) $item->quantity))->all(), 2);
 

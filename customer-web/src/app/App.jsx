@@ -17,12 +17,16 @@ import GuideDetailPage from "../pages/GuideDetailPage.jsx";
 import FloatingSupport from "../components/layout/FloatingSupport.jsx";
 import LoginPage from "../pages/LoginPage.jsx";
 import RegisterPage from "../pages/RegisterPage.jsx";
+import CustomerPortalPage from "../pages/customer/CustomerPortalPage.jsx";
+import AuthRecoveryPage from "../pages/AuthRecoveryPage.jsx";
 
 export default function App() {
   const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
   let page;
 
-  if (pathname === "/dich-vu") {
+  if (pathname === "/tai-khoan" || pathname.startsWith("/tai-khoan/")) {
+    page = <CustomerPortalPage />;
+  } else if (pathname === "/dich-vu") {
     page = <ServicesPage />;
   } else if (pathname === "/bang-gia") {
     page = <PricingPage />;
@@ -36,6 +40,8 @@ export default function App() {
     page = <LoginPage />;
   } else if (pathname === "/dang-ky") {
     page = <RegisterPage />;
+  } else if (pathname === "/quen-mat-khau" || pathname === "/dat-lai-mat-khau") {
+    page = <AuthRecoveryPage reset={pathname === "/dat-lai-mat-khau"} />;
   } else {
     page = <><Header /><main><HeroSection /><BenefitsBar /><PlatformsSection /><ServicesSection /><SolutionsCarousel /><ProcessSection /><TrackingSection /><WhyChooseUs /><FAQSection /></main><Footer /></>;
   }

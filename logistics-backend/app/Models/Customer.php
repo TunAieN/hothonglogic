@@ -56,6 +56,11 @@ class Customer extends Model
         return $this->hasMany(CustomerBalanceLedger::class);
     }
 
+    public function account()
+    {
+        return $this->hasOne(CustomerAccount::class);
+    }
+
     public function scopeWithOrdersCount($query)
     {
         return $query->withCount('orders');

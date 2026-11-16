@@ -1,4 +1,5 @@
 import { fetchCustomers } from "../api/customers.js";
+import { logout } from "../api/authentication.js";
 import { clearAuthSession, getAuthSession } from "../auth/auth.js";
 import { MESSAGE_TYPES, STORAGE_KEYS } from "../shared/constants.js";
 import { loadExtensionSettings, saveExtensionSettings } from "../storage/settings.js";
@@ -73,10 +74,17 @@ function setupAuth() {
   });
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     if (!confirm("Bạn có chắc chắn muốn đăng xuất?")) return;
-    await clearAuthSession();
-    settings.token = null;
-    menu.style.display = "none";
-    await updateAuthUI();
+    try {
+      await logout({ endpoint: settings.apiEndpoint, token: settings.token });
+      await clearAuthSession();
+      settings.token = null;
+      menu.style.display = "none";
+      await updateAuthUI();
+      showStatus("Đã đăng xuất an toàn", "success");
+    } catch (error) {
+      console.error("Server logout failed:", error);
+      showStatus("Không thể xác nhận đăng xuất với máy chủ", "error");
+    }
   });
 }
 

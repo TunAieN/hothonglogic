@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Order;
 use App\Services\Orders\OrderPricingService;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -28,6 +29,10 @@ class BackfillOrderCurrency extends Command
         $allowPaymentVoucher = (bool) $this->option('allow-payment-voucher');
         $orderIds = array_values(array_unique(array_filter(array_map('intval', (array) $this->option('order-id')))));
         $rate = trim((string) $this->option('exchange-rate'));
+
+        if ($apply) {
+            BusinessWriteGuard::assertEnabled(__METHOD__);
+        }
 
         if (! $productCnyOnly && ($rate === '' || ! is_numeric($rate) || (float) $rate <= 0)) {
             $this->error('Please provide --exchange-rate with a value greater than 0, for example --exchange-rate=3600, or use --product-cny-only.');

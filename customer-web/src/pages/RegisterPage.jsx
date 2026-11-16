@@ -46,9 +46,19 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
-      await registerCustomer({ name, phone, email, password: form.password });
+      const result = await registerCustomer({ name, phone, email, password: form.password, password_confirmation: form.passwordConfirmation, accepted_terms: form.acceptedTerms });
+      const verificationRequired = result.email_verification_required !== false;
+      setFeedback(
+        verificationRequired && !result.verification_email_sent
+          ? "Đã tạo tài khoản nhưng chưa gửi được email xác minh. Vui lòng thử gửi lại sau."
+          : result.message,
+      );
+      setForm({ name: "", phone: "", email: "", password: "", passwordConfirmation: "", acceptedTerms: false });
     } catch (error) {
-      setFeedback(error instanceof CustomerAuthError ? error.message : "Không thể kết nối dịch vụ đăng ký. Vui lòng thử lại sau.");
+      if (error instanceof CustomerAuthError) {
+        setFeedback(error.message);
+        setErrors((current) => ({ ...current, ...Object.fromEntries(Object.entries(error.errors || {}).map(([key, messages]) => [key === "password_confirmation" ? "passwordConfirmation" : key, messages?.[0] || "Dữ liệu không hợp lệ."])) }));
+      } else setFeedback("Không thể kết nối dịch vụ đăng ký. Vui lòng thử lại sau.");
     } finally {
       setSubmitting(false);
     }

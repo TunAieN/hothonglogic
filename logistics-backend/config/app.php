@@ -61,6 +61,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'customer_web_url' => env('CUSTOMER_WEB_URL', env('APP_URL', 'http://localhost')),
+
     'asset_url' => env('ASSET_URL'),
 
     /*

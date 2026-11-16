@@ -4,6 +4,10 @@ use Illuminate\Support\Str;
 
 return [
 
+    'test_database_name' => env('TEST_DATABASE_NAME', 'logistics_system_test'),
+    'test_database_host' => env('TEST_DATABASE_HOST'),
+    'test_database_port' => env('TEST_DATABASE_PORT'),
+
     /*
     |--------------------------------------------------------------------------
     | Default Database Connection Name

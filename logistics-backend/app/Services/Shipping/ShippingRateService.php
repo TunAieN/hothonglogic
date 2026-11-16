@@ -4,6 +4,7 @@ namespace App\Services\Shipping;
 
 use App\Models\ShippingRate;
 use App\Models\ShippingRateDetail;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,8 @@ class ShippingRateService
 
     public function create(array $input): ShippingRate
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($input) {
             $details = $input['details'] ?? [];
             $rateData = $this->normalizeRateInput($input);
@@ -46,6 +49,8 @@ class ShippingRateService
 
     public function update(int|string $id, array $input): ShippingRate
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($id, $input) {
             $rate = ShippingRate::query()->findOrFail($id);
             $rateData = $this->normalizeRateInput($input, $rate);
@@ -67,6 +72,8 @@ class ShippingRateService
 
     public function deactivate(int|string $id): ShippingRate
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $rate = ShippingRate::query()->findOrFail($id);
         $rate->update(['status' => ShippingRate::STATUS_INACTIVE]);
 
@@ -75,6 +82,8 @@ class ShippingRateService
 
     public function createDetail(int|string $rateId, array $input): ShippingRateDetail
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $rate = ShippingRate::query()->with('details')->findOrFail($rateId);
         $details = $rate->details->map(fn ($row) => [
             'min_weight' => $this->detailMin($row),
@@ -92,6 +101,8 @@ class ShippingRateService
 
     public function updateDetail(int|string $id, array $input): ShippingRateDetail
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $detail = ShippingRateDetail::query()->findOrFail($id);
         $rate = ShippingRate::query()->with('details')->findOrFail($detail->rate_id);
         $details = $rate->details->filter(fn ($row) => (int) $row->id !== (int) $detail->id)->map(fn ($row) => [
@@ -111,6 +122,8 @@ class ShippingRateService
 
     public function deleteDetail(int|string $id): bool
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return (bool) ShippingRateDetail::query()->findOrFail($id)->delete();
     }
 

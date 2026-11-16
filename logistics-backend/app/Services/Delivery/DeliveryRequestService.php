@@ -7,6 +7,7 @@ use App\Models\DeliveryAddress;
 use App\Models\DeliveryRequest;
 use App\Models\PaymentVoucher;
 use App\Models\ShippingTask;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -14,6 +15,8 @@ class DeliveryRequestService
 {
     public function createForVoucher(PaymentVoucher $voucher, array $input): ?DeliveryRequest
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         if ($voucher->voucher_type === 'deposit') {
             return null;
         }
@@ -41,6 +44,8 @@ class DeliveryRequestService
 
     public function saveDeliveryAddressSnapshot(DeliveryRequest $request, array $input): DeliveryAddress
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $source = null;
         if (! empty($input['customer_address_id'])) {
             $source = CustomerAddress::query()
@@ -80,16 +85,22 @@ class DeliveryRequestService
 
     public function markVoucherPaid(PaymentVoucher $voucher): void
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $voucher->deliveryRequest()->update(['status' => DeliveryRequest::STATUS_READY_TO_SHIP]);
     }
 
     public function cancelForVoucher(PaymentVoucher $voucher): void
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $voucher->deliveryRequest()->update(['status' => DeliveryRequest::STATUS_CANCELLED]);
     }
 
     public function attachShippingTask(ShippingTask $task, array $voucherIds): int
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DeliveryRequest::query()
             ->whereIn('payment_voucher_id', array_values(array_unique(array_map('intval', $voucherIds))))
             ->where('status', DeliveryRequest::STATUS_READY_TO_SHIP)

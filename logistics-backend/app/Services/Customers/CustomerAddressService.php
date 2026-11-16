@@ -5,6 +5,7 @@ namespace App\Services\Customers;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
 use App\Services\Shipping\GhnService;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -25,6 +26,8 @@ class CustomerAddressService
 
     public function create(int $customerId, array $input): CustomerAddress
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($customerId, $input) {
             Customer::query()->lockForUpdate()->findOrFail($customerId);
             $values = $this->validatedValues($input);
@@ -38,6 +41,8 @@ class CustomerAddressService
 
     public function update(int $customerId, int $addressId, array $input): CustomerAddress
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($customerId, $addressId, $input) {
             Customer::query()->lockForUpdate()->findOrFail($customerId);
             $address = CustomerAddress::query()
@@ -63,6 +68,8 @@ class CustomerAddressService
 
     public function setDefault(int $customerId, int $addressId): CustomerAddress
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         return DB::transaction(function () use ($customerId, $addressId) {
             Customer::query()->lockForUpdate()->findOrFail($customerId);
             $address = CustomerAddress::query()
