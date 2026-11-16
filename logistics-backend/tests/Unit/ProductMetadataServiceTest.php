@@ -61,7 +61,9 @@ class ProductMetadataServiceTest extends TestCase
 
     public function test_timeout_returns_gateway_timeout_without_fabricated_product(): void
     {
-        Http::fake(['detail.tmall.com/*' => function () { throw new ConnectionException('timeout'); }]);
+        Http::fake(['detail.tmall.com/*' => function () {
+            throw new ConnectionException('timeout');
+        }]);
         $service = new ProductMetadataService(fn () => ['93.184.216.34']);
         $this->expectException(HttpException::class);
         $this->expectExceptionMessage('Nguồn hàng không phản hồi');

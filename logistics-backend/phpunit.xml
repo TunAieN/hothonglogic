@@ -41,6 +41,7 @@
         <env name="TEST_DATABASE_NAME" value="logistics_system_test" force="true"/>
         <env name="TEST_DATABASE_HOST" value="127.0.0.1" force="true"/>
         <env name="TEST_DATABASE_PORT" value="3311" force="true"/>
+        <env name="TEST_DATABASE_USERNAME" value="viettrung_qa_runner" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

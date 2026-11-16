@@ -1,8 +1,8 @@
 <?php
 
 use App\Http\Controllers\CustomerAuthController;
-use App\Http\Controllers\CustomerPurchaseController;
 use App\Http\Controllers\CustomerProductMetadataController;
+use App\Http\Controllers\CustomerPurchaseController;
 use Illuminate\Support\Facades\Route;
 
 /*

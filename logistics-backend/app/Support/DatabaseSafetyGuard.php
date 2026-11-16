@@ -14,6 +14,8 @@ final class DatabaseSafetyGuard
         string|int|null $port = null,
         ?string $expectedHost = null,
         string|int|null $expectedPort = null,
+        ?string $username = null,
+        ?string $expectedUsername = null,
     ): void {
         if ($connection === 'sqlite' && $database === ':memory:') {
             return;
@@ -31,9 +33,12 @@ final class DatabaseSafetyGuard
             || $host !== $expectedHost
             || $port !== '3311'
             || $expectedPort !== '3311'
-            || $port !== $expectedPort) {
+            || $port !== $expectedPort
+            || $username !== 'viettrung_qa_runner'
+            || $expectedUsername !== 'viettrung_qa_runner'
+            || $username !== $expectedUsername) {
             throw new LogicException(sprintf(
-                'Unsafe test database target [%s/%s:%s/%s]. Tests require SQLite :memory: or the approved 127.0.0.1:3311 *_test database.',
+                'Unsafe test database target [%s/%s:%s/%s]. Tests require SQLite :memory: or the approved viettrung_qa_runner on 127.0.0.1:3311 with the explicitly configured *_test database.',
                 $connection,
                 $host ?: '<empty>',
                 $port ?: '<empty>',
@@ -51,6 +56,8 @@ final class DatabaseSafetyGuard
         string|int|null $port = null,
         ?string $expectedHost = null,
         string|int|null $expectedPort = null,
+        ?string $username = null,
+        ?string $expectedUsername = null,
     ): void {
         if (! in_array($command, ['db:seed', 'db:wipe', 'migrate:fresh', 'migrate:refresh', 'migrate:reset'], true)) {
             return;
@@ -64,6 +71,8 @@ final class DatabaseSafetyGuard
             $port,
             $expectedHost,
             $expectedPort,
+            $username,
+            $expectedUsername,
         );
     }
 }

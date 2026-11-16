@@ -11,7 +11,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class CustomerPurchaseController extends Controller
 {
@@ -42,6 +41,7 @@ class CustomerPurchaseController extends Controller
             foreach ($data['items'] ?? [] as $item) {
                 $draft->items()->create($this->itemAttributes($item));
             }
+
             return $draft->fresh('items');
         });
 
@@ -57,10 +57,14 @@ class CustomerPurchaseController extends Controller
             $owned->update(collect($data)->only(['title', 'note', 'idempotency_key'])->all());
             if (array_key_exists('items', $data)) {
                 $owned->items()->delete();
-                foreach ($data['items'] as $item) $owned->items()->create($this->itemAttributes($item));
+                foreach ($data['items'] as $item) {
+                    $owned->items()->create($this->itemAttributes($item));
+                }
             }
+
             return $owned->fresh('items');
         });
+
         return response()->json(['draft' => $this->draftPayload($owned)]);
     }
 
@@ -68,6 +72,7 @@ class CustomerPurchaseController extends Controller
     {
         $this->ensureDraftSchema();
         $this->ownedDraft($request, $draft, 'draft')->delete();
+
         return response()->json(['message' => 'Đã xóa bản nháp.']);
     }
 
@@ -80,8 +85,10 @@ class CustomerPurchaseController extends Controller
                 'customer_id' => $this->customerId($request), 'kind' => 'cart', 'status' => 'draft',
             ], ['title' => 'Giỏ hàng']);
             $cart->items()->create($this->itemAttributes($item));
+
             return $cart->fresh('items');
         });
+
         return response()->json(['cart' => $this->draftPayload($cart)], 201);
     }
 
@@ -91,6 +98,7 @@ class CustomerPurchaseController extends Controller
         $owned = $this->ownedCartItem($request, $item);
         $data = $this->validatedItem($request, true);
         $owned->update($this->itemAttributes([...$owned->toArray(), ...$data]));
+
         return response()->json(['cart' => $this->draftPayload($owned->draft->fresh('items'))]);
     }
 
@@ -100,12 +108,14 @@ class CustomerPurchaseController extends Controller
         $owned = $this->ownedCartItem($request, $item);
         $cart = $owned->draft;
         $owned->delete();
+
         return response()->json(['cart' => $this->draftPayload($cart->fresh('items'))]);
     }
 
     public function submitDraft(Request $request, int $draft): JsonResponse
     {
         $this->ensureDraftSchema();
+
         return $this->submit($request, $draft, 'draft');
     }
 
@@ -113,6 +123,7 @@ class CustomerPurchaseController extends Controller
     {
         $this->ensureDraftSchema();
         $cart = CustomerPurchaseDraft::query()->where('customer_id', $this->customerId($request))->where('kind', 'cart')->where('status', 'draft')->latest('id')->firstOrFail();
+
         return $this->submit($request, $cart->id, 'cart');
     }
 
@@ -124,9 +135,13 @@ class CustomerPurchaseController extends Controller
         abort_if($cart->items->isEmpty(), 422, 'Giỏ hàng chưa có sản phẩm để lưu bản nháp.');
         $draft = DB::transaction(function () use ($cart, $data) {
             $draft = CustomerPurchaseDraft::create(['customer_id' => $cart->customer_id, 'kind' => 'draft', 'status' => 'draft', 'title' => $data['title'] ?? 'Bản nháp từ giỏ hàng', 'note' => $data['note'] ?? null, 'idempotency_key' => (string) Str::uuid()]);
-            foreach ($cart->items as $item) $draft->items()->create($this->itemAttributes($item->toArray()));
+            foreach ($cart->items as $item) {
+                $draft->items()->create($this->itemAttributes($item->toArray()));
+            }
+
             return $draft->fresh('items');
         });
+
         return response()->json(['draft' => $this->draftPayload($draft)], 201);
     }
 
@@ -141,22 +156,31 @@ class CustomerPurchaseController extends Controller
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $query->where(fn ($q) => $q->where('order_code', 'like', '%'.$search.'%')->orWhereHas('items', fn ($i) => $i->where('product_name', 'like', '%'.$search.'%')));
         }
-        if ($status = trim((string) ($filters['status'] ?? ''))) $query->where('status', $status);
-        if ($filters['created_from'] ?? null) $query->where('created_at', '>=', $filters['created_from'].' 00:00:00');
-        if ($filters['created_to'] ?? null) $query->where('created_at', '<=', $filters['created_to'].' 23:59:59');
+        if ($status = trim((string) ($filters['status'] ?? ''))) {
+            $query->where('status', $status);
+        }
+        if ($filters['created_from'] ?? null) {
+            $query->where('created_at', '>=', $filters['created_from'].' 00:00:00');
+        }
+        if ($filters['created_to'] ?? null) {
+            $query->where('created_at', '<=', $filters['created_to'].' 23:59:59');
+        }
         $orders = $query->paginate((int) ($filters['per_page'] ?? 20));
+
         return response()->json(['orders' => collect($orders->items())->map(fn ($order) => $this->orderPayload($order)), 'pagination' => ['current_page' => $orders->currentPage(), 'last_page' => $orders->lastPage(), 'total' => $orders->total()]]);
     }
 
     public function showOrder(Request $request, int $order): JsonResponse
     {
         $owned = $this->ordersQuery($request)->findOrFail($order);
+
         return response()->json(['order' => $this->orderPayload($owned, true)]);
     }
 
     public function orderHistory(Request $request, int $order): JsonResponse
     {
         $owned = $this->ordersQuery($request)->findOrFail($order);
+
         return response()->json(['order_id' => $owned->id, 'events' => $this->historyPayload($owned)]);
     }
 
@@ -164,7 +188,9 @@ class CustomerPurchaseController extends Controller
     {
         $order = DB::transaction(function () use ($request, $draftId, $kind) {
             $draft = CustomerPurchaseDraft::query()->with('items')->where('customer_id', $this->customerId($request))->where('kind', $kind)->lockForUpdate()->findOrFail($draftId);
-            if ($draft->submitted_order_id) return Order::with($this->orderRelations())->findOrFail($draft->submitted_order_id);
+            if ($draft->submitted_order_id) {
+                return Order::with($this->orderRelations())->findOrFail($draft->submitted_order_id);
+            }
             abort_unless($draft->status === 'draft', 409, 'Yêu cầu này không còn ở trạng thái bản nháp.');
             abort_if($draft->items->isEmpty(), 422, 'Hãy thêm ít nhất một sản phẩm trước khi gửi yêu cầu.');
             $order = Order::create([
@@ -183,8 +209,10 @@ class CustomerPurchaseController extends Controller
             }
             $this->pricing->recalculateOrderTotals($order->fresh('items'));
             $draft->update(['status' => 'submitted', 'submitted_order_id' => $order->id, 'submitted_at' => now()]);
+
             return $order->fresh()->load($this->orderRelations());
         }, 3);
+
         return response()->json(['order' => $this->orderPayload($order, true)], 201);
     }
 
@@ -205,6 +233,7 @@ class CustomerPurchaseController extends Controller
     private function validatedItem(Request $request, bool $partial = false): array
     {
         $required = $partial ? 'sometimes' : 'required';
+
         return $request->validate([
             'product_name' => [$required, 'string', 'max:255'], 'product_link' => ['nullable', 'url:http,https', 'max:4000'],
             'source' => ['nullable', 'string', 'max:30'], 'variant' => ['nullable', 'string', 'max:255'],
@@ -217,14 +246,19 @@ class CustomerPurchaseController extends Controller
 
     private function itemAttributes(array $item): array
     {
-        return collect($item)->only(['source','product_link','product_name','variant','price_cny','quantity','note','product_image','seller','shop_id','shop_name','size','color'])->all();
+        return collect($item)->only(['source', 'product_link', 'product_name', 'variant', 'price_cny', 'quantity', 'note', 'product_image', 'seller', 'shop_id', 'shop_name', 'size', 'color'])->all();
     }
 
     private function submittedItemNote(CustomerPurchaseDraftItem $item): ?string
     {
         $parts = [];
-        if (trim((string) $item->variant) !== '') $parts[] = 'Phân loại: '.trim((string) $item->variant);
-        if (trim((string) $item->note) !== '') $parts[] = trim((string) $item->note);
+        if (trim((string) $item->variant) !== '') {
+            $parts[] = 'Phân loại: '.trim((string) $item->variant);
+        }
+        if (trim((string) $item->note) !== '') {
+            $parts[] = trim((string) $item->note);
+        }
+
         return $parts === [] ? null : implode("\n", $parts);
     }
 
@@ -264,7 +298,10 @@ class CustomerPurchaseController extends Controller
 
     private function newOrderCode(): string
     {
-        do $code = 'ORD-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)); while (Order::where('order_code', $code)->exists());
+        do {
+            $code = 'ORD-'.now()->format('Ymd').'-'.Str::upper(Str::random(6));
+        } while (Order::where('order_code', $code)->exists());
+
         return $code;
     }
 
@@ -287,21 +324,31 @@ class CustomerPurchaseController extends Controller
                 'price_cny' => $item->price_cny, 'unit_price_vnd' => (int) $item->unit_price_vnd, 'quantity' => $item->quantity,
                 'subtotal_cny' => $item->subtotal_cny, 'subtotal_vnd' => (int) $item->subtotal_vnd, 'note' => $item->note, 'product_image' => $item->product_image,
                 'seller' => $item->seller, 'shop_id' => $item->shop_id, 'shop_name' => $item->shop_name, 'size' => $item->size, 'color' => $item->color])->values()];
-        if ($detailed) $payload += ['history' => $this->historyPayload($order), 'tracking_count' => $order->orderTrackings->count(), 'package_count' => $order->cnPackages->count(), 'invoice_count' => $order->invoices->count()];
+        if ($detailed) {
+            $payload += ['history' => $this->historyPayload($order), 'tracking_count' => $order->orderTrackings->count(), 'package_count' => $order->cnPackages->count(), 'invoice_count' => $order->invoices->count()];
+        }
+
         return $payload;
     }
 
     private function historyPayload(Order $order): array
     {
         $events = collect([['type' => 'created', 'status' => 'pending', 'occurred_at' => $order->created_at?->toISOString()]]);
-        if ($order->updated_at && !$order->updated_at->equalTo($order->created_at)) $events->push(['type' => 'order_updated', 'status' => $order->status, 'occurred_at' => $order->updated_at->toISOString()]);
+        if ($order->updated_at && ! $order->updated_at->equalTo($order->created_at)) {
+            $events->push(['type' => 'order_updated', 'status' => $order->status, 'occurred_at' => $order->updated_at->toISOString()]);
+        }
         foreach ($order->orderTrackings as $tracking) {
             $events->push(['type' => 'tracking', 'status' => $tracking->status, 'occurred_at' => ($tracking->dispatched_at ?? $tracking->updated_at)?->toISOString()]);
         }
         foreach ($order->cnPackages as $package) {
-            if ($package->received_at) $events->push(['type' => 'cn_warehouse_received', 'status' => $package->status, 'occurred_at' => $package->received_at->toISOString()]);
+            if ($package->received_at) {
+                $events->push(['type' => 'cn_warehouse_received', 'status' => $package->status, 'occurred_at' => $package->received_at->toISOString()]);
+            }
         }
-        foreach ($order->invoices as $invoice) $events->push(['type' => 'invoice', 'status' => $invoice->status, 'occurred_at' => $invoice->created_at?->toISOString()]);
+        foreach ($order->invoices as $invoice) {
+            $events->push(['type' => 'invoice', 'status' => $invoice->status, 'occurred_at' => $invoice->created_at?->toISOString()]);
+        }
+
         return $events->filter(fn ($event) => $event['occurred_at'])->sortBy('occurred_at')->values()->all();
     }
 }
