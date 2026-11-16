@@ -25,10 +25,14 @@ jobs:
       APP_DEBUG: "false"
       DB_CONNECTION: mysql
       DB_HOST: 127.0.0.1
-      DB_PORT: 3306
-      DB_DATABASE: hothonglogic_test
-      DB_USERNAME: root
-      DB_PASSWORD: root
+      DB_PORT: 3311
+      DB_DATABASE: logistics_system_test
+      DB_USERNAME: viettrung_qa_runner
+      DB_PASSWORD: ci-only-database-password
+      TEST_DATABASE_NAME: logistics_system_test
+      TEST_DATABASE_HOST: 127.0.0.1
+      TEST_DATABASE_PORT: 3311
+      TEST_DATABASE_USERNAME: viettrung_qa_runner
       CACHE_DRIVER: array
       MAIL_MAILER: array
       QUEUE_CONNECTION: sync
@@ -39,12 +43,14 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
-          MYSQL_DATABASE: hothonglogic_test
-          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: logistics_system_test
+          MYSQL_USER: viettrung_qa_runner
+          MYSQL_PASSWORD: ci-only-database-password
+          MYSQL_RANDOM_ROOT_PASSWORD: "yes"
         ports:
-          - 3306:3306
+          - 3311:3306
         options: >-
-          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=root"
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=viettrung_qa_runner --password=ci-only-database-password"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -57,12 +63,21 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
-          extensions: mbstring, pdo_mysql
+          extensions: mbstring, pdo_mysql, pdo_sqlite
           coverage: none
           tools: composer:v2
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress --optimize-autoloader
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+
+      - name: Verify Laravel package discovery
+        run: php artisan package:discover --ansi
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
 
       - name: Prepare database
         run: php artisan migrate --force
@@ -72,3 +87,6 @@ jobs:
 
       - name: Check code style
         run: ./vendor/bin/pint --test
+
+      - name: Check PHP syntax
+        run: find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l

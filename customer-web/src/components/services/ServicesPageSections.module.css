@@ -110,6 +110,13 @@
   border-radius: 18px;
 }
 
+.heroImage {
+  display: block;
+  border-radius: 18px;
+  object-fit: cover;
+  object-position: center 46%;
+}
+
 .floatingServices {
   position: absolute;
   right: -20px;

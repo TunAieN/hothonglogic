@@ -1,0 +1,44 @@
+name: Customer Web CI
+
+on:
+  push:
+    paths:
+      - "customer-web/**"
+      - ".github/workflows/customer-web-ci.yml"
+  pull_request:
+    paths:
+      - "customer-web/**"
+      - ".github/workflows/customer-web-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: customer-web
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: customer-web/package-lock.json
+
+      - name: Verify dependency lockfile and install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

@@ -5,6 +5,7 @@ import Footer from "../components/layout/Footer.jsx";
 import AuthLayout from "../components/auth/AuthLayout.jsx";
 import SocialAuthButtons from "../components/auth/SocialLogin.jsx";
 import { CustomerAuthError, loginCustomer } from "../api/customerAuth.js";
+import { customerPortalDemoRoutes, customerPortalRuntime } from "../config/customerPortal.js";
 import styles from "../components/auth/LoginPage.module.css";
 
 export default function LoginPage() {
@@ -19,6 +20,13 @@ export default function LoginPage() {
     event.preventDefault();
     if (submitting) return;
 
+    if (customerPortalRuntime.demoEnabled) {
+      setErrors({});
+      setFeedback("");
+      window.location.assign(customerPortalDemoRoutes.overview);
+      return;
+    }
+
     const normalizedEmail = email.trim();
     const nextErrors = {};
     if (!normalizedEmail) nextErrors.email = "Vui lòng nhập email đăng nhập.";
@@ -32,6 +40,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await loginCustomer({ email: normalizedEmail, password });
+      const requested = new URLSearchParams(window.location.search).get("redirect");
+      const destination = requested && requested.startsWith("/tai-khoan") && !requested.startsWith("//") ? requested : "/tai-khoan";
+      window.location.assign(destination);
     } catch (error) {
       setFeedback(error instanceof CustomerAuthError ? error.message : "Không thể kết nối dịch vụ đăng nhập. Vui lòng thử lại sau.");
     } finally {
@@ -39,5 +50,7 @@ export default function LoginPage() {
     }
   };
 
-  return <><Header/><AuthLayout><div className={styles.formSide}><div className={styles.formHeading}><h2>Đăng nhập</h2><p>Chào mừng bạn quay trở lại VietTrung Order!</p></div><form onSubmit={submit} noValidate aria-busy={submitting}><label htmlFor="login-email">Email</label><div className={`${styles.inputGroup} ${errors.email ? styles.inputError : ""}`}><Mail/><input id="login-email" type="email" value={email} onChange={(event) => { setEmail(event.target.value); setErrors((value) => ({ ...value, email: "" })); setFeedback(""); }} placeholder="Nhập email của bạn" autoComplete="email" aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "login-email-error" : undefined}/></div>{errors.email && <p className={styles.fieldError} id="login-email-error">{errors.email}</p>}<label htmlFor="login-password">Mật khẩu</label><div className={`${styles.inputGroup} ${errors.password ? styles.inputError : ""}`}><LockKeyhole/><input id="login-password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => { setPassword(event.target.value); setErrors((value) => ({ ...value, password: "" })); setFeedback(""); }} placeholder="Nhập mật khẩu" autoComplete="current-password" aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "login-password-error" : undefined}/><button type="button" aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff/> : <Eye/>}</button></div>{errors.password && <p className={styles.fieldError} id="login-password-error">{errors.password}</p>}<button className={styles.submit} type="submit" disabled={submitting}>{submitting ? <><span className={styles.spinner}/>Đang kiểm tra...</> : <>Đăng nhập <ArrowRight/></>}</button>{feedback && <p className={styles.feedback} role="alert">{feedback}</p>}</form><SocialAuthButtons/><p className={styles.registerPrompt}>Chưa có tài khoản? <a href="/dang-ky">Đăng ký ngay</a></p></div></AuthLayout><Footer/></>;
+  const demoMode = customerPortalRuntime.demoEnabled;
+
+  return <><Header/><AuthLayout><div className={styles.formSide}><div className={styles.formHeading}><h2>Đăng nhập</h2><p>Chào mừng bạn quay trở lại VietTrung Order!</p></div>{demoMode && <p className={styles.demoLoginNotice} role="status">Chế độ xem trước đang bật. Không cần nhập tài khoản và không gọi API xác thực.</p>}<form onSubmit={submit} noValidate aria-busy={submitting}><label htmlFor="login-email">Email</label><div className={`${styles.inputGroup} ${errors.email ? styles.inputError : ""}`}><Mail/><input id="login-email" type="email" value={email} onChange={(event) => { setEmail(event.target.value); setErrors((value) => ({ ...value, email: "" })); setFeedback(""); }} placeholder={demoMode ? "Không cần nhập trong chế độ Demo" : "Nhập email của bạn"} autoComplete="email" disabled={demoMode} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "login-email-error" : undefined}/></div>{errors.email && <p className={styles.fieldError} id="login-email-error">{errors.email}</p>}<label htmlFor="login-password">Mật khẩu</label><div className={`${styles.inputGroup} ${errors.password ? styles.inputError : ""}`}><LockKeyhole/><input id="login-password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => { setPassword(event.target.value); setErrors((value) => ({ ...value, password: "" })); setFeedback(""); }} placeholder={demoMode ? "Không cần nhập trong chế độ Demo" : "Nhập mật khẩu"} autoComplete="current-password" disabled={demoMode} aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "login-password-error" : undefined}/><button type="button" aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"} aria-pressed={showPassword} disabled={demoMode} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff/> : <Eye/>}</button></div>{errors.password && <p className={styles.fieldError} id="login-password-error">{errors.password}</p>}<button className={styles.submit} type="submit" disabled={submitting}>{submitting ? <><span className={styles.spinner}/>Đang kiểm tra...</> : <>{demoMode ? "Vào Dashboard Demo" : "Đăng nhập"} <ArrowRight/></>}</button>{feedback && <p className={styles.feedback} role="alert">{feedback}</p>}</form><SocialAuthButtons/><p className={styles.registerPrompt}>Chưa có tài khoản? <a href="/dang-ky">Đăng ký ngay</a></p></div></AuthLayout><Footer/></>;
 }

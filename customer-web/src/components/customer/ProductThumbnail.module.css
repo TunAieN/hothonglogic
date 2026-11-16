@@ -1,0 +1,5 @@
+.thumbnail{display:grid;flex:0 0 auto;place-items:center;overflow:hidden;aspect-ratio:1;border:1px solid var(--color-border);border-radius:12px;background:#f7f8fa}
+.thumbnail img{width:100%;height:100%;object-fit:contain;background:#f7f8fa}
+.small{width:42px}.medium{width:56px}.large{width:142px}
+.fallback{width:100%;height:100%;display:grid;place-items:center;color:#9aa2ac;background:#f7f8fa}.fallback svg{width:32%;height:32%}
+@media(max-width:767px){.large{width:min(132px,42vw)}}

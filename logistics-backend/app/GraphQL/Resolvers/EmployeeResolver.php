@@ -3,6 +3,7 @@
 namespace App\GraphQL\Resolvers;
 
 use App\Models\User;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -94,6 +95,8 @@ class EmployeeResolver
 
     public function create($_, array $args): User
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $validated = Validator::make($args, [
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:100', Rule::unique('users', 'email')],
@@ -123,6 +126,8 @@ class EmployeeResolver
 
     public function update($_, array $args): User
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $employee = $this->employeeQuery()->findOrFail($args['id']);
 
         $validated = Validator::make($args, [
@@ -163,6 +168,8 @@ class EmployeeResolver
 
     public function delete($_, array $args): User
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $employee = $this->employeeQuery()
             ->with('role')
             ->findOrFail($args['id']);

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\CustomerAccount;
 use App\Models\User;
 
 return [
@@ -47,6 +48,10 @@ return [
             'driver' => 'sanctum',
             'provider' => 'users',
         ],
+        'customer' => [
+            'driver' => 'session',
+            'provider' => 'customer_accounts',
+        ],
     ],
 
     /*
@@ -70,6 +75,10 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => User::class,
+        ],
+        'customer_accounts' => [
+            'driver' => 'eloquent',
+            'model' => CustomerAccount::class,
         ],
 
         // 'users' => [

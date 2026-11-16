@@ -17,6 +17,7 @@ use App\Models\VnWarehouse;
 use App\Services\Auth\PermissionService;
 use App\Services\Delivery\DeliveryRequestService;
 use App\Services\Payments\SettledPaymentSummaryService;
+use App\Support\BusinessWriteGuard;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -123,6 +124,8 @@ class ShippingTaskService
 
     public function create(array $input): ShippingTask
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $this->ensurePermission('shipping_tasks.create');
         $validated = Validator::make($input, [
             'order_ids' => ['required', 'array', 'min:1'],
@@ -331,6 +334,8 @@ class ShippingTaskService
 
     public function updateStatus(int|string $id, string $status): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $status = strtolower(trim($status));
         $this->ensurePermission($status === ShippingTask::STATUS_COMPLETED
             ? 'shipping_tasks.complete'

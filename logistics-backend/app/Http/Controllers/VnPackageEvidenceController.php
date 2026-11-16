@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\VnPackage;
 use App\Models\VnPackageEvidence;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,8 @@ class VnPackageEvidenceController extends Controller
 
     public function store(Request $request, VnPackage $vnPackage): JsonResponse
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $validated = $request->validate([
             'evidence_type' => ['nullable', Rule::in(VnPackageEvidence::TYPES)],
             'images' => ['required', 'array', 'min:1', 'max:'.self::MAX_IMAGES],
@@ -71,6 +74,8 @@ class VnPackageEvidenceController extends Controller
 
     public function destroy(Request $request, VnPackage $vnPackage, VnPackageEvidence $evidence): JsonResponse
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         if ((int) $evidence->vn_package_id !== (int) $vnPackage->id) {
             throw new HttpException(404, 'Không tìm thấy ảnh minh chứng của mã vận đơn.');
         }

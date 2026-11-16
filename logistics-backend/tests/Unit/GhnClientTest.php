@@ -63,7 +63,10 @@ class GhnClientTest extends TestCase
 
     public function test_preview_mode_prohibits_order_creation_without_an_http_request(): void
     {
-        config(['services.ghn.mode' => 'preview']);
+        config([
+            'business.writes_enabled' => true,
+            'services.ghn.mode' => 'preview',
+        ]);
         Http::fake();
 
         try {

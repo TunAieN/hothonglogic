@@ -6,6 +6,7 @@ use App\Models\CnBatch;
 use App\Models\CnPackage;
 use App\Models\VnBatchReceipt;
 use App\Models\VnPackage;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,8 @@ class VietnamWarehouseReceiptService
 
     public function startReceipt(array $input): VnBatchReceipt
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $batchCode = $this->normalizeBatchCode($input['batch_code'] ?? null);
 
         if ($batchCode === null) {
@@ -135,6 +138,8 @@ class VietnamWarehouseReceiptService
 
     public function scanPackage(array $input): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $receipt = VnBatchReceipt::query()
             ->with($this->receiptRelations())
             ->lockForUpdate()
@@ -231,6 +236,8 @@ class VietnamWarehouseReceiptService
 
     public function inspectPackageItems(string|int $packageId, array $items): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $package = VnPackage::query()
             ->with(['receipt.batch', 'cnPackage.packageItems.orderItem', 'inspectedItems'])
             ->lockForUpdate()
@@ -319,6 +326,8 @@ class VietnamWarehouseReceiptService
 
     public function resolveReceiptDiscrepancy(string|int $receiptId, mixed $resolutionNote): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $receipt = VnBatchReceipt::query()->lockForUpdate()->find($receiptId);
 
         if (! $receipt) {
@@ -351,6 +360,8 @@ class VietnamWarehouseReceiptService
 
     public function resolvePackageDiscrepancy(string|int $packageId, mixed $resolutionNote): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $package = VnPackage::query()->with('receipt.batch')->lockForUpdate()->find($packageId);
 
         if (! $package || ! $package->receipt) {
@@ -391,6 +402,8 @@ class VietnamWarehouseReceiptService
 
     public function updatePackageError(array $input): VnPackage
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $package = VnPackage::query()->with(['receipt', 'receipt.warehouse', 'receipt.batch', 'cnPackage.order.customer', 'cnPackage.packageItems.orderItem', 'inspectedItems', 'evidences.creator', 'handler', 'resolver'])
             ->lockForUpdate()->find($input['package_id'] ?? null);
 
@@ -422,6 +435,8 @@ class VietnamWarehouseReceiptService
 
     public function removePackage(string|int $id): array
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $package = VnPackage::query()
             ->with(['receipt.batch', 'evidences'])
             ->lockForUpdate()
@@ -459,6 +474,8 @@ class VietnamWarehouseReceiptService
 
     public function moveReceiptToErrorQueue(string|int $receiptId): VnBatchReceipt
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $receipt = VnBatchReceipt::query()
             ->with($this->receiptRelations())
             ->lockForUpdate()
@@ -510,6 +527,8 @@ class VietnamWarehouseReceiptService
 
     public function confirmReceipt(string|int $receiptId): VnBatchReceipt
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $receipt = VnBatchReceipt::query()
             ->with($this->receiptRelations())
             ->lockForUpdate()

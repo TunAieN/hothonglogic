@@ -282,6 +282,9 @@ type Mutation {
     password: String!
   ): AuthPayload
     @field(resolver: "App\\GraphQL\\Resolvers\\LoginResolver@login")
+  logout: Boolean!
+    @guard(with: ["api"])
+    @field(resolver: "App\\GraphQL\\Resolvers\\LogoutResolver@logout")
 
   # =========================
   # Customers

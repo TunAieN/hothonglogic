@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 !**/.env.example
+!**/.env.testing.example
+
+# Local isolated database recovery environments
+/.mysql-recovery-*/
+/.mysql-production-candidate-*/
 
 # JavaScript build and dependencies
 node_modules/

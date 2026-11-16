@@ -19,7 +19,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'business.writes'])->group(function () {
     Route::post('/vietnam-warehouse/packages/{vnPackage}/evidences', [VnPackageEvidenceController::class, 'store']);
     Route::delete('/vietnam-warehouse/packages/{vnPackage}/evidences/{evidence}', [VnPackageEvidenceController::class, 'destroy']);
 });

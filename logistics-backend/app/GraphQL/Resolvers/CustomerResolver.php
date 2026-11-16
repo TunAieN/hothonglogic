@@ -4,6 +4,7 @@ namespace App\GraphQL\Resolvers;
 
 use App\Models\Customer;
 use App\Services\Customers\CustomerInputService;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Builder;
 
 class CustomerResolver
@@ -84,6 +85,8 @@ class CustomerResolver
 
     public function create($_, array $args): Customer
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $validated = $this->customerInputService->validateForCreate($args);
         $code = $this->customerInputService->generateCustomerCode();
         $this->customerInputService->validateGeneratedCode($code);
@@ -99,6 +102,8 @@ class CustomerResolver
 
     public function update($_, array $args): Customer
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $customer = Customer::query()->findOrFail($args['id']);
         $validated = $this->customerInputService->validateForUpdate($args, $customer);
 
@@ -109,6 +114,8 @@ class CustomerResolver
 
     public function delete($_, array $args): Customer
     {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+
         $customer = Customer::query()
             ->withCount('orders')
             ->findOrFail($args['id']);

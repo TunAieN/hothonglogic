@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use App\GraphQL\Directives\BusinessWriteDirective;
 use GraphQL\Error\DebugFlag;
 use GraphQL\Validator\Rules\DisableIntrospection;
 use GraphQL\Validator\Rules\QueryComplexity;
@@ -279,6 +280,7 @@ return [
     */
 
     'field_middleware' => [
+        BusinessWriteDirective::class,
         TrimDirective::class,
         ConvertEmptyStringsToNullDirective::class,
         SanitizeDirective::class,

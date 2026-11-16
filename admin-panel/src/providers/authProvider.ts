@@ -70,6 +70,12 @@ const ME_QUERY = `
   }
 `;
 
+const LOGOUT_MUTATION = `
+  mutation Logout {
+    logout
+  }
+`;
+
 let authUserMemoryCache: LoginUser | null = null;
 let authUserRequest: Promise<LoginUser | null> | null = null;
 
@@ -212,12 +218,39 @@ export const authProvider: AuthProvider = {
     }
   },
   logout: async () => {
-    clearStoredAuth();
+    const token = getGraphqlAuthToken();
 
-    return {
-      success: true,
-      redirectTo: "/login",
-    };
+    if (!token) {
+      clearStoredAuth();
+
+      return {
+        success: true,
+        redirectTo: "/login",
+      };
+    }
+
+    try {
+      const logoutClient = new GraphQLClient(GRAPHQL_API_URL, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const response = await logoutClient.request<{ logout: boolean }>(LOGOUT_MUTATION);
+
+      if (response.logout !== true) {
+        throw new Error("Máy chủ chưa xác nhận thu hồi phiên đăng nhập.");
+      }
+
+      clearStoredAuth();
+
+      return {
+        success: true,
+        redirectTo: "/login",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error("Không thể đăng xuất an toàn."),
+      };
+    }
   },
   check: async () => {
     const token = getGraphqlAuthToken();

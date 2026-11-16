@@ -20,6 +20,7 @@ use App\Services\Orders\OrderPricingService;
 use App\Services\Shipping\GhnInsuranceValueService;
 use App\Services\Shipping\GhnService;
 use App\Services\Shipping\ShippingRateService;
+use App\Support\BusinessWriteGuard;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -89,6 +90,8 @@ class PaymentVoucherService
         mixed $depositPercent = null,
         bool $enforcePermission = true,
     ): PaymentVoucher {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         if ($enforcePermission) {
             $this->ensurePermission('payment_vouchers.create');
         }
@@ -204,6 +207,8 @@ class PaymentVoucherService
 
     public function confirmDepositPayment(int|string $orderId, array $input): Order
     {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         $this->ensurePermission('payments.confirm');
 
         return DB::transaction(function () use ($orderId, $input) {
@@ -323,6 +328,8 @@ class PaymentVoucherService
 
     public function create(array $input): PaymentVoucher
     {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         $this->ensurePermission('payment_vouchers.create');
 
         return DB::transaction(function () use ($input) {
@@ -516,6 +523,8 @@ class PaymentVoucherService
 
     public function confirmTransaction(int|string $voucherId, array $input): PaymentVoucher
     {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         $this->ensurePermission('payments.confirm');
 
         $depositVoucher = PaymentVoucher::query()->find($voucherId);
@@ -608,6 +617,8 @@ class PaymentVoucherService
 
     public function cancel(int|string $voucherId, string $reason): PaymentVoucher
     {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         $this->ensurePermission('payment_vouchers.update');
 
         return DB::transaction(function () use ($voucherId, $reason) {
@@ -652,6 +663,8 @@ class PaymentVoucherService
         ?PaymentTransaction $paymentTransaction = null,
         bool $enforcePermission = true,
     ): Invoice {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         if ($enforcePermission) {
             $this->ensurePermission('invoices.create');
         }
@@ -756,6 +769,8 @@ class PaymentVoucherService
 
     public function recalculateVoucherStatus(PaymentVoucher $voucher): void
     {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
         $paid = (float) $voucher->transactions()->where('status', PaymentTransaction::STATUS_CONFIRMED)->sum('amount');
         $remaining = max(0, (float) $voucher->total_amount - $paid);
         $voucher->update([

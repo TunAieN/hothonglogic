@@ -13,6 +13,12 @@ const LOGIN_MUTATION = `
   }
 `;
 
+const LOGOUT_MUTATION = `
+  mutation Logout {
+    logout
+  }
+`;
+
 export async function login({ endpoint, email, password }) {
   const data = await graphqlRequest({
     endpoint,
@@ -25,4 +31,14 @@ export async function login({ endpoint, email, password }) {
   }
 
   return data.login;
+}
+
+export async function logout({ endpoint, token }) {
+  const data = await graphqlRequest({ endpoint, query: LOGOUT_MUTATION, token });
+
+  if (data?.logout !== true) {
+    throw new Error("Máy chủ chưa xác nhận thu hồi phiên đăng nhập.");
+  }
+
+  return true;
 }

@@ -54,7 +54,7 @@ export default function ServicesHero() {
         </div>
 
         <div className={styles.heroVisual}>
-          <ImageSlot label="Ảnh logistics trang Dịch vụ" alt="Minh họa dịch vụ logistics VietTrung Order" eager />
+          <ImageSlot src="/images/services/services-warehouse-hero.jpg" className={styles.heroImage} label="Ảnh logistics trang Dịch vụ" alt="Nhân viên xử lý kiện hàng trong kho logistics" eager />
           <div className={styles.floatingServices} aria-label="Nhóm dịch vụ nổi bật">
             <span><ShoppingBag /> Đặt hàng đa nguồn</span>
             <span><Boxes /> Kho Trung Quốc</span>
