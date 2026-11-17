@@ -227,6 +227,7 @@ class CustomerPurchaseController extends Controller
             'items.*.note' => ['nullable', 'string', 'max:2000'], 'items.*.product_image' => ['nullable', 'url:http,https', 'max:4000'],
             'items.*.seller' => ['nullable', 'string', 'max:255'], 'items.*.shop_id' => ['nullable', 'string', 'max:100'],
             'items.*.shop_name' => ['nullable', 'string', 'max:255'], 'items.*.size' => ['nullable', 'string', 'max:255'], 'items.*.color' => ['nullable', 'string', 'max:255'],
+            'items.*.selected_sku_id' => ['nullable', 'string', 'max:255'],
         ]);
     }
 
@@ -241,12 +242,19 @@ class CustomerPurchaseController extends Controller
             'note' => ['nullable', 'string', 'max:2000'], 'product_image' => ['nullable', 'url:http,https', 'max:4000'],
             'seller' => ['nullable', 'string', 'max:255'], 'shop_id' => ['nullable', 'string', 'max:100'], 'shop_name' => ['nullable', 'string', 'max:255'],
             'size' => ['nullable', 'string', 'max:255'], 'color' => ['nullable', 'string', 'max:255'],
+            'selected_sku_id' => ['nullable', 'string', 'max:255'],
         ]);
     }
 
     private function itemAttributes(array $item): array
     {
-        return collect($item)->only(['source', 'product_link', 'product_name', 'variant', 'price_cny', 'quantity', 'note', 'product_image', 'seller', 'shop_id', 'shop_name', 'size', 'color'])->all();
+        $attributes = collect($item)->only(['source', 'product_link', 'product_name', 'variant', 'price_cny', 'quantity', 'note', 'product_image', 'seller', 'shop_id', 'shop_name', 'size', 'color'])->all();
+        $skuId = trim((string) ($item['selected_sku_id'] ?? ''));
+        if ($skuId !== '' && ! str_contains((string) ($attributes['note'] ?? ''), 'SKU nguồn: '.$skuId)) {
+            $attributes['note'] = implode("\n", array_filter([$attributes['note'] ?? null, 'SKU nguồn: '.$skuId]));
+        }
+
+        return $attributes;
     }
 
     private function submittedItemNote(CustomerPurchaseDraftItem $item): ?string

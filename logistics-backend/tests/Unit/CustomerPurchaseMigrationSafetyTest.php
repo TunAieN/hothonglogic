@@ -16,4 +16,14 @@ class CustomerPurchaseMigrationSafetyTest extends TestCase
         $this->assertStringContainsString("constrained('customers')->restrictOnDelete()", $source);
         $this->assertStringContainsString("constrained('orders')->nullOnDelete()", $source);
     }
+
+    public function test_product_lookup_queue_migration_is_additive_and_customer_scoped(): void
+    {
+        $source = file_get_contents(database_path('migrations/2026_11_17_000001_create_product_lookup_requests.php'));
+        $this->assertStringContainsString("Schema::create('product_lookup_requests'", $source);
+        $this->assertStringContainsString("constrained('customers')->restrictOnDelete()", $source);
+        $this->assertStringContainsString("constrained('users')->nullOnDelete()", $source);
+        $this->assertStringNotContainsString('Schema::table(', $source);
+        $this->assertDoesNotMatchRegularExpression('/DB::(?:delete|update|insert|statement)|truncate\s*\(/i', $source);
+    }
 }

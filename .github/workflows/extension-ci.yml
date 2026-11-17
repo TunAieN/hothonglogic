@@ -4,14 +4,16 @@ on:
   push:
     paths:
       - "extension-src/**"
-      - "scripts/validate-extension.mjs"
-      - "docs/setup/extension.md"
+      - "customer-extension-src/**"
+      - "scripts/*extension*.mjs"
+      - "docs/setup/*extension*.md"
       - ".github/workflows/extension-ci.yml"
   pull_request:
     paths:
       - "extension-src/**"
-      - "scripts/validate-extension.mjs"
-      - "docs/setup/extension.md"
+      - "customer-extension-src/**"
+      - "scripts/*extension*.mjs"
+      - "docs/setup/*extension*.md"
       - ".github/workflows/extension-ci.yml"
 
 permissions:
@@ -36,6 +38,17 @@ jobs:
           find extension-src -name '*.js' -print0 | while IFS= read -r -d '' file; do
             node --check "$file"
           done
+          find customer-extension-src -name '*.js' -print0 | while IFS= read -r -d '' file; do
+            node --check "$file"
+          done
+
+      - name: Test shared product contract
+        run: node --test extension-src/shared/product-contract.test.mjs
 
       - name: Validate manifest references and icons
         run: node scripts/validate-extension.mjs
+
+      - name: Build and validate Customer Extension
+        run: |
+          CUSTOMER_EXTENSION_OUTPUT=/tmp/viettrung-customer-extension node scripts/build-customer-extension.mjs
+          node scripts/validate-customer-extension.mjs /tmp/viettrung-customer-extension

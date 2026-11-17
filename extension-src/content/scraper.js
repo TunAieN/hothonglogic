@@ -90,10 +90,83 @@ function extractSellerInfo() {
         sellerUrl: ''
     };
 }
+
+function firstText(selectors) {
+    for (const selector of selectors) {
+        try {
+            const value = normalizeText(document.querySelector(selector)?.textContent);
+            if (value) return value;
+        } catch {}
+    }
+    return '';
+}
+
+function metaContent(...names) {
+    for (const name of names) {
+        const value = document.querySelector(`meta[property="${name}"], meta[name="${name}"]`)?.content;
+        if (value) return value.trim();
+    }
+    return '';
+}
+
+function enrichFromStructuredData(productData) {
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+        try {
+            const parsed = JSON.parse(script.textContent);
+            const nodes = Array.isArray(parsed) ? parsed : [parsed, ...(parsed?.['@graph'] || [])];
+            const product = nodes.find((node) => node?.['@type'] === 'Product');
+            if (!product) continue;
+            productData.title ||= normalizeText(product.name);
+            const structuredImages = Array.isArray(product.image) ? product.image : [product.image];
+            productData.images.push(...structuredImages.filter(Boolean));
+            productData.img ||= structuredImages.find(Boolean);
+            const offers = Array.isArray(product.offers) ? product.offers[0] : product.offers;
+            productData.price ||= offers?.price || offers?.lowPrice;
+            productData.min_price_cny ||= offers?.lowPrice;
+            productData.max_price_cny ||= offers?.highPrice;
+            for (const variant of product.hasVariant || []) {
+                const variantOffer = Array.isArray(variant?.offers) ? variant.offers[0] : variant?.offers;
+                productData.skus.push({
+                    sku_id: variant.sku || variant.productID || '',
+                    label: normalizeText(variant.name),
+                    color: normalizeText(variant.color) || null,
+                    size: normalizeText(variant.size) || null,
+                    price_cny: variantOffer?.price ?? null,
+                    image: Array.isArray(variant.image) ? variant.image[0] : variant.image,
+                    availability: typeof variantOffer?.availability === 'string' ? !/OutOfStock|SoldOut/i.test(variantOffer.availability) : null
+                });
+            }
+        } catch {}
+    }
+}
+
+function waitForStableProduct(timeoutMs = 8000) {
+    return new Promise((resolve) => {
+        const started = Date.now();
+        let stableTimer;
+        const ready = () => Boolean(document.querySelector('h1, [class*="mainTitle"], [class*="ItemTitle"], meta[property="og:title"]'));
+        const finish = () => {
+            clearTimeout(stableTimer);
+            clearTimeout(timeoutTimer);
+            observer.disconnect();
+            resolve();
+        };
+        const schedule = () => {
+            clearTimeout(stableTimer);
+            if (ready()) stableTimer = setTimeout(finish, Math.max(900, 1800 - (Date.now() - started)));
+            if (Date.now() - started >= timeoutMs) finish();
+        };
+        const observer = new MutationObserver(schedule);
+        const timeoutTimer = setTimeout(finish, timeoutMs);
+        observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+        schedule();
+    });
+}
 // Function to extract product information
 function extractProductInfo() {
     const productData = {
         url: window.location.href,
+        selected_sku_id: new URL(window.location.href).searchParams.get('skuId'),
         timestamp: new Date().toISOString()
     };
 
@@ -132,6 +205,10 @@ function extractProductInfo() {
         }
     }
 
+    productData.title ||= metaContent('og:title', 'twitter:title') || firstText([
+        'h1', '[class*="title"] h1', '[class*="titleText"]', '[class*="Title"]'
+    ]);
+
     // Extract price - Try XPath first (more reliable for Taobao), then CSS selectors
     const priceXPaths = [
         '//*[@id="tbpcDetail_SkuPanelBody"]/div[2]/div[1]/div/div[1]/div[1]/div/span[3]', // Khi có cả 2 giá: giá hiện tại ở div[1]
@@ -162,6 +239,10 @@ function extractProductInfo() {
             }
         }
     }
+
+    productData.price ||= metaContent('product:price:amount', 'og:price:amount') || firstText([
+        '[class*="price"] [class*="value"]', '[class*="Price"]', '.price', '[data-price]'
+    ]).replace(/[^0-9.~-]/g, '');
 
     // Extract Original Price (Giá gốc)
     // Priority 1: User provided XPath and Selectors
@@ -252,6 +333,8 @@ function extractProductInfo() {
         }
     }
 
+    productData.img ||= metaContent('og:image', 'twitter:image');
+
     // Extract all product images
     const imageGallerySelectors = [
         '#J_UlThumb img',
@@ -273,6 +356,11 @@ function extractProductInfo() {
         }
     }
 
+    document.querySelectorAll('[class*="gallery"] img, [class*="thumb"] img, [class*="Image"] img').forEach((image) => {
+        const src = image.currentSrc || image.src || image.getAttribute('data-src');
+        if (src) productData.images.push(src);
+    });
+
     // Extract seller information
     const sellerInfo = extractSellerInfo();
     if (sellerInfo.seller) {
@@ -283,14 +371,35 @@ function extractProductInfo() {
     }
 
     // Extract SKU information
-    const skuElements = document.querySelectorAll('[class*="SkuItem"], .tb-sku li');
+    const skuElements = document.querySelectorAll('[data-sku-id], [data-sku_id]');
     productData.skus = [];
     skuElements.forEach(sku => {
-        const skuText = sku.textContent.trim();
+        const skuText = normalizeText(sku.textContent || sku.getAttribute('title'));
         if (skuText) {
-            productData.skus.push(skuText);
+            productData.skus.push({
+                sku_id: sku.dataset.skuId || sku.getAttribute('data-sku_id') || '',
+                label: skuText,
+                image: sku.querySelector('img')?.src || sku.style?.backgroundImage?.match(/url\(["']?(.*?)["']?\)/)?.[1] || null,
+                availability: !sku.matches('[disabled], [class*="disabled"], [class*="soldOut"]')
+            });
         }
     });
+
+    productData.minimum_quantity = firstText(['[class*="minOrder"]', '[class*="beginAmount"]', '[class*="minimum"]']);
+    enrichFromStructuredData(productData);
+    const sharedSkuExtractor = globalThis.VietTrungSkuExtractor;
+    if (sharedSkuExtractor) {
+        const skuData = sharedSkuExtractor.extract(document, window.location.href);
+        productData.attribute_groups = skuData.attribute_groups;
+        productData.quantity_price_tiers = skuData.quantity_price_tiers;
+        productData.has_variants = skuData.has_variants;
+        productData.sku_extraction_complete = skuData.sku_extraction_complete;
+        if (skuData.skus.length) productData.skus = skuData.skus;
+        else if (productData.skus.length) {
+            productData.has_variants = true;
+            productData.sku_extraction_complete = false;
+        }
+    }
 
     // Extract shipping fee if available
     const shippingSelectors = [
@@ -310,8 +419,14 @@ function extractProductInfo() {
         }
     }
 
-    return productData;
+    const contract = globalThis.VietTrungProductContract;
+    return contract ? contract.normalizeProduct(productData, { url: window.location.href, source: 'extension_dom' }) : productData;
 }
 
-globalThis.HothonglogicProductScraper = Object.freeze({ extractProductInfo });
+async function extractProductInfoAsync() {
+    await waitForStableProduct();
+    return extractProductInfo();
+}
+
+globalThis.HothonglogicProductScraper = Object.freeze({ extractProductInfo, extractProductInfoAsync });
 })();

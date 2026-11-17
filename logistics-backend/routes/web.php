@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CustomerAuthController;
 use App\Http\Controllers\CustomerProductMetadataController;
+use App\Http\Controllers\CustomerProductLookupController;
 use App\Http\Controllers\CustomerPurchaseController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,8 @@ Route::get('/', function () {
 
 Route::prefix('customer-portal')->middleware(['auth:customer', 'customer.session.current', 'throttle:120,1'])->group(function () {
     Route::get('product-metadata', CustomerProductMetadataController::class)->middleware('throttle:20,1');
+    Route::get('product-lookups', [CustomerProductLookupController::class, 'index']);
+    Route::get('product-lookups/{lookup}', [CustomerProductLookupController::class, 'show'])->whereNumber('lookup');
     Route::get('workspace', [CustomerPurchaseController::class, 'workspace']);
     Route::get('orders', [CustomerPurchaseController::class, 'orders']);
     Route::get('orders/{order}', [CustomerPurchaseController::class, 'showOrder'])->whereNumber('order');
@@ -37,6 +40,7 @@ Route::prefix('customer-portal')->middleware(['auth:customer', 'customer.session
         Route::delete('cart/items/{item}', [CustomerPurchaseController::class, 'destroyCartItem'])->whereNumber('item');
         Route::post('cart/submit', [CustomerPurchaseController::class, 'submitCart']);
         Route::post('cart/save-draft', [CustomerPurchaseController::class, 'saveCartAsDraft']);
+        Route::post('product-lookups', [CustomerProductLookupController::class, 'store'])->middleware('throttle:10,1');
     });
 });
 

@@ -27,7 +27,7 @@ class CustomerPurchasePortalTest extends TestCase
         $account = $this->account();
         $this->actingAs($account, 'customer')->withSession(['customer_password_fingerprint' => hash('sha256', $account->password)]);
 
-        $item = ['product_name' => 'Sản phẩm kiểm thử QA', 'product_link' => 'https://item.taobao.com/item.htm?id=123', 'source' => 'Taobao', 'variant' => 'Đỏ / L', 'price_cny' => 12.5, 'quantity' => 2, 'color' => 'Đỏ', 'size' => 'L'];
+        $item = ['product_name' => 'Sản phẩm kiểm thử QA', 'product_link' => 'https://item.taobao.com/item.htm?id=123', 'source' => 'Taobao', 'variant' => 'Đỏ / L', 'selected_sku_id' => 'sku-red-l', 'price_cny' => 12.5, 'quantity' => 2, 'color' => 'Đỏ', 'size' => 'L'];
         $this->postJson('/customer-portal/cart/items', $item)->assertCreated()->assertJsonPath('cart.items.0.quantity', 2)->assertJsonPath('cart.items.0.variant', 'Đỏ / L');
         $workspace = $this->getJson('/customer-portal/workspace')->assertOk();
         $cartId = $workspace->json('cart.id');
@@ -39,7 +39,7 @@ class CustomerPurchasePortalTest extends TestCase
 
         $orderId = $response->json('order.id');
         $this->assertDatabaseHas('orders', ['id' => $orderId, 'customer_id' => $account->customer_id, 'created_by' => null]);
-        $this->assertDatabaseHas('order_items', ['order_id' => $orderId, 'color' => 'Đỏ', 'size' => 'L', 'note' => 'Phân loại: Đỏ / L']);
+        $this->assertDatabaseHas('order_items', ['order_id' => $orderId, 'color' => 'Đỏ', 'size' => 'L', 'note' => "Phân loại: Đỏ / L\nSKU nguồn: sku-red-l"]);
         $this->assertDatabaseHas('customer_purchase_drafts', ['id' => $cartId, 'submitted_order_id' => $orderId, 'status' => 'submitted']);
         $this->getJson('/customer-portal/orders/'.$orderId)->assertOk()->assertJsonPath('order.items.0.product_name', 'Sản phẩm kiểm thử QA');
     }
@@ -109,6 +109,21 @@ class CustomerPurchasePortalTest extends TestCase
         $this->actingAs($account, 'customer')->withSession(['customer_password_fingerprint' => hash('sha256', $account->password)]);
         $this->getJson('/customer-portal/product-metadata?url='.urlencode('https://item.taobao.com/item.htm?id=123'))
             ->assertOk()->assertJsonPath('product.title', 'Sản phẩm QA')->assertJsonPath('product.source', 'Taobao');
+    }
+
+    public function test_product_lookup_request_is_idempotent_and_isolated_by_customer(): void
+    {
+        $owner = $this->account('lookup-owner');
+        $other = $this->account('lookup-other');
+        $this->actingAs($owner, 'customer')->withSession(['customer_password_fingerprint' => hash('sha256', $owner->password)]);
+        $payload = ['url' => 'https://detail.1688.com/offer/123.html'];
+        $first = $this->postJson('/customer-portal/product-lookups', $payload)->assertCreated()->assertJsonPath('request.platform', '1688')->json('request');
+        $this->postJson('/customer-portal/product-lookups', $payload)->assertOk()->assertJsonPath('request.id', $first['id']);
+
+        auth('customer')->logout();
+        $this->actingAs($other, 'customer')->withSession(['customer_password_fingerprint' => hash('sha256', $other->password)]);
+        $this->getJson('/customer-portal/product-lookups/'.$first['id'])->assertNotFound();
+        $this->assertSame(0, count($this->getJson('/customer-portal/product-lookups')->assertOk()->json('requests')));
     }
 
     private function account(string $suffix = 'customer'): CustomerAccount

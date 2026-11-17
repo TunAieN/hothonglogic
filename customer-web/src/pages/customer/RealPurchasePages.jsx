@@ -1,25 +1,34 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Search } from "lucide-react";
 import {
   addPurchaseCartItem, createPurchaseDraft, deletePurchaseCartItem, deletePurchaseDraft,
+  createProductLookupRequest, getProductLookupRequest,
   getCustomerOrder, getCustomerOrders, getPurchaseWorkspace, submitPurchaseCart,
   submitPurchaseDraft, updatePurchaseCartItem, updatePurchaseDraft, savePurchaseCartAsDraft,
 } from "../../api/customerPortal.js";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "../../components/customer/PortalComponents.jsx";
 import ProductThumbnail from "../../components/customer/ProductThumbnail.jsx";
 import ProductPreviewPanel from "../../components/customer/ProductPreviewPanel.jsx";
+import ProductVariantSelector from "../../components/customer/ProductVariantSelector.jsx";
 import { formatDateTime, formatVnd } from "../../utils/customerFormatters.js";
 import { detectProductSource, getProductMetadata, validateProductUrl } from "../../services/productMetadata.js";
+import { extractProductWithExtension, mapExtensionProduct } from "../../services/customerExtension.js";
+import { priceForQuantity, semanticValue, variantLabel } from "../../services/skuSelection.js";
 import styles from "../../components/customer/CustomerPortal.module.css";
 import feature from "../../components/customer/CustomerPortalFeatures.module.css";
 
-const blank = { source: "Taobao", product_link: "", product_name: "", variant: "", color: "", size: "", quantity: 1, price_cny: "", note: "", product_image: "", images: [], skus: [], metadataStatus: "idle", metadataSource: "manual" };
+const blank = { source: "Taobao", product_link: "", product_name: "", variant: "", color: "", size: "", quantity: 1, price_cny: "", note: "", product_image: "", seller: "", shop_name: "", images: [], skus: [], attribute_groups: [], selectedAttributes: {}, selected_sku_id: null, has_variants: false, sku_extraction_complete: true, quantity_price_tiers: [], metadataStatus: "idle", metadataSource: "manual" };
 const errorText = (error) => error?.message || "Không thể thực hiện yêu cầu.";
-const itemPayload = (item) => ({
-  ...item, quantity: Number(item.quantity),
+const missingFieldLabel = (field) => ({ skus: "phân loại/SKU", price_cny: "giá", images: "ảnh", title: "tên sản phẩm" })[field] || field;
+const itemPayload = (item) => {
+  const skuNote = item.selected_sku_id ? `SKU nguồn: ${item.selected_sku_id}` : "";
+  const note = skuNote && !String(item.note || "").includes(skuNote) ? [item.note, skuNote].filter(Boolean).join("\n") : item.note;
+  return ({
+  ...item, note: note || null, quantity: Number(item.quantity),
   price_cny: item.price_cny === "" || item.price_cny == null ? null : Number(item.price_cny),
   product_link: item.product_link || null, product_image: item.product_image || null,
-});
+  });
+};
 
 export function RealCreateOrderPage({ routes }) {
   const draftId = new URLSearchParams(window.location.search).get("draft");
@@ -31,6 +40,9 @@ export function RealCreateOrderPage({ routes }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [metadataMessage, setMetadataMessage] = useState("");
+  const [lookupRequest, setLookupRequest] = useState(null);
+  const dirtyFields = useRef(new Set());
+  const extraction = useRef({ sequence: 0, controller: null });
 
   useEffect(() => {
     if (!draftId) return;
@@ -40,39 +52,145 @@ export function RealCreateOrderPage({ routes }) {
     }).catch((reason) => setError(errorText(reason)));
   }, [draftId]);
 
-  const update = (key) => (event) => setForm((value) => ({ ...value, [key]: event.target.value }));
-  const loadMetadata = async () => {
-    const validation = validateProductUrl(form.product_link);
-    if (!validation.valid) { setMetadataMessage(validation.message); setForm((value) => ({ ...value, metadataStatus: "error" })); return; }
-    setMetadataMessage(""); setForm((value) => ({ ...value, metadataStatus: "loading", source: validation.source }));
-    const result = await getProductMetadata(validation.sourceUrl);
-    setMetadataMessage(result.message || "");
-    setForm((value) => ({
+  useEffect(() => () => extraction.current.controller?.abort(), []);
+  const update = (key, event) => {
+    dirtyFields.current.add(key);
+    setForm((value) => ({ ...value, [key]: event.target.value }));
+  };
+  const applyMetadata = useCallback((result, validation, source) => {
+    setForm((value) => {
+      const groups = result.attribute_groups || [];
+      const skus = result.skus || [];
+      const autoSku = skus.find((sku) => sku.sku_id === result.selected_sku_id) || (result.sku_extraction_complete && skus.length === 1 ? skus[0] : null);
+      const autoSelection = autoSku ? Object.fromEntries((autoSku.attributes || []).map((attribute) => [attribute.group_id, attribute.value_id]).filter((entry) => entry[0] && entry[1])) : {};
+      const autoVariant = autoSku ? variantLabel(groups, autoSelection) || autoSku.label : "";
+      return ({
       ...value,
-      metadataStatus: result.status || "error", metadataSource: "remote",
+      metadataStatus: result.status || "error", metadataSource: source,
       product_link: result.normalized_url || validation.sourceUrl,
       source: result.source || detectProductSource(validation.sourceUrl),
-      product_name: result.title || value.product_name,
-      product_image: result.image || value.product_image,
-      images: result.images || [], skus: result.skus || [],
-      price_cny: result.price_cny ?? value.price_cny,
+      product_name: dirtyFields.current.has("product_name") ? value.product_name : (result.title || value.product_name),
+      product_image: dirtyFields.current.has("product_image") ? value.product_image : (result.image || value.product_image),
+      seller: dirtyFields.current.has("seller") ? value.seller : (result.seller_name || value.seller),
+      shop_name: dirtyFields.current.has("shop_name") ? value.shop_name : (result.seller_name || value.shop_name),
+      images: result.images || [], skus, attribute_groups: groups,
+      has_variants: result.has_variants === true, sku_extraction_complete: result.sku_extraction_complete === true,
+      quantity_price_tiers: result.quantity_price_tiers || [],
+      selectedAttributes: autoSku ? autoSelection : {}, selected_sku_id: autoSku?.sku_id || null,
+      variant: dirtyFields.current.has("variant") ? value.variant : (autoVariant || value.variant),
+      color: dirtyFields.current.has("color") ? value.color : (autoSku?.color || semanticValue(groups, autoSelection, "color") || value.color),
+      size: dirtyFields.current.has("size") ? value.size : (autoSku?.size || semanticValue(groups, autoSelection, "size") || value.size),
+      price_cny: dirtyFields.current.has("price_cny") ? value.price_cny : (priceForQuantity({ sku: autoSku, productTiers: result.quantity_price_tiers, quantity: value.quantity, fallbackPrice: result.price_cny }) ?? value.price_cny),
+    });
+    });
+  }, []);
+  useEffect(() => {
+    if (!lookupRequest || lookupRequest.status === "completed") return undefined;
+    const timer = setInterval(async () => {
+      try {
+        const { request } = await getProductLookupRequest(lookupRequest.id);
+        setLookupRequest(request);
+        if (request.status === "completed" && request.product_data) {
+          const validation = validateProductUrl(request.source_url);
+          if (validation.valid) applyMetadata(mapExtensionProduct(request.product_data), validation, "staff");
+          setMetadataMessage(request.staff_note || "Nhân viên đã trả kết quả tra cứu sản phẩm.");
+          setMessage(`Yêu cầu #${request.id} đã hoàn tất. Hãy kiểm tra phân loại trước khi thêm giỏ.`);
+        }
+      } catch { /* keep the form usable; the next poll may recover */ }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [applyMetadata, lookupRequest]);
+  const loadMetadata = useCallback(async (requestedUrl, backendOnly = false) => {
+    const sourceUrl = typeof requestedUrl === "string" ? requestedUrl : form.product_link;
+    const validation = validateProductUrl(sourceUrl);
+    if (!validation.valid) { setMetadataMessage(validation.message); setForm((value) => ({ ...value, metadataStatus: "error" })); return; }
+    const sequence = ++extraction.current.sequence;
+    extraction.current.controller?.abort();
+    const controller = new AbortController();
+    extraction.current.controller = controller;
+    setMetadataMessage(backendOnly ? "Đang thử phương án dự phòng..." : "Đang kiểm tra VietTrung Extension...");
+    setForm((value) => ({ ...value, metadataStatus: "loading", source: validation.source }));
+    if (!backendOnly) {
+      try {
+        const extensionResult = await extractProductWithExtension(validation.sourceUrl, { signal: controller.signal, onStatus: (status) => {
+          if (sequence === extraction.current.sequence) setMetadataMessage(status === "loading" ? "Extension đang đọc trang sản phẩm..." : "Extension đã nhận yêu cầu...");
+        } });
+        if (sequence !== extraction.current.sequence) return;
+        if (extensionResult.product) {
+          const mapped = mapExtensionProduct(extensionResult.product);
+          applyMetadata(mapped, validation, "extension");
+          setMetadataMessage(mapped.status === "partial" ? `Đã lấy một phần thông tin. Còn thiếu: ${(mapped.missing_fields || []).map(missingFieldLabel).join(", ") || "một số thuộc tính"}.` : "Đã lấy thông tin tự động bằng VietTrung Extension.");
+          if (extensionResult.status !== "needs_user_action") return;
+        }
+        if (extensionResult.status === "needs_user_action") {
+          setForm((value) => ({ ...value, metadataStatus: extensionResult.product ? "partial" : "unavailable" }));
+          setMetadataMessage("Trang yêu cầu đăng nhập hoặc xác minh. Hãy mở tab sản phẩm do Extension tạo, hoàn tất xác minh rồi thử lại.");
+          return;
+        }
+      } catch (reason) {
+        if (reason?.name === "AbortError" || sequence !== extraction.current.sequence) return;
+      }
+    }
+    if (sequence !== extraction.current.sequence) return;
+    setMetadataMessage("Không có Extension hoặc Extension không phản hồi. Đang thử lấy metadata công khai...");
+    const result = await getProductMetadata(validation.sourceUrl);
+    if (sequence !== extraction.current.sequence) return;
+    setMetadataMessage(result.message || (result.status === "error" ? "Bạn vẫn có thể nhập thủ công hoặc nhờ nhân viên hỗ trợ." : "Đã chuyển sang phương án dự phòng."));
+    applyMetadata(result, validation, "remote");
+  }, [applyMetadata, form.product_link]);
+
+  useEffect(() => {
+    const validation = validateProductUrl(form.product_link);
+    if (!validation.valid) return;
+    const timer = setTimeout(() => void loadMetadata(validation.sourceUrl), 550);
+    return () => clearTimeout(timer);
+  }, [form.product_link, loadMetadata]);
+  const selectVariant = (selection, sku) => {
+    setForm((value) => ({
+      ...value,
+      selectedAttributes: selection,
+      selected_sku_id: sku?.sku_id || null,
+      variant: variantLabel(value.attribute_groups, selection) || sku?.label || value.variant,
+      color: sku?.color || semanticValue(value.attribute_groups, selection, "color") || "",
+      size: sku?.size || semanticValue(value.attribute_groups, selection, "size") || "",
+      price_cny: priceForQuantity({ sku, productTiers: value.quantity_price_tiers, quantity: value.quantity, fallbackPrice: sku ? value.price_cny : null }) ?? value.price_cny,
+      product_image: sku?.image || value.attribute_groups.flatMap((group) => group.values || []).find((option) => Object.values(selection).includes(option.value_id) && option.image)?.image || value.product_image,
     }));
   };
-  const selectSku = (event) => {
-    const sku = form.skus[Number(event.target.value)];
-    if (!sku) return;
-    setForm((value) => ({ ...value, variant: sku.label || value.variant, color: sku.color || value.color, size: sku.size || value.size, price_cny: sku.price_cny ?? value.price_cny, product_image: sku.image || value.product_image }));
+  const updateQuantity = (event) => {
+    const quantity = event.target.value;
+    dirtyFields.current.add("quantity");
+    setForm((value) => {
+      const sku = value.skus.find((entry) => entry.sku_id === value.selected_sku_id) || null;
+      const price = priceForQuantity({ sku, productTiers: value.quantity_price_tiers, quantity, fallbackPrice: value.price_cny });
+      return { ...value, quantity, price_cny: price ?? value.price_cny };
+    });
   };
-  const validate = () => form.product_name.trim() && Number(form.quantity) > 0;
+  const requestStaffLookup = async () => {
+    const validation = validateProductUrl(form.product_link);
+    if (!validation.valid) { setError(validation.message); return; }
+    setBusy(true); setError("");
+    try {
+      const result = await createProductLookupRequest(validation.sourceUrl);
+      setLookupRequest(result.request);
+      setMessage(`Đã gửi yêu cầu #${result.request.id} cho nhân viên. Dữ liệu sẽ chỉ hiển thị trong tài khoản của bạn.`);
+    } catch (reason) { setError(errorText(reason)); }
+    finally { setBusy(false); }
+  };
+  const validationError = () => {
+    if (!form.product_name.trim() || Number(form.quantity) <= 0) return "Vui lòng nhập tên sản phẩm và số lượng hợp lệ.";
+    if (form.has_variants && form.sku_extraction_complete && form.attribute_groups.length && !form.selected_sku_id) return "Vui lòng chọn đầy đủ phân loại hợp lệ trước khi thêm sản phẩm.";
+    return "";
+  };
   const addLocal = () => {
-    if (!validate()) { setError("Vui lòng nhập tên sản phẩm và số lượng hợp lệ."); return; }
+    const reason = validationError(); if (reason) { setError(reason); return; }
     setItems((value) => [...value, { ...itemPayload(form), id: `local-${crypto.randomUUID()}` }]);
-    setForm(blank); setError("");
+    dirtyFields.current.clear(); setForm(blank); setError("");
   };
   const addCart = async () => {
-    if (!validate()) { setError("Vui lòng nhập tên sản phẩm và số lượng hợp lệ."); return; }
+    const reason = validationError(); if (reason) { setError(reason); return; }
     setBusy(true); setError("");
-    try { await addPurchaseCartItem(itemPayload(form)); setForm(blank); setMessage("Đã lưu sản phẩm vào giỏ hàng."); }
+    try { await addPurchaseCartItem(itemPayload(form)); dirtyFields.current.clear(); setForm(blank); setMessage("Đã lưu sản phẩm vào giỏ hàng."); }
     catch (reason) { setError(errorText(reason)); } finally { setBusy(false); }
   };
   const persist = async () => {
@@ -97,18 +215,18 @@ export function RealCreateOrderPage({ routes }) {
     <div className={feature.split}>
       <section className={feature.contentCard}><header className={feature.cardHeader}><h2>Thông tin sản phẩm</h2><p>Nhập link hoặc mô tả sản phẩm cần mua hộ.</p></header>
         <div className={feature.formGrid}>
-          <label className={feature.field}><span>Nguồn hàng</span><select value={form.source} onChange={update("source")}><option>Taobao</option><option>1688</option><option>Tmall</option><option>Nguồn khác</option></select></label>
-          <label className={feature.field}><span>Tên sản phẩm *</span><input value={form.product_name} onChange={update("product_name")} /></label>
+          <label className={feature.field}><span>Nguồn hàng</span><select value={form.source} onChange={(event) => update("source", event)}><option>Taobao</option><option>1688</option><option>Tmall</option><option>Nguồn khác</option></select></label>
+          <label className={feature.field}><span>Tên sản phẩm *</span><input value={form.product_name} onChange={(event) => update("product_name", event)} /></label>
           <label className={`${feature.field} ${feature.fullField}`}><span>Link sản phẩm</span><div className={feature.linkInput}><Search aria-hidden="true" /><input type="url" value={form.product_link} onChange={(event) => setForm((value) => ({ ...value, product_link: event.target.value, metadataStatus: "idle" }))} placeholder="https://item.taobao.com/..." /></div></label>
-          <div className={`${feature.actions} ${feature.fullField}`}><button className={feature.secondary} type="button" disabled={form.metadataStatus === "loading"} onClick={loadMetadata}><Search aria-hidden="true" />{form.metadataStatus === "loading" ? "Đang lấy thông tin..." : "Lấy thông tin sản phẩm"}</button></div>
+          <div className={`${feature.actions} ${feature.fullField}`}><button className={feature.secondary} type="button" disabled={form.metadataStatus === "loading"} onClick={() => loadMetadata(form.product_link)}><Search aria-hidden="true" />{form.metadataStatus === "loading" ? "Đang lấy thông tin..." : form.metadataStatus === "idle" ? "Lấy thông tin sản phẩm" : "Thử lấy lại"}</button>{["error", "unavailable"].includes(form.metadataStatus) && <button className={feature.secondary} type="button" disabled={busy || Boolean(lookupRequest)} onClick={requestStaffLookup}>{lookupRequest ? `Đã gửi yêu cầu #${lookupRequest.id}` : "Nhờ nhân viên lấy thông tin"}</button>}{form.metadataStatus === "error" && <span className={feature.muted}>Bạn vẫn có thể nhập thủ công bên dưới.</span>}</div>
           <div className={feature.fullField}><ProductPreviewPanel product={{ ...form, name: form.product_name, sourceUrl: form.product_link, imageUrl: form.product_image, priceCny: form.price_cny }} status={form.metadataStatus} message={metadataMessage} selectedImage={form.product_image} onSelectImage={(image) => setForm((value) => ({ ...value, product_image: image }))} onRetry={form.metadataStatus === "error" ? loadMetadata : null} /></div>
-          {form.skus.length > 0 && <label className={`${feature.field} ${feature.fullField}`}><span>Phân loại từ nguồn hàng</span><select defaultValue="" onChange={selectSku}><option value="" disabled>Chọn phân loại</option>{form.skus.map((sku, index) => <option value={index} key={`${sku.label}-${index}`}>{sku.label}{sku.price_cny != null ? ` — ${sku.price_cny} CNY` : ""}</option>)}</select></label>}
-          <label className={feature.field}><span>Phân loại</span><input value={form.variant} onChange={update("variant")} /></label>
-          <label className={feature.field}><span>Màu sắc</span><input value={form.color} onChange={update("color")} /></label>
-          <label className={feature.field}><span>Kích thước</span><input value={form.size} onChange={update("size")} /></label>
-          <label className={feature.field}><span>Số lượng *</span><input type="number" min="1" value={form.quantity} onChange={update("quantity")} /></label>
-          <label className={feature.field}><span>Giá tham khảo (CNY)</span><input type="number" min="0" step="0.01" value={form.price_cny} onChange={update("price_cny")} /></label>
-          <label className={`${feature.field} ${feature.fullField}`}><span>Ghi chú sản phẩm</span><textarea value={form.note} onChange={update("note")} /></label>
+          <ProductVariantSelector groups={form.attribute_groups} skus={form.skus} selection={form.selectedAttributes} extractionComplete={form.sku_extraction_complete} onChange={selectVariant} />
+          <label className={feature.field}><span>Phân loại</span><input value={form.variant} onChange={(event) => update("variant", event)} /></label>
+          <label className={feature.field}><span>Màu sắc</span><input value={form.color} onChange={(event) => update("color", event)} /></label>
+          <label className={feature.field}><span>Kích thước</span><input value={form.size} onChange={(event) => update("size", event)} /></label>
+          <label className={feature.field}><span>Số lượng *</span><input type="number" min="1" value={form.quantity} onChange={updateQuantity} /></label>
+          <label className={feature.field}><span>Giá tham khảo (CNY)</span><input type="number" min="0" step="0.01" value={form.price_cny} onChange={(event) => update("price_cny", event)} /></label>
+          <label className={`${feature.field} ${feature.fullField}`}><span>Ghi chú sản phẩm</span><textarea value={form.note} onChange={(event) => update("note", event)} /></label>
         </div><div className={feature.actions}><button className={feature.primary} disabled={busy} onClick={addLocal}>Thêm vào yêu cầu</button><button className={feature.secondary} disabled={busy} onClick={addCart}>Thêm vào giỏ</button></div>
       </section>
       <aside className={feature.summaryPanel}><header className={feature.cardHeader}><h2>Tóm tắt yêu cầu</h2><p>{items.length} mặt hàng · tổng SL {items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)}</p></header>

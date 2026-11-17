@@ -15,11 +15,31 @@
 scalar DateTime @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
 scalar Date @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\Date")
 
+type ProductLookupRequest {
+  id: ID!
+  customer_id: ID!
+  customer_code: String
+  customer_name: String
+  platform: String!
+  source_url: String!
+  status: String!
+  claimed_by: ID
+  staff_name: String
+  product_data_json: String
+  staff_note: String
+  created_at: DateTime!
+  updated_at: DateTime!
+}
+
 # =========================
 # Root Query
 # =========================
 
 type Query {
+  productLookupRequests(status: String): [ProductLookupRequest!]!
+    @guard(with: ["api"])
+    @permission(requires: "orders.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\ProductLookupRequestResolver@list")
   # =========================
   # Auth / Users / Roles
   # =========================
@@ -285,6 +305,14 @@ type Mutation {
   logout: Boolean!
     @guard(with: ["api"])
     @field(resolver: "App\\GraphQL\\Resolvers\\LogoutResolver@logout")
+  claimProductLookupRequest(id: ID!): ProductLookupRequest!
+    @guard(with: ["api"])
+    @permission(requires: "orders.update")
+    @field(resolver: "App\\GraphQL\\Resolvers\\ProductLookupRequestResolver@claim")
+  completeProductLookupRequest(id: ID!, product_data_json: String!, staff_note: String): ProductLookupRequest!
+    @guard(with: ["api"])
+    @permission(requires: "orders.update")
+    @field(resolver: "App\\GraphQL\\Resolvers\\ProductLookupRequestResolver@complete")
 
   # =========================
   # Customers

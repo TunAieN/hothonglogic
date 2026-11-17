@@ -47,3 +47,6 @@ export const submitPurchaseCart = () => request("cart/submit", json("POST"));
 export const savePurchaseCartAsDraft = (input = {}) => request("cart/save-draft", json("POST", input));
 export const getCustomerOrders = (params = {}) => request(`orders?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null))}`);
 export const getCustomerOrder = (id) => request(`orders/${encodeURIComponent(id)}`);
+export const getProductLookupRequests = () => request("product-lookups");
+export const getProductLookupRequest = (id) => request(`product-lookups/${encodeURIComponent(id)}`);
+export const createProductLookupRequest = (url) => request("product-lookups", json("POST", { url }));

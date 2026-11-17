@@ -21,9 +21,12 @@
     {
       "matches": [
         "*://*.tmall.com/*",
-        "*://*.taobao.com/*"
+        "*://*.taobao.com/*",
+        "*://*.1688.com/*"
       ],
       "js": [
+        "shared/sku-extractor.js",
+        "shared/product-contract.js",
         "content/scraper.js",
         "content/content.js"
       ],
@@ -40,12 +43,16 @@
   "host_permissions": [
     "*://*.tmall.com/*",
     "*://*.taobao.com/*",
+    "*://*.1688.com/*",
     "https://translate.googleapis.com/*",
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:5173/*",
     "http://127.0.0.1:5173/*"
   ],
+  "externally_connectable": {
+    "matches": ["http://localhost/*", "http://127.0.0.1/*"]
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

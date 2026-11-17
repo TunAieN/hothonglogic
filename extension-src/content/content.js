@@ -8,16 +8,19 @@
 
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'extractProduct') {
-            sendResponse({ success: true, data: scraper.extractProductInfo() });
+            scraper.extractProductInfoAsync()
+                .then((data) => sendResponse({ success: true, data }))
+                .catch((error) => sendResponse({ success: false, error: error.message }));
+            return true;
         }
+        return false;
     });
 
     chrome.storage.local.get(['autoExtract'], (result) => {
         if (result.autoExtract !== false) {
-            const productData = scraper.extractProductInfo();
-            if (productData.title) {
-                chrome.storage.local.set({ currentProduct: productData });
-            }
+            void scraper.extractProductInfoAsync().then((productData) => {
+                if (productData.title) chrome.storage.local.set({ currentProduct: productData });
+            });
         }
     });
 })();

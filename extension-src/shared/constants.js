@@ -18,4 +18,4 @@ export const STORAGE_KEYS = Object.freeze({
   CURRENT_PRODUCT: "currentProduct",
 });
 
-export const SUPPORTED_PRODUCT_HOSTS = Object.freeze(["tmall.com", "taobao.com"]);
+export const SUPPORTED_PRODUCT_HOSTS = Object.freeze(["tmall.com", "taobao.com", "1688.com"]);

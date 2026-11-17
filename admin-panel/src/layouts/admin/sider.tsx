@@ -12,6 +12,7 @@ import {
   DollarCircleOutlined,
   DownOutlined,
   FileTextOutlined,
+  FileSearchOutlined,
   ExportOutlined,
   HomeOutlined,
   InboxOutlined,
@@ -99,6 +100,7 @@ const menuSections: SidebarGroupConfig[] = [
     items: [
       { key: "/customers", icon: <UsergroupAddOutlined />, label: "Khách hàng", permission: "customers.read" },
       { key: "/orders", icon: <CreditCardOutlined />, label: "Đơn hàng", permission: "orders.read" },
+      { key: "/product-lookups", icon: <FileSearchOutlined />, label: "Tra cứu sản phẩm", permission: "orders.read" },
       { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển", permission: "cn_batches.read" },
       { key: "/china-warehouse", icon: <BankOutlined />, label: "Kho hàng Trung Quốc", permission: "cn_packages.read" },
       { key: "/vietnam-warehouse", icon: <ApartmentOutlined />, label: "Kho hàng Việt Nam", permission: "vn_warehouse.read" },

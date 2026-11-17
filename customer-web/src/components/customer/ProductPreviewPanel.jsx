@@ -16,6 +16,10 @@ export default function ProductPreviewPanel({ product, status, message, selected
   </div>;
 
   const images = product.images?.length ? product.images : product.imageUrl ? [product.imageUrl] : [];
+  const selectedAttributes = (product.attribute_groups || []).map((group) => {
+    const option = group.values?.find((value) => value.value_id === product.selectedAttributes?.[group.group_id]);
+    return option ? `${group.name}: ${option.label}` : null;
+  }).filter(Boolean);
   return <div className={feature.productPreview}>
     <div className={feature.previewGallery}>
       <ProductThumbnail src={selectedImage || product.imageUrl} alt={product.name || "Ảnh sản phẩm minh họa"} size="large" eager />
@@ -26,7 +30,7 @@ export default function ProductPreviewPanel({ product, status, message, selected
       <h3>{product.name || "Chưa có tên sản phẩm"}</h3>
       {status === "partial" && message && <p>{message}</p>}
       <p className={feature.sourceUrl} title={product.sourceUrl}>{product.sourceUrl || "Sản phẩm mẫu không có link nguồn thực tế"}</p>
-      <dl><div><dt>Nguồn hàng</dt><dd>{product.source || product.platform || "Chưa xác định"}</dd></div><div><dt>Giá tham khảo</dt><dd>{product.priceCny !== "" && product.priceCny != null ? `${Number(product.priceCny).toLocaleString("vi-VN")} CNY` : "Chưa có"}</dd></div><div><dt>Phân loại</dt><dd>{product.variant || "Chưa có"}</dd></div><div><dt>Thuộc tính</dt><dd>{[product.color, product.size].filter(Boolean).join(" · ") || "Chưa có"}</dd></div></dl>
+      <dl><div><dt>Nguồn hàng</dt><dd>{product.source || product.platform || "Chưa xác định"}</dd></div><div><dt>Giá tham khảo</dt><dd>{product.priceCny !== "" && product.priceCny != null ? `${Number(product.priceCny).toLocaleString("vi-VN")} CNY` : "Chưa có"}</dd></div><div><dt>Phân loại</dt><dd>{product.variant || "Chưa chọn"}</dd></div><div><dt>Thuộc tính</dt><dd>{selectedAttributes.join(" · ") || [product.color, product.size].filter(Boolean).join(" · ") || (product.has_variants ? "Chưa chọn" : "Sản phẩm không có biến thể")}</dd></div></dl>
       <small>Thông tin tự lấy hoặc minh họa chỉ là dữ liệu ban đầu, không phải báo giá chính thức.</small>
     </div>
   </div>;

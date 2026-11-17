@@ -105,6 +105,9 @@ const ExportSlipListPage = lazy(() =>
 const ExportSlipDetailPage = lazy(() =>
   import("../pages/shipping/SlipDetailPage").then((module) => ({ default: module.ExportSlipDetailPage })),
 );
+const ProductLookupRequestsPage = lazy(() =>
+  import("../pages/product-lookups").then((module) => ({ default: module.ProductLookupRequestsPage })),
+);
 
 export const AppRoutes = () => (
   <Suspense fallback={<RouteLoadingFallback />}>
@@ -144,6 +147,7 @@ export const AppRoutes = () => (
           <Route path="show/:id" element={allow("orders.read", <OrderShow />)} />
           <Route path="edit/:id" element={allow("orders.update", <OrderEdit />)} />
         </Route>
+        <Route path="/product-lookups" element={allow("orders.read", <ProductLookupRequestsPage />)} />
 
         <Route path="/cn-batches" element={allow("cn_batches.read", <CnBatchesPage />)} />
         <Route path="/china-warehouse" element={allow("cn_packages.read", <ChinaWarehousePage />)} />
