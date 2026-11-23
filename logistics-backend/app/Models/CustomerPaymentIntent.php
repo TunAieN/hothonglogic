@@ -40,4 +40,9 @@ class CustomerPaymentIntent extends Model
     {
         return $this->belongsTo(CustomerBalanceLedger::class, 'ledger_id');
     }
+
+    public function webhookEvents()
+    {
+        return $this->hasMany(SepayWebhookEvent::class, 'payment_intent_id');
+    }
 }

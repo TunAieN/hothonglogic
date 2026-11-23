@@ -19,6 +19,7 @@ export const resources = [
   { name: "cnPackages", list: "/china-warehouse" },
   { name: "vnWarehouse", list: "/vietnam-warehouse" },
   { name: "paymentVouchers", list: "/payment-vouchers", show: "/payment-vouchers/:id" },
+  { name: "sepayReconciliation", list: "/sepay-reconciliation" },
   { name: "invoices", list: "/invoices", create: "/invoices/create", show: "/invoices/:id" },
   { name: "revenueReport", list: "/revenue-report" },
   { name: "shippingRates", list: "/shipping-rates" },

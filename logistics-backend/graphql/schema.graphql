@@ -11,6 +11,7 @@
 #import invoices.graphql
 #import reports.graphql
 #import audit.graphql
+#import sepayReconciliation.graphql
 
 scalar DateTime @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
 scalar Date @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\Date")

@@ -3,6 +3,7 @@
 namespace App\Services\Payments;
 
 use App\Models\AuditLog;
+use App\Models\Customer;
 use App\Models\CustomerBalanceLedger;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -35,6 +36,7 @@ class PaymentVoucherService
         private readonly GhnService $ghnService,
         private readonly CustomerAddressService $customerAddressService,
         private readonly GhnInsuranceValueService $ghnInsuranceValueService,
+        private readonly CustomerLedgerService $ledger,
     ) {}
 
     public function eligiblePackages(array $filter = [])
@@ -259,8 +261,12 @@ class PaymentVoucherService
                 throw new HttpException(422, 'Phiếu đặt cọc đã có giao dịch thanh toán thành công.');
             }
 
-            $amount = (int) round((float) ($input['amount_vnd'] ?? $input['amount'] ?? 0));
-            $remaining = (int) round((float) $voucher->remaining_amount);
+            $amount = $this->ledger->vnd($input['amount_vnd'] ?? $input['amount'] ?? 0);
+            $remaining = $this->ledger->vnd($voucher->getRawOriginal('total_amount'))
+                - $this->ledger->vnd($voucher->getRawOriginal('paid_amount'));
+            if ($remaining < 0) {
+                throw new HttpException(422, 'Phiếu có số tiền đã trả vượt tổng tiền và cần đối soát.');
+            }
             if ($amount <= 0) {
                 throw new HttpException(422, 'Số tiền thực nhận phải lớn hơn 0.');
             }
@@ -347,6 +353,15 @@ class PaymentVoucherService
             if ($existing) {
                 return $existing->fresh($this->voucherRelations());
             }
+
+            $candidateCustomerIds = VnPackage::query()->with('cnPackage.order:id,customer_id')
+                ->whereIn('id', $packageIds)->get()
+                ->map(fn (VnPackage $package) => (int) $package->cnPackage?->order?->customer_id)
+                ->filter()->unique()->values();
+            if ($candidateCustomerIds->count() !== 1) {
+                throw new HttpException(422, 'Các vận đơn phải thuộc cùng một khách hàng hợp lệ.');
+            }
+            Customer::query()->lockForUpdate()->findOrFail($candidateCustomerIds->first());
 
             $packages = VnPackage::query()
                 ->with(['receipt.warehouse', 'cnPackage.order.customer'])
@@ -545,6 +560,10 @@ class PaymentVoucherService
         }
 
         return DB::transaction(function () use ($voucherId, $input) {
+            $customerId = PaymentVoucher::query()->whereKey($voucherId)->value('customer_id');
+            if ($customerId) {
+                Customer::query()->lockForUpdate()->findOrFail($customerId);
+            }
             $voucher = PaymentVoucher::query()->with($this->voucherRelations())->lockForUpdate()->find($voucherId);
             if (! $voucher) {
                 throw new HttpException(404, 'Không tìm thấy phiếu thanh toán.');
@@ -636,6 +655,10 @@ class PaymentVoucherService
         BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
 
         return DB::transaction(function () use ($voucherId, $amountVnd, $paymentMethod, $bankTransactionCode, $bankName, $receivedAt) {
+            $customerId = PaymentVoucher::query()->whereKey($voucherId)->value('customer_id');
+            if ($customerId) {
+                Customer::query()->lockForUpdate()->findOrFail($customerId);
+            }
             $voucher = PaymentVoucher::query()->lockForUpdate()->findOrFail($voucherId);
             $existing = PaymentTransaction::query()
                 ->where('bank_transaction_code', $bankTransactionCode)
@@ -653,7 +676,12 @@ class PaymentVoucherService
             if (! in_array($voucher->status, [PaymentVoucher::STATUS_WAITING_PAYMENT, PaymentVoucher::STATUS_PARTIAL_PAID], true)) {
                 throw new HttpException(422, 'Phiếu không ở trạng thái có thể thanh toán.');
             }
-            $remaining = (int) round((float) $voucher->remaining_amount);
+            $total = $this->ledger->vnd($voucher->getRawOriginal('total_amount'));
+            $paid = $this->ledger->vnd($voucher->getRawOriginal('paid_amount'));
+            $remaining = $total - $paid;
+            if ($remaining < 0) {
+                throw new HttpException(422, 'Phiếu có số tiền đã trả vượt tổng tiền và cần đối soát.');
+            }
             if ($amountVnd <= 0 || $amountVnd !== $remaining) {
                 throw new HttpException(422, 'Số tiền thanh toán phải bằng đúng số tiền còn lại của phiếu.');
             }
@@ -687,7 +715,7 @@ class PaymentVoucherService
                 'note' => 'Được xác nhận tự động từ Customer Portal.',
             ]);
 
-            $voucher->update(['paid_amount' => (int) round((float) $voucher->total_amount), 'status' => PaymentVoucher::STATUS_PAID]);
+            $voucher->update(['paid_amount' => $total, 'status' => PaymentVoucher::STATUS_PAID]);
             $this->syncLegacyColumns($voucher, [
                 'payment_method' => $paymentMethod,
                 'paid_at' => $transaction->received_at,
@@ -1233,28 +1261,17 @@ class PaymentVoucherService
 
     private function customerCreditBalance(int $customerId): float
     {
-        $last = CustomerBalanceLedger::query()->where('customer_id', $customerId)->lockForUpdate()->latest('id')->first();
-
-        return max(0, (float) ($last?->balance_after ?? 0));
+        return (float) $this->ledger->balance($customerId, true);
     }
 
     private function appendLedger(int $customerId, int $voucherId, ?int $transactionId, string $type, float $amount, string $description): CustomerBalanceLedger
     {
-        $current = $this->customerCreditBalance($customerId);
-        $balance = in_array($type, ['credit', 'deposit', 'refund', 'adjustment'], true)
-            ? $current + $amount
-            : $current - $amount;
+        $amountVnd = $this->ledger->vnd($this->money($amount));
+        if (in_array($type, ['credit', 'deposit', 'refund', 'adjustment'], true)) {
+            return $this->ledger->credit($customerId, $amountVnd, $type, $description, $voucherId, $transactionId, Auth::id());
+        }
 
-        return CustomerBalanceLedger::query()->create([
-            'customer_id' => $customerId,
-            'payment_voucher_id' => $voucherId,
-            'transaction_id' => $transactionId,
-            'type' => $type,
-            'amount' => $this->money($amount),
-            'balance_after' => $this->money($balance),
-            'description' => $description,
-            'created_by' => Auth::id(),
-        ]);
+        return $this->ledger->debit($customerId, $amountVnd, $type, $description, $voucherId, $transactionId, Auth::id());
     }
 
     private function normalizeIds(array $ids): array

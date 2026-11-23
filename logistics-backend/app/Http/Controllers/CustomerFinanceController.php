@@ -7,6 +7,8 @@ use App\Models\CustomerPaymentIntent;
 use App\Models\PaymentVoucher;
 use App\Services\Orders\OrderPricingService;
 use App\Services\Payments\CustomerFinanceService;
+use App\Services\Payments\CustomerLedgerService;
+use App\Services\Payments\SepayAccountRegistry;
 use App\Services\Shipping\ShippingRateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,8 @@ class CustomerFinanceController extends Controller
 {
     public function __construct(
         private readonly CustomerFinanceService $finance,
+        private readonly CustomerLedgerService $ledgerService,
+        private readonly SepayAccountRegistry $sepayAccounts,
         private readonly OrderPricingService $pricing,
         private readonly ShippingRateService $shipping,
     ) {}
@@ -25,12 +29,12 @@ class CustomerFinanceController extends Controller
     {
         $customerId = $this->customerId($request);
         $debt = PaymentVoucher::query()->where('customer_id', $customerId)
-            ->whereIn('status', PaymentVoucher::ACTIVE_STATUSES)->get()->sum(fn ($voucher) => (int) round((float) $voucher->remaining_amount));
+            ->whereIn('status', PaymentVoucher::ACTIVE_STATUSES)->get()->sum(fn ($voucher) => $this->finance->voucherRemaining($voucher));
 
         return response()->json([
             'balance_vnd' => $this->finance->balance($customerId),
             'outstanding_vnd' => (int) $debt,
-            'sepay_available' => config('sepay.enabled') === true,
+            'sepay_available' => config('sepay.enabled') === true && $this->sepayAccounts->hasVerifiedPaymentAccount(),
         ]);
     }
 
@@ -42,8 +46,8 @@ class CustomerFinanceController extends Controller
 
         return response()->json([
             'data' => collect($rows->items())->map(fn ($row) => [
-                'id' => $row->id, 'type' => $row->type, 'amount_vnd' => (int) round((float) $row->amount),
-                'balance_after_vnd' => (int) round((float) $row->balance_after), 'description' => $row->description,
+                'id' => $row->id, 'type' => $row->type, 'amount_vnd' => $this->ledgerService->vnd($row->amount),
+                'balance_after_vnd' => $this->ledgerService->vnd($row->balance_after), 'description' => $row->description,
                 'payment_voucher_id' => $row->payment_voucher_id, 'created_at' => $row->created_at?->toIso8601String(),
             ])->values(),
             'meta' => ['current_page' => $rows->currentPage(), 'last_page' => $rows->lastPage(), 'total' => $rows->total()],
@@ -86,7 +90,7 @@ class CustomerFinanceController extends Controller
     {
         $data = Validator::make($request->all(), ['idempotency_key' => ['required', 'string', 'max:100']])->validate();
         $owned = PaymentVoucher::query()->where('customer_id', $this->customerId($request))->findOrFail($voucher);
-        $amount = (int) round((float) $owned->remaining_amount);
+        $amount = $this->finance->voucherRemaining($owned);
         $intent = $this->finance->createSepayIntent($this->customerId($request), 'voucher_payment', $amount, $data['idempotency_key'], $owned->id);
 
         return response()->json(['intent' => $this->finance->qrPayload($intent)], 201);
@@ -100,10 +104,11 @@ class CustomerFinanceController extends Controller
         return response()->json(['intent' => ['reference' => $intent->reference, 'status' => $intent->status, 'amount_vnd' => (int) $intent->amount_vnd]]);
     }
 
-    public function pricing(): JsonResponse
+    public function pricing(Request $request): JsonResponse
     {
         $rate = $this->pricing->getActiveExchangeRate();
-        $shipping = $this->shipping->findActiveRate(['customer_type' => 'retail']);
+        $customerType = $this->customerType($request);
+        $shipping = $this->shipping->findActiveRate(array_filter(['customer_type' => $customerType]));
 
         return response()->json([
             'exchange_rate' => $rate ? ['from' => $rate->from_currency, 'to' => $rate->to_currency, 'rate' => (string) $rate->rate, 'effective_from' => $rate->effective_from?->toIso8601String()] : null,
@@ -132,7 +137,7 @@ class CustomerFinanceController extends Controller
         }
         $amountCny = $this->pricing->multiplyCnyByQuantity((string) $data['product_price_cny'], (int) $data['quantity']);
         $goods = $this->pricing->convertCnyToVnd($amountCny, (string) $rate->rate);
-        $shipping = $this->shipping->calculateFee((float) $data['weight_kg'], ['customer_type' => 'retail']);
+        $shipping = $this->shipping->calculateFee((float) $data['weight_kg'], array_filter(['customer_type' => $this->customerType($request)]));
 
         return response()->json(['estimate' => [
             'product_total_cny' => $amountCny, 'exchange_rate' => (string) $rate->rate,
@@ -148,12 +153,20 @@ class CustomerFinanceController extends Controller
         return (int) $request->user('customer')->customer_id;
     }
 
+    private function customerType(Request $request): ?string
+    {
+        $value = trim((string) $request->user('customer')->customer?->vip_group);
+
+        return $value !== '' ? $value : null;
+    }
+
     private function voucherPayload(PaymentVoucher $voucher): array
     {
         return [
             'id' => $voucher->id, 'code' => $voucher->voucher_code, 'type' => $voucher->voucher_type,
-            'status' => $voucher->status, 'total_vnd' => (int) round((float) $voucher->total_amount),
-            'paid_vnd' => (int) round((float) $voucher->paid_amount), 'remaining_vnd' => (int) round((float) $voucher->remaining_amount),
+            'status' => $voucher->status, 'total_vnd' => $this->ledgerService->vnd($voucher->getRawOriginal('total_amount')),
+            'paid_vnd' => $this->ledgerService->vnd($voucher->getRawOriginal('paid_amount')),
+            'remaining_vnd' => $this->finance->voucherRemaining($voucher),
             'created_at' => $voucher->created_at?->toIso8601String(),
         ];
     }

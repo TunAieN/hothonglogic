@@ -69,6 +69,9 @@ const PaymentVouchersPage = lazy(() =>
 const PaymentVoucherShow = lazy(() =>
   import("../pages/payment-vouchers/show").then((module) => ({ default: module.PaymentVoucherShow })),
 );
+const SepayReconciliationPage = lazy(() =>
+  import("../pages/sepay-reconciliation").then((module) => ({ default: module.SepayReconciliationPage })),
+);
 const ShippingRatesPage = lazy(() =>
   import("../pages/shipping-rates").then((module) => ({ default: module.ShippingRatesPage })),
 );
@@ -154,6 +157,7 @@ export const AppRoutes = () => (
         <Route path="/vietnam-warehouse" element={allow("vn_warehouse.read", <VietnamWarehousePage />)} />
         <Route path="/payment-vouchers" element={allow("payment_vouchers.read", <PaymentVouchersPage />)} />
         <Route path="/payment-vouchers/:id" element={allow("payment_vouchers.read", <PaymentVoucherShow />)} />
+        <Route path="/sepay-reconciliation" element={allow("payments.read", <SepayReconciliationPage />)} />
         <Route path="/invoices" element={allow("invoices.read", <InvoiceListPage />)} />
         <Route path="/invoices/create" element={allow("invoices.create", <InvoiceCreatePage />)} />
         <Route path="/invoices/:id" element={allow("invoices.read", <InvoiceDetailPage />)} />

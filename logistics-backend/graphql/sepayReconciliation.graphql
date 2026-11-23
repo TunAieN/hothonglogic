@@ -1,0 +1,59 @@
+type SepayWebhookEvent {
+  id: ID!
+  provider_transaction_id: String!
+  payment_intent_id: ID
+  payload_hash: String!
+  transfer_type: String
+  bank_code: String
+  account_number: String
+  amount_vnd: Float
+  reference: String
+  status: String!
+  reconciliation_reason: String
+  attempt_count: Int!
+  last_attempt_at: DateTime
+  next_retry_at: DateTime
+  last_error_code: String
+  last_error_message: String
+  processing_history_json: String!
+  occurred_at: DateTime
+  processed_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  intent: CustomerPaymentIntent @belongsTo
+}
+
+type CustomerPaymentIntent {
+  id: ID!
+  customer_id: ID!
+  payment_voucher_id: ID
+  payment_account_id: ID
+  type: String!
+  provider: String!
+  reference: String!
+  amount_vnd: Float!
+  status: String!
+  expires_at: DateTime!
+  completed_at: DateTime
+}
+
+input SepayWebhookEventFilterInput {
+  status: String
+  reference: String
+  date_from: DateTime
+  date_to: DateTime
+}
+
+extend type Query {
+  sepayWebhookEvents(filter: SepayWebhookEventFilterInput): [SepayWebhookEvent!]!
+    @guard(with: ["api"])
+    @permission(requires: "payments.read")
+    @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\SepayReconciliationResolver@list")
+}
+
+extend type Mutation {
+  retrySepayWebhookEvent(id: ID!): SepayWebhookEvent!
+    @guard(with: ["api"])
+    @permission(requires: "payments.confirm")
+    @field(resolver: "App\\GraphQL\\Resolvers\\SepayReconciliationResolver@retry")
+}

@@ -8,6 +8,7 @@ use App\Models\CustomerBalanceLedger;
 use App\Models\CustomerPaymentIntent;
 use App\Models\PaymentAccount;
 use App\Models\SepayWebhookEvent;
+use App\Services\Payments\SepayWebhookService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -17,6 +18,8 @@ class CustomerFinanceSepayTest extends TestCase
     use DatabaseTransactions;
 
     private CustomerAccount $account;
+
+    private PaymentAccount $paymentAccount;
 
     protected function setUp(): void
     {
@@ -32,10 +35,14 @@ class CustomerFinanceSepayTest extends TestCase
             'customer_id' => $customer->id, 'email' => $customer->email, 'phone_e164' => '+84900000000',
             'password' => 'VeryStrongPassword!123', 'status' => 'active', 'email_verified_at' => now(),
         ]);
-        PaymentAccount::query()->create([
+        $this->paymentAccount = PaymentAccount::query()->create([
             'bank_name' => 'Ngân hàng QA', 'bank_code' => 'MB', 'account_number' => '123456789',
             'account_holder' => 'VIETTRUNG QA', 'is_default' => true, 'is_active' => true,
         ]);
+        Config::set('sepay.verified_accounts', [[
+            'enabled' => true, 'payment_account_id' => $this->paymentAccount->id,
+            'sepay_account_id' => 'qa-sepay-account-1', 'bank_code' => 'MB', 'account_number' => '123456789',
+        ]]);
     }
 
     public function test_topup_intent_is_idempotent_and_owned_by_authenticated_customer(): void
@@ -86,6 +93,91 @@ class CustomerFinanceSepayTest extends TestCase
             'HTTP_X_SEPAY_SIGNATURE' => 'sha256=invalid',
         ], $raw)->assertUnauthorized();
         $this->assertSame(0, SepayWebhookEvent::query()->count());
+    }
+
+    public function test_unverified_payment_account_cannot_issue_real_qr(): void
+    {
+        Config::set('sepay.verified_accounts', []);
+        $this->authenticate();
+
+        $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 100000, 'idempotency_key' => 'unverified-account',
+        ])->assertServiceUnavailable();
+        $this->assertSame(0, CustomerPaymentIntent::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_same_provider_id_with_changed_payload_is_reconciled_without_double_credit(): void
+    {
+        $this->authenticate();
+        $reference = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 410000, 'idempotency_key' => 'payload-conflict',
+        ])->assertCreated()->json('intent.reference');
+        $this->signedWebhook($this->payload('provider-conflict', $reference, 410000))->assertOk();
+        $this->signedWebhook($this->payload('provider-conflict', $reference, 420000))
+            ->assertOk()->assertJsonPath('event_status', 'reconciliation_needed');
+
+        $this->assertDatabaseHas('sepay_webhook_events', [
+            'provider_transaction_id' => 'provider-conflict',
+            'reconciliation_reason' => 'provider_payload_conflict',
+            'payload_conflict_count' => 1,
+        ]);
+        $this->assertSame(1, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_cancelled_or_expired_qr_payment_is_retained_for_reconciliation(): void
+    {
+        $this->authenticate();
+        $cancelledReference = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 120000, 'idempotency_key' => 'cancelled-late',
+        ])->assertCreated()->json('intent.reference');
+        CustomerPaymentIntent::query()->where('reference', $cancelledReference)->update(['status' => 'cancelled']);
+        $this->signedWebhook($this->payload('provider-cancelled', $cancelledReference, 120000))
+            ->assertOk()->assertJsonPath('event_status', 'reconciliation_needed');
+
+        $expiredReference = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 130000, 'idempotency_key' => 'expired-late',
+        ])->assertCreated()->json('intent.reference');
+        CustomerPaymentIntent::query()->where('reference', $expiredReference)->update(['expires_at' => now()->subMinute()]);
+        $payload = $this->payload('provider-expired', $expiredReference, 130000);
+        $payload['transactionDate'] = now()->subMinutes(2)->format('Y-m-d H:i:s');
+        $this->signedWebhook($payload)->assertOk()->assertJsonPath('event_status', 'reconciliation_needed');
+
+        $this->assertDatabaseHas('sepay_webhook_events', ['provider_transaction_id' => 'provider-cancelled', 'reconciliation_reason' => 'intent_cancelled']);
+        $this->assertDatabaseHas('sepay_webhook_events', ['provider_transaction_id' => 'provider-expired', 'reconciliation_reason' => 'expired_intent_payment_before_expiry']);
+        $this->assertSame(0, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_event_survives_processing_exception_and_retry_does_not_double_credit(): void
+    {
+        $this->authenticate();
+        $reference = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 220000, 'idempotency_key' => 'retry-after-error',
+        ])->assertCreated()->json('intent.reference');
+        $corrupt = CustomerBalanceLedger::query()->create([
+            'customer_id' => $this->account->customer_id, 'type' => 'adjustment', 'amount' => '-1.00',
+            'balance_after' => '-1.00', 'description' => 'Fixture phát hiện số dư âm',
+        ]);
+        $this->signedWebhook($this->payload('provider-retry', $reference, 220000))
+            ->assertOk()->assertJsonPath('event_status', 'retryable_failed');
+        $event = SepayWebhookEvent::query()->where('provider_transaction_id', 'provider-retry')->firstOrFail();
+        $this->assertSame('retryable_failed', $event->status);
+
+        $corrupt->update(['amount' => '0.00', 'balance_after' => '0.00']);
+        app(SepayWebhookService::class)->processEvent((int) $event->id, true);
+        app(SepayWebhookService::class)->processEvent((int) $event->id, true);
+
+        $this->assertSame('processed', $event->fresh()->status);
+        $this->assertSame(220000, (int) CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->latest('id')->value('balance_after'));
+        $this->assertSame(2, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_financial_write_guard_rejects_webhook_before_event_is_accepted(): void
+    {
+        Config::set('business.financial_writes_enabled', false);
+        $payload = $this->payload('provider-locked', 'VT'.str_repeat('B', 24), 100000);
+
+        $this->signedWebhook($payload)->assertStatus(423);
+        $this->assertSame(0, SepayWebhookEvent::query()->where('provider_transaction_id', 'provider-locked')->count());
     }
 
     private function authenticate(): void

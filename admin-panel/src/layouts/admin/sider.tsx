@@ -22,6 +22,7 @@ import {
   MenuUnfoldOutlined,
   MoreOutlined,
   SettingOutlined,
+  SafetyCertificateOutlined,
   TeamOutlined,
   UserOutlined,
   UsergroupAddOutlined,
@@ -121,6 +122,7 @@ const menuSections: SidebarGroupConfig[] = [
     title: "Tài chính",
     items: [
       { key: "/payment-vouchers", icon: <DollarCircleOutlined />, label: "Phiếu thanh toán", permission: "payment_vouchers.read" },
+      { key: "/sepay-reconciliation", icon: <SafetyCertificateOutlined />, label: "Đối soát SePay", permission: "payments.read" },
       { key: "/shipping-rates", icon: <CreditCardOutlined />, label: "Bảng giá cước", permission: "shipping_rates.read" },
       { key: "/invoices", icon: <FileTextOutlined />, label: "Hóa đơn", permission: "invoices.read" },
       { key: "/revenue-report", icon: <BarChartOutlined />, label: "Báo cáo doanh thu", permission: "revenue_report.read" },
