@@ -3,16 +3,19 @@ import { Bell, ChevronDown, ChevronRight, Home, LogOut, Menu, X } from "lucide-r
 import { getCustomerMenu, getCustomerMenuGroups, customerSupportLink } from "../../data/customerMenu.js";
 import { getPortalRoutes, isCustomerPortalDemoPath } from "../../config/customerPortal.js";
 import { DemoNotice } from "./PortalComponents.jsx";
+import useCustomerCart from "../../hooks/useCustomerCart.js";
 import styles from "./CustomerPortal.module.css";
 
 const isMenuActive = (item, pathname) => item.id === "overview"
   ? pathname === item.href
   : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-export default function CustomerPortalLayout({ children, profile, unreadCount = 0, onLogout }) {
+export default function CustomerPortalLayout({ children, profile, unreadCount = 0, cartCount: providedCartCount, onLogout }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const localCart = useCustomerCart(profile?.customer_id);
+  const visibleCartCount = Number.isFinite(providedCartCount) ? providedCartCount : localCart.totals.itemCount;
   const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
   const portalRoutes = getPortalRoutes(pathname);
   const customerMenu = getCustomerMenu(pathname);
@@ -48,7 +51,7 @@ export default function CustomerPortalLayout({ children, profile, unreadCount = 
     </div>
     <nav className={styles.menuScroll}>{menuGroups.map((group) => <section className={styles.menuGroup} key={group.id}>
       <button type="button" className={styles.menuGroupButton} onClick={() => toggleGroup(group.id)} aria-expanded={openGroups.has(group.id)}><span>{group.label}</span><ChevronDown aria-hidden="true" /></button>
-      {openGroups.has(group.id) && <div className={styles.menuGroupItems}>{group.items.map(({ icon: Icon, ...item }) => <a key={item.id} href={item.href} className={isMenuActive(item, pathname) ? styles.active : ""} aria-current={isMenuActive(item, pathname) ? "page" : undefined} onClick={() => setDrawerOpen(false)}><Icon aria-hidden="true" /><span>{item.label}</span>{item.id === "notifications" && unreadCount > 0 && <b aria-label={`${unreadCount} thông báo chưa đọc`}>{unreadCount}</b>}</a>)}</div>}
+      {openGroups.has(group.id) && <div className={styles.menuGroupItems}>{group.items.map(({ icon: Icon, ...item }) => <a key={item.id} href={item.href} className={isMenuActive(item, pathname) ? styles.active : ""} aria-current={isMenuActive(item, pathname) ? "page" : undefined} onClick={() => setDrawerOpen(false)}><Icon aria-hidden="true" /><span>{item.label}</span>{item.id === "notifications" && unreadCount > 0 && <b aria-label={`${unreadCount} thông báo chưa đọc`}>{unreadCount}</b>}{item.id === "cart" && visibleCartCount > 0 && <b aria-label={`${visibleCartCount} sản phẩm trong giỏ`}>{visibleCartCount}</b>}</a>)}</div>}
     </section>)}</nav>
     <div className={styles.sidebarFooter}>
       <a href="/"><Home aria-hidden="true" />Về trang chủ</a>

@@ -20,6 +20,9 @@ import { DemoPortalProvider, useDemoPortal } from "../../components/customer/Dem
 import styles from "../../components/customer/CustomerPortal.module.css";
 import { changeCustomerPassword, CustomerAuthError, getCustomerSession, logoutCustomer } from "../../api/customerAuth.js";
 import { RealCartAndDraftsPage, RealCreateOrderPage, RealOrderDetailPage, RealOrdersPage } from "./RealPurchasePages.jsx";
+import RealCustomerDashboard from "./RealCustomerDashboard.jsx";
+import { ConsignmentComingSoon, RealConsignmentsPage, RealTrackingPage } from "./RealCustomerLogisticsPages.jsx";
+import { RealCustomerPricingPage, RealOrderPaymentsPage, RealWalletPage } from "./RealCustomerFinancePages.jsx";
 
 const emptyDemoData = {
   ...customerPortalDemoData,
@@ -56,7 +59,7 @@ function CustomerPortalContent({ pathname, portalRoutes }) {
   if (customerPortalRuntime.demoState === "loading") content = <LoadingState />;
   else if (customerPortalRuntime.demoState === "error") content = <><PageHeader title="Không thể tải dữ liệu" description="Trạng thái lỗi minh họa để kiểm tra trải nghiệm người dùng." /><IntegrationNotice title="Kết nối dữ liệu không thành công">Vui lòng thử lại sau khi API khách hàng được cấu hình.</IntegrationNotice></>;
   else content = resolvePage(pathname, data, portalRoutes);
-  return <CustomerPortalLayout profile={data.profile} unreadCount={unreadCount}>{content}</CustomerPortalLayout>;
+  return <CustomerPortalLayout profile={data.profile} unreadCount={unreadCount} cartCount={data.cart.length}>{content}</CustomerPortalLayout>;
 }
 
 export default function CustomerPortalPage() {
@@ -101,9 +104,9 @@ function RealCustomerPortal({ pathname }) {
   if (pathname === portalRoutes.settings) {
     content = <><PageHeader title="Tài khoản & bảo mật" description="Thông tin tài khoản khách hàng đã xác thực."/><section className={styles.settingsContent}><h2>Thông tin tài khoản</h2><div className={styles.formGrid}><div className={styles.field}><label>Họ và tên</label><input value={account.name} readOnly/></div><div className={styles.field}><label>Mã khách hàng</label><input value={account.customer_code} readOnly/></div><div className={styles.field}><label>Email</label><input value={account.email} readOnly/></div><div className={styles.field}><label>Số điện thoại</label><input value={account.phone} readOnly/></div></div><h2>Đổi mật khẩu</h2><form onSubmit={changePassword}><div className={styles.formGrid}>{[["current","Mật khẩu hiện tại"],["next","Mật khẩu mới"],["confirmation","Xác nhận mật khẩu"]].map(([key,label]) => <div className={styles.field} key={key}><label htmlFor={`real-${key}`}>{label}</label><input id={`real-${key}`} type="password" value={passwords[key]} onChange={(event) => setPasswords((value) => ({ ...value, [key]: event.target.value }))} required/></div>)}</div><button className={styles.primaryAction}>Đổi mật khẩu</button>{error && <p className={styles.fieldError} role="alert">{error}</p>}{feedback && <p className={styles.formFeedback} role="status">{feedback}</p>}</form></section></>;
   } else if (pathname === portalRoutes.createOrder) {
-    content = <RealCreateOrderPage routes={portalRoutes} />;
+    content = <RealCreateOrderPage routes={portalRoutes} customerId={account.customer_id} />;
   } else if (pathname === portalRoutes.cart) {
-    content = <RealCartAndDraftsPage routes={portalRoutes} />;
+    content = <RealCartAndDraftsPage routes={portalRoutes} customerId={account.customer_id} />;
   } else if (pathname === portalRoutes.orderHistory) {
     content = <RealOrdersPage routes={portalRoutes} historyMode />;
   } else if (pathname === portalRoutes.orders) {
@@ -111,7 +114,19 @@ function RealCustomerPortal({ pathname }) {
   } else if (pathname.startsWith(`${portalRoutes.orders}/`)) {
     content = <RealOrderDetailPage routes={portalRoutes} />;
   } else if (pathname === portalRoutes.overview) {
-    content = <><PageHeader title={`Xin chào, ${account.name}`} description={`Mã khách hàng ${account.customer_code} · Email ${account.email}`}/><IntegrationNotice title="Mua hộ đã được kết nối">Tạo yêu cầu, giỏ hàng, bản nháp, danh sách và lịch sử đơn đã dùng API Customer riêng. Ví, công nợ và giao dịch vẫn chưa được mở.</IntegrationNotice><button className={styles.secondaryAction} type="button" onClick={signOut}>Đăng xuất</button></>;
+    content = <RealCustomerDashboard account={account} routes={portalRoutes} />;
+  } else if (pathname === portalRoutes.consignmentCreate) {
+    content = <ConsignmentComingSoon routes={portalRoutes} />;
+  } else if (pathname === portalRoutes.consignments) {
+    content = <RealConsignmentsPage routes={portalRoutes} />;
+  } else if (pathname === portalRoutes.tracking) {
+    content = <RealTrackingPage routes={portalRoutes} />;
+  } else if (pathname === portalRoutes.wallet) {
+    content = <RealWalletPage />;
+  } else if (pathname === portalRoutes.orderPayments) {
+    content = <RealOrderPaymentsPage />;
+  } else if (pathname === portalRoutes.pricing) {
+    content = <RealCustomerPricingPage />;
   } else {
     content = <><PageHeader title="Chức năng đang được hoàn thiện" description="Không sử dụng API quản trị hoặc dữ liệu Demo trong phiên thật."/><IntegrationNotice>Module này chưa có API Customer được phân quyền theo customer_id.</IntegrationNotice></>;
   }

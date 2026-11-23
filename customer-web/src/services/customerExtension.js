@@ -3,6 +3,24 @@ import { detectProductSource, validateProductUrl } from "./productMetadata.js";
 export const PRODUCT_PROTOCOL_VERSION = "1.0";
 const extensionIds = String(import.meta.env.VITE_CUSTOMER_EXTENSION_IDS || import.meta.env.VITE_CUSTOMER_EXTENSION_ID || "")
   .split(",").map((value) => value.trim()).filter(Boolean);
+export const CUSTOMER_EXTENSION_LOCAL_ORIGINS = Object.freeze(
+  String(import.meta.env.VITE_CUSTOMER_EXTENSION_LOCAL_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173")
+    .split(",").map((value) => value.trim()).filter(Boolean),
+);
+
+const localHostname = (hostname) => ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+
+export function getCustomerExtensionOriginState(origin = globalThis.location?.origin) {
+  if (!origin) return { supported: true };
+  try {
+    const url = new URL(origin);
+    if (!localHostname(url.hostname)) return { supported: true };
+    const supported = CUSTOMER_EXTENSION_LOCAL_ORIGINS.includes(url.origin);
+    return { supported, origin: url.origin, expectedOrigin: CUSTOMER_EXTENSION_LOCAL_ORIGINS[0] };
+  } catch {
+    return { supported: false, origin: String(origin), expectedOrigin: CUSTOMER_EXTENSION_LOCAL_ORIGINS[0] };
+  }
+}
 
 function runtime() {
   return globalThis.chrome?.runtime?.sendMessage ? globalThis.chrome.runtime : null;
@@ -22,11 +40,16 @@ function send(extensionId, message) {
   });
 }
 
-export async function detectCustomerExtension() {
+export async function detectCustomerExtension({ origin } = {}) {
+  const originState = getCustomerExtensionOriginState(origin);
+  if (!originState.supported) return { connected: false, reason: "unsupported_origin", ...originState };
   for (const extensionId of extensionIds) {
     try {
       const response = await send(extensionId, { type: "PRODUCT_EXTRACT_PING", protocol_version: PRODUCT_PROTOCOL_VERSION });
       if (response?.ok) return { connected: true, extensionId, capabilities: response.capabilities || [] };
+      if (response?.error?.code === "ORIGIN_NOT_ALLOWED") {
+        return { connected: false, reason: "origin_rejected", error: response.error };
+      }
     } catch { /* try the next configured extension ID */ }
   }
   return { connected: false, reason: extensionIds.length ? "not_connected" : "not_configured" };
@@ -37,10 +60,11 @@ const delay = (milliseconds, signal) => new Promise((resolve, reject) => {
   signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); }, { once: true });
 });
 
-export async function extractProductWithExtension(productUrl, { signal, onStatus, timeoutMs = 50_000 } = {}) {
+export async function extractProductWithExtension(productUrl, { signal, onStatus, onConnection, timeoutMs = 50_000 } = {}) {
   const validation = validateProductUrl(productUrl);
   if (!validation.valid) throw new Error("INVALID_PRODUCT_URL");
   const connection = await detectCustomerExtension();
+  onConnection?.(connection);
   if (!connection.connected) return { status: "extension_unavailable", connection };
   const requestId = crypto.randomUUID().replaceAll("-", "");
   const base = { request_id: requestId, protocol_version: PRODUCT_PROTOCOL_VERSION };

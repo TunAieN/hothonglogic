@@ -64,7 +64,7 @@ The long-term `apps/` layout is documented as a future migration and is not appl
 
 ## Development Setup
 
-Clone the repository, then configure and start the backend and admin panel in separate terminals. Load `extension-src/` as the unpacked extension after reviewing the extension endpoint settings.
+Clone the repository, then configure and start the backend, Customer Web and Admin Panel in separate terminals. Customer Web uses port 5173 and Admin Panel uses port 5174; both fail clearly instead of switching ports when their configured port is busy. See [Local development](docs/setup/local-development.md).
 
 ```bash
 git clone https://github.com/TunAiEN/hothonglogic.git
@@ -79,6 +79,13 @@ php artisan serve
 ```
 
 Terminal 2:
+
+```bash
+cd customer-web
+npm run dev
+```
+
+Terminal 3:
 
 ```bash
 cd admin-panel

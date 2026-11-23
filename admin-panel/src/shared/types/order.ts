@@ -285,7 +285,10 @@ export interface OrderSummary {
   order_code: string;
   customer_id?: string;
   customer: Pick<Customer, "id" | "name" | "email" | "phone" | "address" | "avatar">;
-  creator: Pick<User, "id" | "name">;
+  creator?: Pick<User, "id" | "name"> | null;
+  accountManager?: Pick<User, "id" | "name"> | null;
+  creation_source?: "legacy" | "admin_portal" | "customer_portal" | string;
+  submitted_at?: string | null;
   status: OrderStatus | string;
   total_amount: number;
   exchange_rate?: number | null;
@@ -311,7 +314,7 @@ export interface OrderSummary {
 
 export interface Order extends OrderSummary {
   customer: Customer;
-  creator: Pick<User, "id" | "name">;
+  creator?: Pick<User, "id" | "name"> | null;
   items: OrderItem[];
 }
 

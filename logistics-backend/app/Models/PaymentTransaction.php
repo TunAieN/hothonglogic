@@ -26,7 +26,7 @@ class PaymentTransaction extends Model
     ];
 
     protected $casts = [
-        'amount' => 'float',
+        'amount' => 'decimal:2',
         'received_at' => 'datetime',
     ];
 

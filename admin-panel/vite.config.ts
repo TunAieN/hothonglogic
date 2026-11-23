@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { ADMIN_PANEL_DEV_SERVER } from '../config/local-development.mjs'
 
 const getPackageName = (id: string) => {
   const normalizedId = id.replace(/\\/g, '/')
@@ -22,6 +23,8 @@ const getPackageName = (id: string) => {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: ADMIN_PANEL_DEV_SERVER,
+  preview: ADMIN_PANEL_DEV_SERVER,
   build: {
     rolldownOptions: {
       output: {

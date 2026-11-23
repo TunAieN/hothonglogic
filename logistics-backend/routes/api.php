@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\SepayWebhookController;
 use App\Http\Controllers\VnPackageEvidenceController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -23,3 +24,5 @@ Route::middleware(['auth:sanctum', 'business.writes'])->group(function () {
     Route::post('/vietnam-warehouse/packages/{vnPackage}/evidences', [VnPackageEvidenceController::class, 'store']);
     Route::delete('/vietnam-warehouse/packages/{vnPackage}/evidences/{evidence}', [VnPackageEvidenceController::class, 'destroy']);
 });
+
+Route::post('/webhooks/sepay', SepayWebhookController::class)->middleware('throttle:120,1');

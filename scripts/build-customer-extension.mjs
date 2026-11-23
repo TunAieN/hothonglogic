@@ -1,12 +1,11 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { parseExplicitOrigins } from "../config/local-development.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const source = resolve(root, "customer-extension-src");
 const output = resolve(root, process.env.CUSTOMER_EXTENSION_OUTPUT || "build/customer-extension");
-const origins = (process.env.CUSTOMER_EXTENSION_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173")
-  .split(",").map((value) => new URL(value.trim()).origin);
-if (!origins.length || origins.some((origin) => origin.includes("*"))) throw new Error("Customer website origins must be explicit origins.");
+const origins = parseExplicitOrigins(process.env.CUSTOMER_EXTENSION_ORIGINS);
 
 if (existsSync(output)) rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });

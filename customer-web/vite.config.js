@@ -1,10 +1,14 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
+import { CUSTOMER_EXTENSION_LOCAL_ORIGINS, CUSTOMER_WEB_DEV_SERVER } from '../config/local-development.mjs'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_CUSTOMER_EXTENSION_LOCAL_ORIGINS': JSON.stringify(CUSTOMER_EXTENSION_LOCAL_ORIGINS.join(',')),
+  },
   test: {
     environment: 'jsdom',
     globals: false,
@@ -12,12 +16,14 @@ export default defineConfig({
     restoreMocks: true,
   },
   server: {
+    ...CUSTOMER_WEB_DEV_SERVER,
     proxy: {
       '/customer-auth': 'http://127.0.0.1:8000',
       '/customer-portal': 'http://127.0.0.1:8000',
       '/sanctum': 'http://127.0.0.1:8000',
     },
   },
+  preview: CUSTOMER_WEB_DEV_SERVER,
   build: {
     rollupOptions: {
       input: {

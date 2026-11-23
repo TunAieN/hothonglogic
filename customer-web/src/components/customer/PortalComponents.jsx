@@ -5,8 +5,8 @@ import { formatDateTime, formatVnd, getOrderStatus } from "../../utils/customerF
 import ProductThumbnail from "./ProductThumbnail.jsx";
 import styles from "./CustomerPortal.module.css";
 
-export function PageHeader({ title, description, action }) {
-  return <div className={styles.pageHeader}><div><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>;
+export function PageHeader({ title, description, action, icon: Icon, eyebrow }) {
+  return <div className={styles.pageHeader}><div className={styles.pageHeading}>{Icon && <span className={styles.pageHeadingIcon}><Icon aria-hidden="true" /></span>}<div>{eyebrow && <small>{eyebrow}</small>}<h1>{title}</h1>{description && <p>{description}</p>}</div></div>{action}</div>;
 }
 
 export function StatusBadge({ status }) {

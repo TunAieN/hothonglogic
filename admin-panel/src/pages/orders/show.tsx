@@ -256,6 +256,17 @@ const formatDateTime = (value?: string) => {
   });
 };
 
+const orderSourceLabel = (order?: IOrder) => {
+  if (order?.creation_source === "customer_portal") return "Khách hàng tự gửi";
+  if (order?.creation_source === "admin_portal") return "Nhân viên tạo";
+  return "Đơn lịch sử";
+};
+
+const orderCreatorLabel = (order?: IOrder) => {
+  if (order?.creation_source === "customer_portal") return "Khách hàng tự gửi";
+  return order?.creator?.name || "Không xác định";
+};
+
 const formatDateOnly = (value?: string | null) => {
   if (!value) {
     return "-";
@@ -1425,7 +1436,7 @@ export const OrderShow = () => {
                       <Text style={{ ...mutedTextStyle, fontSize: 14 }}>
                         Ngày tạo: {formatDateTime(record?.created_at)}{" "}
                         <Text style={mutedTextStyle}>
-                          • Tạo bởi: {record?.creator?.name || "-"}
+                          • Tạo bởi: {orderCreatorLabel(record)}
                         </Text>
                       </Text>
                     </Space>
@@ -1566,9 +1577,7 @@ export const OrderShow = () => {
                           {
                             key: "source",
                             label: "Nguồn đơn hàng",
-                            children: record?.creator?.name
-                              ? `Nhân viên tạo: ${record.creator.name}`
-                              : "-",
+                            children: orderSourceLabel(record),
                           },
                         ]}
                       />
@@ -1839,7 +1848,7 @@ export const OrderShow = () => {
                           {
                             key: "creator",
                             label: "Nhân viên phụ trách",
-                            children: record?.creator?.name || "-",
+                            children: record?.accountManager?.name || "Chưa phân công",
                           },
                           {
                             key: "warehouse",

@@ -6,6 +6,9 @@ type Order {
     id: ID!
     order_code: String!
     customer_id: ID!
+    creation_source: String
+    submitted_by_customer_account_id: ID
+    submitted_at: DateTime
     status: String!
     """Legacy product total in CNY. Do not use currency to interpret this field."""
     total_amount: Float!
@@ -30,7 +33,11 @@ type Order {
     deposit_manual_transaction_code: String
     deposit_note: String
     note: String
-    creator: User!
+    creator: User
+    accountManager: User @belongsTo(relation: "accountManager")
+    approved_by: ID
+    approved_at: DateTime
+    approver: User @belongsTo(relation: "approver")
     created_at: DateTime!
     customer: Customer!
     items: [OrderItem!]!

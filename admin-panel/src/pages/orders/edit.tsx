@@ -543,11 +543,11 @@ const PAGE_STYLES = `
 const buildStaffOptions = (
   orders: IOrder[],
   currentUser?: User,
-  selectedCreator?: Pick<User, "id" | "name">,
+  selectedCreator?: Pick<User, "id" | "name"> | null,
 ): SelectOption[] => {
   const optionMap = new Map<string, SelectOption>();
 
-  const register = (user?: Pick<User, "id" | "name">) => {
+  const register = (user?: Pick<User, "id" | "name"> | null) => {
     if (!user?.id || !user.name) {
       return;
     }

@@ -1,4 +1,4 @@
-import { Image as ImageIcon, LoaderCircle, PackageSearch, RefreshCw } from "lucide-react";
+import { ExternalLink, Image as ImageIcon, LoaderCircle, PackageSearch, RefreshCw } from "lucide-react";
 import ProductThumbnail from "./ProductThumbnail.jsx";
 import feature from "./CustomerPortalFeatures.module.css";
 
@@ -20,17 +20,19 @@ export default function ProductPreviewPanel({ product, status, message, selected
     const option = group.values?.find((value) => value.value_id === product.selectedAttributes?.[group.group_id]);
     return option ? `${group.name}: ${option.label}` : null;
   }).filter(Boolean);
+  const sourceHref = /^https?:\/\//i.test(product.sourceUrl || "") ? product.sourceUrl : null;
+  const sourceLabel = ({ extension: "Đã lấy từ Extension", staff: "Nhân viên hỗ trợ", remote: "Metadata dự phòng", manual: "Nhập thủ công", demo: "Dữ liệu minh họa" })[product.metadataSource] || "Dữ liệu tham khảo";
   return <div className={feature.productPreview}>
     <div className={feature.previewGallery}>
       <ProductThumbnail src={selectedImage || product.imageUrl} alt={product.name || "Ảnh sản phẩm minh họa"} size="large" eager />
       {images.length > 1 && <div className={feature.previewThumbs} aria-label="Ảnh sản phẩm phụ">{images.map((image, index) => <button type="button" className={(selectedImage || product.imageUrl) === image ? feature.activeThumb : ""} onClick={() => onSelectImage(image)} key={`${image}-${index}`} aria-label={`Xem ảnh ${index + 1}`}><ProductThumbnail src={image} alt="" size="small" /></button>)}</div>}
     </div>
     <div className={feature.previewInfo}>
-      <div className={feature.previewBadges}><span className={feature.badge}>{product.metadataSource === "demo" ? "Dữ liệu minh họa" : "Dữ liệu tham khảo"}</span>{status === "partial" && <span className={feature.partialBadge}>Thiếu thông tin</span>}</div>
+      <div className={feature.previewBadges}><span className={feature.badge}>{sourceLabel}</span>{status === "partial" && <span className={feature.partialBadge}>Thiếu thông tin</span>}</div>
       <h3>{product.name || "Chưa có tên sản phẩm"}</h3>
       {status === "partial" && message && <p>{message}</p>}
-      <p className={feature.sourceUrl} title={product.sourceUrl}>{product.sourceUrl || "Sản phẩm mẫu không có link nguồn thực tế"}</p>
-      <dl><div><dt>Nguồn hàng</dt><dd>{product.source || product.platform || "Chưa xác định"}</dd></div><div><dt>Giá tham khảo</dt><dd>{product.priceCny !== "" && product.priceCny != null ? `${Number(product.priceCny).toLocaleString("vi-VN")} CNY` : "Chưa có"}</dd></div><div><dt>Phân loại</dt><dd>{product.variant || "Chưa chọn"}</dd></div><div><dt>Thuộc tính</dt><dd>{selectedAttributes.join(" · ") || [product.color, product.size].filter(Boolean).join(" · ") || (product.has_variants ? "Chưa chọn" : "Sản phẩm không có biến thể")}</dd></div></dl>
+      {sourceHref ? <a className={feature.sourceUrl} href={sourceHref} target="_blank" rel="noreferrer" title={product.sourceUrl}>{product.sourceUrl}<ExternalLink aria-hidden="true" /></a> : <p className={feature.sourceUrl}>{product.sourceUrl || "Sản phẩm chưa có link nguồn hợp lệ"}</p>}
+      <dl><div><dt>Nguồn hàng</dt><dd>{product.source || product.platform || "Chưa xác định"}</dd></div><div><dt>Giá tham khảo</dt><dd>{product.priceCny !== "" && product.priceCny != null ? `${Number(product.priceCny).toLocaleString("vi-VN")} CNY` : "Chưa có"}</dd></div>{product.selected_sku_id && <div><dt>SKU nguồn</dt><dd>{product.selected_sku_id}</dd></div>}<div><dt>Phân loại</dt><dd>{product.variant || "Chưa chọn"}</dd></div><div><dt>Thuộc tính</dt><dd>{selectedAttributes.join(" · ") || [product.color, product.size].filter(Boolean).join(" · ") || (product.has_variants ? "Chưa chọn" : "Sản phẩm không có biến thể")}</dd></div></dl>
       <small>Thông tin tự lấy hoặc minh họa chỉ là dữ liệu ban đầu, không phải báo giá chính thức.</small>
     </div>
   </div>;

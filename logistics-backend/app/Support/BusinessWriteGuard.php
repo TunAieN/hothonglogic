@@ -37,7 +37,8 @@ final class BusinessWriteGuard
 
     private static function assertCurrentTestDatabaseIsSafe(): void
     {
-        if (! app()->runningUnitTests() || ! defined('PHPUNIT_COMPOSER_INSTALL')) {
+        $isPhpUnit = app()->runningUnitTests() && defined('PHPUNIT_COMPOSER_INSTALL');
+        if (! app()->environment('testing') && ! $isPhpUnit) {
             return;
         }
 

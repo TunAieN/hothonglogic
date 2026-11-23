@@ -6,9 +6,18 @@ use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
+    public const SOURCE_LEGACY = 'legacy';
+
+    public const SOURCE_ADMIN_PORTAL = 'admin_portal';
+
+    public const SOURCE_CUSTOMER_PORTAL = 'customer_portal';
+
     protected $fillable = [
         'order_code',
         'customer_id',
+        'creation_source',
+        'submitted_by_customer_account_id',
+        'submitted_at',
         'note',
         'status',
         'total_amount', // Legacy CNY total kept for backwards compatibility. Use product_total_cny/product_total_vnd for new payment logic.
@@ -44,6 +53,8 @@ class Order extends Model
         'deposit_remaining_amount_vnd' => 'integer',
         'deposit_requested_at' => 'datetime',
         'deposit_paid_at' => 'datetime',
+        'submitted_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
 
     public function items()
@@ -59,6 +70,16 @@ class Order extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function submittedByCustomerAccount()
+    {
+        return $this->belongsTo(CustomerAccount::class, 'submitted_by_customer_account_id');
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     public function accountManager()

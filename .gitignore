@@ -39,3 +39,4 @@ Thumbs.db
 .vscode/
 ## Database snapshots
 database/snapshots/*.sql
+/.mysql-provenance-rehearsal-20261118/

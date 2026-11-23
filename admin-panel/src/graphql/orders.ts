@@ -2,6 +2,8 @@ export const ORDER_FIELDS = {
   list: `
     id
     order_code
+    creation_source
+    submitted_at
     status
     total_amount
     exchange_rate
@@ -23,6 +25,10 @@ export const ORDER_FIELDS = {
       id
       name
     }
+    accountManager {
+      id
+      name
+    }
     customer {
       id
       name
@@ -33,6 +39,8 @@ export const ORDER_FIELDS = {
     id
     order_code
     customer_id
+    creation_source
+    submitted_at
     status
     total_amount
     exchange_rate
@@ -93,6 +101,10 @@ export const ORDER_FIELDS = {
     note
     created_at
     creator {
+      id
+      name
+    }
+    accountManager {
       id
       name
     }
@@ -223,6 +235,8 @@ export const ORDER_FIELDS = {
     id
     order_code
     customer_id
+    creation_source
+    submitted_at
     status
     total_amount
     exchange_rate
@@ -283,6 +297,10 @@ export const ORDER_FIELDS = {
     note
     created_at
     creator {
+      id
+      name
+    }
+    accountManager {
       id
       name
     }

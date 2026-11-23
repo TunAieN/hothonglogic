@@ -16,6 +16,15 @@ class TestWriteAccessConfigurationTest extends TestCase
         $this->addToAssertionCount(2);
     }
 
+    public function test_testing_environment_always_rechecks_the_approved_database_target(): void
+    {
+        $this->app->detectEnvironment(fn () => 'testing');
+        config(['database.connections.mysql.port' => 3310]);
+
+        $this->expectException(LogicException::class);
+        BusinessWriteGuard::assertEnabled('test.testing-server-target');
+    }
+
     /**
      * @dataProvider unsafeTargets
      */

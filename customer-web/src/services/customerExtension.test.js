@@ -11,7 +11,27 @@ describe("customer extension bridge", () => {
   it("detects the configured extension with the versioned protocol", async () => {
     globalThis.chrome = { runtime: { sendMessage: vi.fn((_id, message, callback) => callback({ ok: true, protocol_version: message.protocol_version, capabilities: ["Taobao"] })) } };
     const { detectCustomerExtension } = await import("./customerExtension.js");
-    await expect(detectCustomerExtension()).resolves.toMatchObject({ connected: true, extensionId: "extension-qa-id" });
+    await expect(detectCustomerExtension({ origin: "http://localhost:5173" })).resolves.toMatchObject({ connected: true, extensionId: "extension-qa-id" });
+  });
+
+  it("rejects a local port that is not allowlisted without messaging the extension", async () => {
+    const sendMessage = vi.fn();
+    globalThis.chrome = { runtime: { sendMessage } };
+    const { detectCustomerExtension } = await import("./customerExtension.js");
+
+    await expect(detectCustomerExtension({ origin: "http://localhost:5174" })).resolves.toMatchObject({
+      connected: false,
+      reason: "unsupported_origin",
+      expectedOrigin: "http://localhost:5173",
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("reports an exact-origin rejection returned by the extension", async () => {
+    globalThis.chrome = { runtime: { sendMessage: vi.fn((_id, _message, callback) => callback({ ok: false, error: { code: "ORIGIN_NOT_ALLOWED" } })) } };
+    const { detectCustomerExtension } = await import("./customerExtension.js");
+
+    await expect(detectCustomerExtension({ origin: "http://localhost:5173" })).resolves.toMatchObject({ connected: false, reason: "origin_rejected" });
   });
 
   it("maps nullable contract fields without inventing price or SKU data", async () => {

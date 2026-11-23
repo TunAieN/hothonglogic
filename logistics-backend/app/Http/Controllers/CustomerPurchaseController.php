@@ -5,16 +5,60 @@ namespace App\Http\Controllers;
 use App\Models\CustomerPurchaseDraft;
 use App\Models\CustomerPurchaseDraftItem;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Services\Orders\CustomerPurchaseRequestService;
 use App\Services\Orders\OrderPricingService;
+use App\Support\Utf8ValueNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Carbon\CarbonImmutable;
 
 class CustomerPurchaseController extends Controller
 {
-    public function __construct(private readonly OrderPricingService $pricing) {}
+    public function __construct(private readonly OrderPricingService $pricing, private readonly CustomerPurchaseRequestService $purchaseRequests) {}
+
+    public function submitPurchaseRequest(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'idempotency_key' => ['required', 'uuid'], 'note' => ['nullable', 'string', 'max:2000'],
+            'items' => ['required', 'array', 'min:1', 'max:50'],
+            'items.*.local_item_id' => ['required', 'string', 'max:100'],
+            'items.*.product_url' => ['required', 'url:http,https', 'max:4000'],
+            'items.*.platform' => ['required', 'in:Taobao,Tmall,1688'],
+            'items.*.title' => ['required', 'string', 'max:255'],
+            'items.*.main_image' => ['nullable', 'url:http,https', 'max:4000'],
+            'items.*.sku_id' => ['nullable', 'string', 'max:255'],
+            'items.*.selected_attributes' => ['present', 'array', 'max:20'],
+            'items.*.selected_attributes.*' => ['string', 'max:255'],
+            'items.*.variant_label' => ['nullable', 'string', 'max:500'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
+            'items.*.reference_price_cny' => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
+            'items.*.product_note' => ['nullable', 'string', 'max:2000'],
+            'items.*.seller' => ['nullable', 'string', 'max:255'], 'items.*.shop_name' => ['nullable', 'string', 'max:255'],
+            'items.*.size' => ['nullable', 'string', 'max:255'], 'items.*.color' => ['nullable', 'string', 'max:255'],
+            'items.*.sku_required' => ['required', 'boolean'],
+        ]);
+        $validator->after(function ($validator) use ($request) {
+            foreach ($request->input('items', []) as $index => $item) {
+                if (($item['sku_required'] ?? false) && trim((string) ($item['sku_id'] ?? '')) === '') {
+                    $validator->errors()->add("items.$index.sku_id", 'Sản phẩm có phân loại bắt buộc phải chọn SKU.');
+                }
+                if (! $this->productUrlMatchesPlatform((string) ($item['product_url'] ?? ''), (string) ($item['platform'] ?? ''))) {
+                    $validator->errors()->add("items.$index.product_url", 'Link sản phẩm không khớp nguồn Taobao, Tmall hoặc 1688.');
+                }
+            }
+        });
+        $data = $validator->validate();
+        $account = $request->user('customer');
+        $result = $this->purchaseRequests->submit((int) $account->customer_id, (int) $account->getAuthIdentifier(), $data);
+        $order = $result['order']->load($this->orderRelations());
+
+        return response()->json(['order' => $this->orderPayload($order, true), 'idempotent_replay' => ! $result['created']], $result['created'] ? 201 : 200);
+    }
 
     public function workspace(Request $request): JsonResponse
     {
@@ -152,7 +196,9 @@ class CustomerPurchaseController extends Controller
             'created_from' => ['nullable', 'date_format:Y-m-d'], 'created_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:created_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $query = $this->ordersQuery($request)->latest('created_at')->latest('id');
+        $baseQuery = $this->ordersQuery($request);
+        $statusCounts = (clone $baseQuery)->selectRaw('status, COUNT(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        $query = $baseQuery->latest('created_at')->latest('id');
         if ($search = trim((string) ($filters['search'] ?? ''))) {
             $query->where(fn ($q) => $q->where('order_code', 'like', '%'.$search.'%')->orWhereHas('items', fn ($i) => $i->where('product_name', 'like', '%'.$search.'%')));
         }
@@ -167,7 +213,91 @@ class CustomerPurchaseController extends Controller
         }
         $orders = $query->paginate((int) ($filters['per_page'] ?? 20));
 
-        return response()->json(['orders' => collect($orders->items())->map(fn ($order) => $this->orderPayload($order)), 'pagination' => ['current_page' => $orders->currentPage(), 'last_page' => $orders->lastPage(), 'total' => $orders->total()]]);
+        return response()->json([
+            'orders' => collect($orders->items())->map(fn ($order) => $this->orderPayload($order)),
+            'pagination' => ['current_page' => $orders->currentPage(), 'last_page' => $orders->lastPage(), 'total' => $orders->total()],
+            'statistics' => ['total' => (int) $statusCounts->sum(), 'by_status' => $statusCounts->map(fn ($count) => (int) $count)],
+        ]);
+    }
+
+    public function dashboardAnalytics(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'months' => ['nullable', 'integer', 'in:3,6,12'],
+        ]);
+        $months = (int) ($filters['months'] ?? 6);
+        $end = CarbonImmutable::now(config('app.timezone'))->endOfMonth();
+        $start = $end->startOfMonth()->subMonths($months - 1);
+        $customerId = $this->customerId($request);
+
+        $orders = Order::query()
+            ->where('customer_id', $customerId)
+            ->whereBetween('created_at', [$start, $end]);
+
+        $monthlyCounts = (clone $orders)
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as aggregate")
+            ->groupBy('month')
+            ->pluck('aggregate', 'month');
+
+        $monthlyStatuses = (clone $orders)
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, status, COUNT(*) as aggregate")
+            ->groupBy('month', 'status')
+            ->get()
+            ->groupBy('month');
+
+        $statusDistribution = (clone $orders)
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $monthlyValues = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('orders.customer_id', $customerId)
+            ->whereBetween('orders.created_at', [$start, $end])
+            ->selectRaw("DATE_FORMAT(orders.created_at, '%Y-%m') as month")
+            ->selectRaw("SUM(CASE WHEN order_items.note LIKE ? THEN 0 ELSE order_items.price_cny * order_items.quantity END) as known_amount", ['%Giá tham khảo: Chưa xác định%'])
+            ->selectRaw("SUM(CASE WHEN order_items.note LIKE ? THEN 0 ELSE 1 END) as known_items", ['%Giá tham khảo: Chưa xác định%'])
+            ->selectRaw("SUM(CASE WHEN order_items.note LIKE ? THEN 1 ELSE 0 END) as unknown_items", ['%Giá tham khảo: Chưa xác định%'])
+            ->groupBy('month')
+            ->get()
+            ->keyBy('month');
+
+        $monthly = collect(range(0, $months - 1))->map(function (int $offset) use ($start, $monthlyCounts, $monthlyStatuses, $monthlyValues) {
+            $month = $start->addMonths($offset)->format('Y-m');
+            $value = $monthlyValues->get($month);
+            $knownItems = (int) ($value->known_items ?? 0);
+            $unknownItems = (int) ($value->unknown_items ?? 0);
+            $orderCount = (int) ($monthlyCounts[$month] ?? 0);
+            $amount = $knownItems > 0
+                ? number_format((float) $value->known_amount, 2, '.', '')
+                : ($orderCount === 0 ? '0.00' : null);
+            $byStatus = collect($monthlyStatuses->get($month, []))
+                ->mapWithKeys(fn ($row) => [(string) $row->status => (int) $row->aggregate]);
+
+            return [
+                'month' => $month,
+                'order_count' => $orderCount,
+                'reference_value_cny' => $amount,
+                'known_item_count' => $knownItems,
+                'unknown_item_count' => $unknownItems,
+                'reference_value_completeness' => $unknownItems > 0 ? ($knownItems > 0 ? 'partial' : 'unavailable') : 'complete',
+                'by_status' => $byStatus,
+            ];
+        });
+
+        return response()->json([
+            'period' => ['months' => $months, 'from' => $start->toDateString(), 'to' => $end->toDateString(), 'timezone' => config('app.timezone')],
+            'monthly' => $monthly,
+            'status_distribution' => $statusDistribution->map(fn ($count, $status) => ['status' => (string) $status, 'count' => (int) $count])->values(),
+            'totals' => [
+                'orders' => (int) $statusDistribution->sum(),
+                'reference_value_cny' => $monthly->contains(fn ($entry) => $entry['reference_value_cny'] !== null)
+                    ? number_format((float) $monthly->sum(fn ($entry) => (float) ($entry['reference_value_cny'] ?? 0)), 2, '.', '')
+                    : null,
+                'known_item_count' => (int) $monthly->sum('known_item_count'),
+                'unknown_item_count' => (int) $monthly->sum('unknown_item_count'),
+            ],
+        ]);
     }
 
     public function showOrder(Request $request, int $order): JsonResponse
@@ -195,7 +325,10 @@ class CustomerPurchaseController extends Controller
             abort_if($draft->items->isEmpty(), 422, 'Hãy thêm ít nhất một sản phẩm trước khi gửi yêu cầu.');
             $order = Order::create([
                 'order_code' => $this->newOrderCode(), 'customer_id' => $draft->customer_id, 'note' => $draft->note,
-                'status' => 'pending', 'total_amount' => 0, 'product_total_cny' => 0, 'product_total_vnd' => 0, 'currency' => 'CNY', 'created_by' => null,
+                'creation_source' => Order::SOURCE_CUSTOMER_PORTAL,
+                'submitted_by_customer_account_id' => (int) $request->user('customer')->getAuthIdentifier(), 'submitted_at' => now(),
+                'status' => 'pending', 'total_amount' => 0, 'product_total_cny' => 0, 'product_total_vnd' => 0, 'currency' => 'CNY',
+                'created_by' => null, 'account_manager_id' => null,
             ]);
             foreach ($draft->items as $item) {
                 $created = $order->items()->create([
@@ -287,12 +420,24 @@ class CustomerPurchaseController extends Controller
 
     private function orderRelations(): array
     {
-        return ['items', 'orderTrackings.packages', 'cnPackages', 'invoices', 'depositVoucher.transactions'];
+        return [
+            'items', 'customer', 'submittedByCustomerAccount', 'accountManager',
+            'orderTrackings.packages', 'cnPackages', 'invoices', 'depositVoucher.transactions',
+        ];
     }
 
     private function customerId(Request $request): int
     {
         return (int) $request->user('customer')->customer_id;
+    }
+
+    private function productUrlMatchesPlatform(string $url, string $platform): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $domains = ['Taobao' => 'taobao.com', 'Tmall' => 'tmall.com', '1688' => '1688.com'];
+        $domain = $domains[$platform] ?? null;
+
+        return $domain !== null && ($host === $domain || str_ends_with($host, '.'.$domain));
     }
 
     private function ensureDraftSchema(): void
@@ -319,21 +464,118 @@ class CustomerPurchaseController extends Controller
             'submitted_order_id' => $draft->submitted_order_id, 'created_at' => $draft->created_at?->toISOString(), 'updated_at' => $draft->updated_at?->toISOString(),
             'items' => $draft->items->map(fn ($item) => ['id' => $item->id, 'source' => $item->source, 'product_link' => $item->product_link, 'product_name' => $item->product_name,
                 'variant' => $item->variant, 'price_cny' => $item->price_cny, 'quantity' => $item->quantity, 'note' => $item->note, 'product_image' => $item->product_image,
-                'seller' => $item->seller, 'shop_id' => $item->shop_id, 'shop_name' => $item->shop_name, 'size' => $item->size, 'color' => $item->color])->values()];
+                'seller' => $item->seller, 'shop_id' => $item->shop_id, 'shop_name' => $item->shop_name, 'size' => $item->size, 'color' => $item->color,
+                'selected_sku_id' => $this->sourceSkuId($item)])->values()];
+    }
+
+    private function sourceSkuId(CustomerPurchaseDraftItem $item): ?string
+    {
+        foreach (Utf8ValueNormalizer::lines($item->note, 'customer_purchase_draft_items', (int) $item->id, 'note') as $line) {
+            if (str_starts_with($line, 'SKU nguồn: ')) {
+                return trim(substr($line, strlen('SKU nguồn: '))) ?: null;
+            }
+        }
+
+        return null;
+    }
+
+    private function itemMetadata(OrderItem $item): array
+    {
+        $metadata = ['variant_label' => null, 'source_sku_id' => null, 'selected_attributes' => [], 'reference_price_known' => true];
+        $publicLines = [];
+
+        foreach (Utf8ValueNormalizer::lines($item->note, 'order_items', (int) $item->id, 'note') as $line) {
+            if (str_starts_with($line, 'Phân loại: ')) {
+                $metadata['variant_label'] = trim(substr($line, strlen('Phân loại: '))) ?: null;
+            } elseif (str_starts_with($line, 'SKU nguồn: ')) {
+                $metadata['source_sku_id'] = trim(substr($line, strlen('SKU nguồn: '))) ?: null;
+            } elseif (str_starts_with($line, 'Thuộc tính: ')) {
+                foreach (explode(' / ', substr($line, strlen('Thuộc tính: '))) as $attribute) {
+                    [$name, $value] = array_pad(explode(': ', $attribute, 2), 2, null);
+                    if (trim((string) $name) !== '' && trim((string) $value) !== '') {
+                        $metadata['selected_attributes'][trim($name)] = trim($value);
+                    }
+                }
+            } elseif ($line === 'Giá tham khảo: Chưa xác định') {
+                $metadata['reference_price_known'] = false;
+            } elseif (trim($line) !== '') {
+                $publicLines[] = $line;
+            }
+        }
+
+        $metadata['public_note'] = trim(implode("\n", $publicLines)) ?: null;
+
+        return $metadata;
+    }
+
+    private function paymentPayload(Order $order): ?array
+    {
+        $voucher = $order->depositVoucher;
+        $status = $voucher?->status ?: $order->deposit_status;
+        if (! $status) {
+            return null;
+        }
+
+        return [
+            'status' => Utf8ValueNormalizer::string($status, 'orders', (int) $order->id, 'payment_status'),
+            'requested_amount_vnd' => $voucher ? (int) round((float) $voucher->total_amount) : (int) ($order->deposit_amount_vnd ?? 0),
+            'paid_amount_vnd' => $voucher ? (int) round((float) $voucher->paid_amount) : (int) ($order->deposit_paid_amount_vnd ?? 0),
+            'paid_at' => $order->deposit_paid_at?->toISOString(),
+        ];
     }
 
     private function orderPayload(Order $order, bool $detailed = false): array
     {
-        $payload = ['id' => $order->id, 'order_code' => $order->order_code, 'status' => $order->status, 'note' => $order->note,
+        $payload = ['id' => $order->id,
+            'order_code' => Utf8ValueNormalizer::string($order->order_code, 'orders', (int) $order->id, 'order_code'),
+            'status' => Utf8ValueNormalizer::string($order->status, 'orders', (int) $order->id, 'status'),
+            'creation_source' => Utf8ValueNormalizer::string($order->creation_source, 'orders', (int) $order->id, 'creation_source'),
+            'submitted_at' => $order->submitted_at?->toISOString(),
+            'note' => $this->purchaseRequests->publicNote(Utf8ValueNormalizer::string($order->note, 'orders', (int) $order->id, 'note')),
             'product_total_cny' => $order->product_total_cny, 'product_total_vnd' => (int) $order->product_total_vnd,
-            'exchange_rate' => $order->exchange_rate, 'currency' => $order->currency, 'created_at' => $order->created_at?->toISOString(), 'updated_at' => $order->updated_at?->toISOString(),
+            'exchange_rate' => $order->exchange_rate, 'currency' => Utf8ValueNormalizer::string($order->currency, 'orders', (int) $order->id, 'currency'), 'created_at' => $order->created_at?->toISOString(), 'updated_at' => $order->updated_at?->toISOString(),
             'item_count' => $order->items->count(), 'quantity' => $order->items->sum('quantity'),
-            'items' => $order->items->map(fn ($item) => ['id' => $item->id, 'product_name' => $item->product_name, 'product_link' => $item->product_link,
-                'price_cny' => $item->price_cny, 'unit_price_vnd' => (int) $item->unit_price_vnd, 'quantity' => $item->quantity,
-                'subtotal_cny' => $item->subtotal_cny, 'subtotal_vnd' => (int) $item->subtotal_vnd, 'note' => $item->note, 'product_image' => $item->product_image,
-                'seller' => $item->seller, 'shop_id' => $item->shop_id, 'shop_name' => $item->shop_name, 'size' => $item->size, 'color' => $item->color])->values()];
+            'items' => $order->items->map(function ($item) {
+                $metadata = $this->itemMetadata($item);
+                $referenceSubtotal = $metadata['reference_price_known']
+                    ? $this->pricing->multiplyCnyByQuantity((string) $item->price_cny, (int) $item->quantity)
+                    : null;
+
+                return ['id' => $item->id,
+                    'product_name' => Utf8ValueNormalizer::string($item->product_name, 'order_items', (int) $item->id, 'product_name'),
+                    'product_link' => Utf8ValueNormalizer::string($item->product_link, 'order_items', (int) $item->id, 'product_link'),
+                    'price_cny' => $metadata['reference_price_known'] ? $item->price_cny : null,
+                    'reference_price_known' => $metadata['reference_price_known'], 'reference_subtotal_cny' => $referenceSubtotal,
+                    'unit_price_vnd' => (int) $item->unit_price_vnd, 'quantity' => $item->quantity,
+                    'subtotal_cny' => $item->subtotal_cny, 'subtotal_vnd' => (int) $item->subtotal_vnd,
+                    'note' => $metadata['public_note'], 'product_image' => Utf8ValueNormalizer::string($item->product_image, 'order_items', (int) $item->id, 'product_image'),
+                    'seller' => Utf8ValueNormalizer::string($item->seller, 'order_items', (int) $item->id, 'seller'),
+                    'shop_id' => Utf8ValueNormalizer::string($item->shop_id, 'order_items', (int) $item->id, 'shop_id'),
+                    'shop_name' => Utf8ValueNormalizer::string($item->shop_name, 'order_items', (int) $item->id, 'shop_name'),
+                    'size' => Utf8ValueNormalizer::string($item->size, 'order_items', (int) $item->id, 'size'),
+                    'color' => Utf8ValueNormalizer::string($item->color, 'order_items', (int) $item->id, 'color'),
+                    'variant_label' => $metadata['variant_label'], 'source_sku_id' => $metadata['source_sku_id'],
+                    'selected_attributes' => $metadata['selected_attributes']];
+            })->values()];
         if ($detailed) {
-            $payload += ['history' => $this->historyPayload($order), 'tracking_count' => $order->orderTrackings->count(), 'package_count' => $order->cnPackages->count(), 'invoice_count' => $order->invoices->count()];
+            $customer = $order->customer;
+            $submittedAccount = $order->submittedByCustomerAccount;
+            $manager = $order->accountManager;
+            $payload += [
+                'history' => $this->historyPayload($order),
+                'tracking_count' => $order->orderTrackings->count(), 'package_count' => $order->cnPackages->count(), 'invoice_count' => $order->invoices->count(),
+                'customer_contact' => $customer ? [
+                    'name' => Utf8ValueNormalizer::string($customer->name, 'customers', (int) $customer->id, 'name'),
+                    'phone' => Utf8ValueNormalizer::string($customer->phone, 'customers', (int) $customer->id, 'phone'),
+                    'email' => Utf8ValueNormalizer::string($customer->email, 'customers', (int) $customer->id, 'email'),
+                ] : null,
+                'submitted_by' => $submittedAccount ? ['id' => $submittedAccount->id,
+                    'email' => Utf8ValueNormalizer::string($submittedAccount->email, 'customer_accounts', (int) $submittedAccount->id, 'email'),
+                    'phone' => Utf8ValueNormalizer::string($submittedAccount->phone_e164, 'customer_accounts', (int) $submittedAccount->id, 'phone_e164')] : null,
+                'account_manager' => $manager ? ['id' => $manager->id,
+                    'name' => Utf8ValueNormalizer::string($manager->name, 'users', (int) $manager->id, 'name')] : null,
+                'payment' => $this->paymentPayload($order),
+            ];
         }
 
         return $payload;
@@ -343,18 +585,18 @@ class CustomerPurchaseController extends Controller
     {
         $events = collect([['type' => 'created', 'status' => 'pending', 'occurred_at' => $order->created_at?->toISOString()]]);
         if ($order->updated_at && ! $order->updated_at->equalTo($order->created_at)) {
-            $events->push(['type' => 'order_updated', 'status' => $order->status, 'occurred_at' => $order->updated_at->toISOString()]);
+            $events->push(['type' => 'order_updated', 'status' => Utf8ValueNormalizer::string($order->status, 'orders', (int) $order->id, 'status'), 'occurred_at' => $order->updated_at->toISOString()]);
         }
         foreach ($order->orderTrackings as $tracking) {
-            $events->push(['type' => 'tracking', 'status' => $tracking->status, 'occurred_at' => ($tracking->dispatched_at ?? $tracking->updated_at)?->toISOString()]);
+            $events->push(['type' => 'tracking', 'status' => Utf8ValueNormalizer::string($tracking->status, 'order_trackings', (int) $tracking->id, 'status'), 'occurred_at' => ($tracking->dispatched_at ?? $tracking->updated_at)?->toISOString()]);
         }
         foreach ($order->cnPackages as $package) {
             if ($package->received_at) {
-                $events->push(['type' => 'cn_warehouse_received', 'status' => $package->status, 'occurred_at' => $package->received_at->toISOString()]);
+                $events->push(['type' => 'cn_warehouse_received', 'status' => Utf8ValueNormalizer::string($package->status, 'cn_packages', (int) $package->id, 'status'), 'occurred_at' => $package->received_at->toISOString()]);
             }
         }
         foreach ($order->invoices as $invoice) {
-            $events->push(['type' => 'invoice', 'status' => $invoice->status, 'occurred_at' => $invoice->created_at?->toISOString()]);
+            $events->push(['type' => 'invoice', 'status' => Utf8ValueNormalizer::string($invoice->status, 'invoices', (int) $invoice->id, 'status'), 'occurred_at' => $invoice->created_at?->toISOString()]);
         }
 
         return $events->filter(fn ($event) => $event['occurred_at'])->sortBy('occurred_at')->values()->all();

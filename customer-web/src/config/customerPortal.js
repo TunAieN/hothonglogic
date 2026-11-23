@@ -4,15 +4,15 @@ export const customerPortalCapabilities = Object.freeze({
   orders: "ready",
   orderDetail: "ready",
   consignments: "needs-backend",
-  wallet: "blocked",
-  transactions: "blocked",
+  wallet: "ready",
+  transactions: "ready",
   addresses: "blocked",
   notifications: "needs-backend",
   profile: "read-only",
   password: "ready",
   socialConnections: "needs-backend",
   support: "needs-backend",
-  pricing: "needs-backend",
+  pricing: "ready",
 });
 
 const allowedDemoStates = new Set(["ready", "loading", "error", "empty"]);

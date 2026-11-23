@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OrderResolver
@@ -88,7 +89,7 @@ class OrderResolver
         return DB::transaction(function () use ($args) {
             $input = $args['input'];
 
-            $order = Order::create([
+            $orderAttributes = [
                 'order_code' => 'ORD-'.date('Ymd').'-'.strtoupper(substr(uniqid(), -6)),
                 'customer_id' => $input['customer_id'],
                 'total_amount' => 0,
@@ -98,7 +99,11 @@ class OrderResolver
                 'note' => $input['note'] ?? null,
                 'status' => 'pending',
                 'created_by' => Auth::id(),
-            ]);
+            ];
+            if (Schema::hasColumn('orders', 'creation_source')) {
+                $orderAttributes['creation_source'] = Order::SOURCE_ADMIN_PORTAL;
+            }
+            $order = Order::create($orderAttributes);
 
             foreach ($input['items'] as $item) {
                 $createdItem = $order->items()->create($this->normalizeOrderItemPayload($item));
@@ -156,7 +161,6 @@ class OrderResolver
                 'customer_id' => $input['customer_id'] ?? $order->customer_id,
                 'status' => $nextStatus,
                 'note' => $input['note'] ?? $order->note,
-                'created_by' => $input['created_by'] ?? $order->created_by,
                 'account_manager_id' => $input['account_manager_id'] ?? $order->account_manager_id,
             ]);
 

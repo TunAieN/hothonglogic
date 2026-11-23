@@ -35,18 +35,23 @@ async function request(path, options = {}) {
 }
 
 const json = (method, body = {}) => ({ method, body: JSON.stringify(body) });
-export const getPurchaseWorkspace = () => request("workspace");
-export const createPurchaseDraft = (input) => request("drafts", json("POST", input));
-export const updatePurchaseDraft = (id, input) => request(`drafts/${id}`, json("PATCH", input));
-export const deletePurchaseDraft = (id) => request(`drafts/${id}`, json("DELETE"));
-export const submitPurchaseDraft = (id) => request(`drafts/${id}/submit`, json("POST"));
-export const addPurchaseCartItem = (input) => request("cart/items", json("POST", input));
-export const updatePurchaseCartItem = (id, input) => request(`cart/items/${id}`, json("PATCH", input));
-export const deletePurchaseCartItem = (id) => request(`cart/items/${id}`, json("DELETE"));
-export const submitPurchaseCart = () => request("cart/submit", json("POST"));
-export const savePurchaseCartAsDraft = (input = {}) => request("cart/save-draft", json("POST", input));
+export const submitCustomerPurchaseRequest = (input) => request("purchase-requests", json("POST", input));
 export const getCustomerOrders = (params = {}) => request(`orders?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null))}`);
+export const getCustomerDashboardAnalytics = (months = 6) => request(`dashboard-analytics?${new URLSearchParams({ months })}`);
+export const getCustomerWarehousePackages = (params = {}) => request(`warehouse-packages?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null))}`);
+export const getCustomerWarehousePackage = (id) => request(`warehouse-packages/${encodeURIComponent(id)}`);
+export const searchCustomerTracking = (code, options = {}) => request(`tracking?${new URLSearchParams({ code })}`, options);
+export const getCustomerOrderShipments = (id) => request(`orders/${encodeURIComponent(id)}/shipments`);
 export const getCustomerOrder = (id) => request(`orders/${encodeURIComponent(id)}`);
 export const getProductLookupRequests = () => request("product-lookups");
 export const getProductLookupRequest = (id) => request(`product-lookups/${encodeURIComponent(id)}`);
 export const createProductLookupRequest = (url) => request("product-lookups", json("POST", { url }));
+export const getCustomerFinanceSummary = () => request("finance/summary");
+export const getCustomerLedger = (params = {}) => request(`finance/ledger?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null))}`);
+export const getCustomerPaymentVouchers = (params = {}) => request(`finance/payment-vouchers?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null))}`);
+export const createCustomerTopupIntent = (input) => request("finance/top-up-intents", json("POST", input));
+export const getCustomerPaymentIntent = (reference) => request(`finance/payment-intents/${encodeURIComponent(reference)}`);
+export const createVoucherSepayIntent = (voucherId, input) => request(`finance/payment-vouchers/${encodeURIComponent(voucherId)}/sepay-intents`, json("POST", input));
+export const payVoucherFromWallet = (voucherId, input) => request(`finance/payment-vouchers/${encodeURIComponent(voucherId)}/wallet-payments`, json("POST", input));
+export const getCustomerPricing = () => request("pricing");
+export const estimateCustomerPricing = (input) => request("pricing/estimate", json("POST", input));

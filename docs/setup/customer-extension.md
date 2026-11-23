@@ -12,6 +12,8 @@ node scripts/build-customer-extension.mjs
 node scripts/validate-customer-extension.mjs build/customer-extension
 ```
 
+The default local origins come from the same `config/local-development.mjs` source used by the Customer Web Vite server. The manifest limits external messaging to the two local hosts; because Chrome match patterns do not support ports, the service worker additionally checks the complete sender origin and accepts only port `5173`. Admin Panel on `5174` is therefore rejected.
+
 Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `build/customer-extension`. Copy the resulting extension ID into `customer-web/.env.local` as `VITE_CUSTOMER_EXTENSION_IDS`. Restart Vite after changing the environment file.
 
 After rebuilding an already loaded unpacked extension, click **Reload** for that extension in `chrome://extensions` before testing again.

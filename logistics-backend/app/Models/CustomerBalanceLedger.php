@@ -18,7 +18,7 @@ class CustomerBalanceLedger extends Model
     ];
 
     protected $casts = [
-        'amount' => 'float',
-        'balance_after' => 'float',
+        'amount' => 'decimal:2',
+        'balance_after' => 'decimal:2',
     ];
 }

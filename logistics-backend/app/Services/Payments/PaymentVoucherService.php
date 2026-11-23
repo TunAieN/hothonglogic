@@ -205,11 +205,13 @@ class PaymentVoucherService
         });
     }
 
-    public function confirmDepositPayment(int|string $orderId, array $input): Order
+    public function confirmDepositPayment(int|string $orderId, array $input, bool $enforcePermission = true): Order
     {
         BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
 
-        $this->ensurePermission('payments.confirm');
+        if ($enforcePermission) {
+            $this->ensurePermission('payments.confirm');
+        }
 
         return DB::transaction(function () use ($orderId, $input) {
             $order = Order::query()->with(['depositVoucher'])->lockForUpdate()->findOrFail($orderId);
@@ -282,12 +284,13 @@ class PaymentVoucherService
             }
 
             $receivedAt = $this->parseReceivedAt($input['received_at'] ?? null);
+            $paymentMethod = (string) ($input['payment_method'] ?? ($voucher->payment_method_expected ?: 'bank_transfer'));
             $transaction = PaymentTransaction::query()->create([
                 'transaction_code' => $this->nextCode('GD', 'payment_transactions', 'transaction_code'),
                 'payment_voucher_id' => $voucher->id,
                 'amount' => $this->money($amount),
-                'payment_method' => $voucher->payment_method_expected ?: 'bank_transfer',
-                'bank_name' => $voucher->bank_name_snapshot,
+                'payment_method' => $paymentMethod,
+                'bank_name' => $input['bank_name'] ?? $voucher->bank_name_snapshot,
                 'bank_transaction_code' => $bankTransactionCode,
                 'received_at' => $receivedAt,
                 'confirmed_by' => Auth::id(),
@@ -302,7 +305,7 @@ class PaymentVoucherService
                 'status' => PaymentVoucher::STATUS_PAID,
             ]);
             $this->syncLegacyColumns($voucher, [
-                'payment_method' => $voucher->payment_method_expected ?: 'bank_transfer',
+                'payment_method' => $paymentMethod,
                 'paid_at' => $receivedAt,
                 'remaining_amount' => 0,
             ]);
@@ -612,6 +615,90 @@ class PaymentVoucherService
             }
 
             return $voucher->fresh($this->voucherRelations());
+        });
+    }
+
+    /**
+     * Complete one customer-initiated payment using an already authenticated,
+     * idempotent provider/wallet transaction code. Customer-facing callers must
+     * still verify ownership before entering this trusted domain method.
+     *
+     * @return array{voucher: PaymentVoucher, transaction: PaymentTransaction}
+     */
+    public function confirmExactCustomerPayment(
+        int|string $voucherId,
+        int $amountVnd,
+        string $paymentMethod,
+        string $bankTransactionCode,
+        ?string $bankName = null,
+        mixed $receivedAt = null,
+    ): array {
+        BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
+
+        return DB::transaction(function () use ($voucherId, $amountVnd, $paymentMethod, $bankTransactionCode, $bankName, $receivedAt) {
+            $voucher = PaymentVoucher::query()->lockForUpdate()->findOrFail($voucherId);
+            $existing = PaymentTransaction::query()
+                ->where('bank_transaction_code', $bankTransactionCode)
+                ->where('status', PaymentTransaction::STATUS_CONFIRMED)
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                if ((int) $existing->payment_voucher_id !== (int) $voucher->id || (int) round((float) $existing->amount) !== $amountVnd) {
+                    throw new HttpException(409, 'Mã giao dịch đã được dùng cho một thanh toán khác.');
+                }
+
+                return ['voucher' => $voucher->fresh($this->voucherRelations()), 'transaction' => $existing];
+            }
+
+            if (! in_array($voucher->status, [PaymentVoucher::STATUS_WAITING_PAYMENT, PaymentVoucher::STATUS_PARTIAL_PAID], true)) {
+                throw new HttpException(422, 'Phiếu không ở trạng thái có thể thanh toán.');
+            }
+            $remaining = (int) round((float) $voucher->remaining_amount);
+            if ($amountVnd <= 0 || $amountVnd !== $remaining) {
+                throw new HttpException(422, 'Số tiền thanh toán phải bằng đúng số tiền còn lại của phiếu.');
+            }
+
+            if ($voucher->voucher_type === 'deposit' && $voucher->order_id) {
+                $order = $this->confirmDepositPayment($voucher->order_id, [
+                    'amount_vnd' => $amountVnd,
+                    'transaction_code' => $bankTransactionCode,
+                    'payment_method' => $paymentMethod,
+                    'bank_name' => $bankName,
+                    'received_at' => $receivedAt,
+                    'note' => 'Customer Portal: '.$paymentMethod,
+                ], false);
+                $fresh = $order->depositVoucher?->fresh($this->voucherRelations())
+                    ?? PaymentVoucher::query()->with($this->voucherRelations())->findOrFail($voucher->id);
+                $transaction = $fresh->transactions()->where('bank_transaction_code', $bankTransactionCode)->firstOrFail();
+
+                return ['voucher' => $fresh, 'transaction' => $transaction];
+            }
+
+            $transaction = PaymentTransaction::query()->create([
+                'transaction_code' => $this->nextCode('GD', 'payment_transactions', 'transaction_code'),
+                'payment_voucher_id' => $voucher->id,
+                'amount' => $amountVnd,
+                'payment_method' => $paymentMethod,
+                'bank_name' => $bankName,
+                'bank_transaction_code' => $bankTransactionCode,
+                'received_at' => $this->parseReceivedAt($receivedAt),
+                'confirmed_by' => null,
+                'status' => PaymentTransaction::STATUS_CONFIRMED,
+                'note' => 'Được xác nhận tự động từ Customer Portal.',
+            ]);
+
+            $voucher->update(['paid_amount' => (int) round((float) $voucher->total_amount), 'status' => PaymentVoucher::STATUS_PAID]);
+            $this->syncLegacyColumns($voucher, [
+                'payment_method' => $paymentMethod,
+                'paid_at' => $transaction->received_at,
+                'remaining_amount' => 0,
+            ]);
+            $this->audit('confirm_customer_payment_transaction', $transaction, null, $transaction->toArray());
+            $fresh = $voucher->fresh();
+            $this->deliveryRequestService->markVoucherPaid($fresh);
+            $this->issueInvoice($voucher->id);
+
+            return ['voucher' => $voucher->fresh($this->voucherRelations()), 'transaction' => $transaction];
         });
     }
 

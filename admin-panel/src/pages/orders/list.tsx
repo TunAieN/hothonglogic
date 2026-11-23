@@ -148,7 +148,17 @@ const normalizeText = (value?: string | number | null) =>
         .toLowerCase();
 
 const getOrderStaff = (order: IOrder): User | undefined =>
-    order.creator?.id ? order.creator : undefined;
+    order.accountManager?.id
+        ? order.accountManager
+        : order.creator?.id
+          ? order.creator
+          : undefined;
+
+const getOrderSourceLabel = (order: IOrder) => {
+    if (order.creation_source === "customer_portal") return "Khách hàng tự gửi";
+    if (order.creation_source === "admin_portal") return "Nhân viên tạo";
+    return "Đơn lịch sử";
+};
 
 const formatDate = (value?: string) =>
     value ? new Date(value).toLocaleDateString() : "-";
@@ -503,12 +513,15 @@ export const OrderList = () => {
             ),
         },
         {
-            title: "Staff",
+            title: "Nguồn / phụ trách",
             key: "staff",
             render: (_, record) => {
                 const staff = getOrderStaff(record);
 
-                return staff?.name ? <Text>{staff.name}</Text> : <Text type="secondary">-</Text>;
+                return <Space direction="vertical" size={0}>
+                    <Text>{getOrderSourceLabel(record)}</Text>
+                    <Text type="secondary">{staff?.name || "Chưa phân công"}</Text>
+                </Space>;
             },
         },
         {
