@@ -18,6 +18,7 @@ class SepayWebhookService
         private readonly CustomerLedgerService $ledger,
         private readonly PaymentVoucherService $vouchers,
         private readonly SepayAccountRegistry $accounts,
+        private readonly CustomerNotificationService $notifications,
     ) {}
 
     public function ingest(array $payload, string $rawBody): SepayWebhookEvent
@@ -131,13 +132,34 @@ class SepayWebhookService
                     );
                     $intent->update(['status' => 'completed', 'completed_at' => now(), 'ledger_id' => $ledger->id]);
                 } elseif ($intent->type === 'voucher_payment' && $intent->payment_voucher_id) {
+                    $voucher = $intent->voucher()->lockForUpdate()->first();
+                    if ($voucher?->voucher_type === 'deposit' && config('sepay.deposit_auto_confirmation_enabled') !== true) {
+                        return $this->reconcile($event, 'deposit_auto_confirmation_disabled');
+                    }
+                    if ($voucher?->voucher_type !== 'deposit' && config('sepay.direct_voucher_payment_enabled') !== true) {
+                        return $this->reconcile($event, 'direct_voucher_payment_disabled');
+                    }
                     $result = $this->vouchers->confirmExactCustomerPayment(
                         $intent->payment_voucher_id, (int) $event->amount_vnd, 'bank_transfer',
                         'SEPAY-'.$event->provider_transaction_id, $intent->paymentAccount->bank_name,
                         $event->occurred_at ?? now(),
+                        'sepay_auto',
+                        $event->provider_transaction_id,
+                        [
+                            'webhook_event_id' => $event->id,
+                            'verified_reference' => $event->reference,
+                            'verified_account_number' => $event->account_number,
+                            'verified_bank_code' => $event->bank_code,
+                            'amount_vnd' => (int) $event->amount_vnd,
+                        ],
                     );
                     $intent->update(['status' => 'completed', 'completed_at' => now(),
                         'payment_transaction_id' => $result['transaction']->id]);
+                    if ($result['voucher']->voucher_type === 'deposit') {
+                        $this->notifications->depositPaid($result['voucher'], $result['transaction']);
+                    } else {
+                        $this->notifications->voucherPaid($result['voucher'], $result['transaction']);
+                    }
                 } else {
                     return $this->reconcile($event, 'unsupported_intent_type');
                 }
@@ -252,6 +274,8 @@ class SepayWebhookService
             'status' => 'reconciliation_needed', 'reconciliation_reason' => $reason,
             'next_retry_at' => null, 'processing_history' => $this->history($event, 'reconciliation_needed', $reason),
         ]);
+
+        $this->notifications->voucherNeedsReview($event->fresh());
 
         return $event->fresh();
     }

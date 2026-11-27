@@ -115,9 +115,31 @@ class Order extends Model
         return $this->hasMany(Invoice::class);
     }
 
+    public function depositPolicySnapshot()
+    {
+        return $this->hasOne(OrderDepositPolicySnapshot::class);
+    }
+
+    public function deliveryRequest()
+    {
+        return $this->hasOne(DeliveryRequest::class)
+            ->whereNull('payment_voucher_id')
+            ->latestOfMany();
+    }
+
+    public function deliveryRequests()
+    {
+        return $this->hasMany(DeliveryRequest::class);
+    }
+
     public function orderTrackings()
     {
         return $this->hasMany(OrderTracking::class);
+    }
+
+    public function taobaoPurchaseOrders()
+    {
+        return $this->hasMany(TaobaoPurchaseOrder::class);
     }
 
     public function shippingTasks()

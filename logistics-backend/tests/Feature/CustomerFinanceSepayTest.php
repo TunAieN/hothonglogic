@@ -7,6 +7,7 @@ use App\Models\CustomerAccount;
 use App\Models\CustomerBalanceLedger;
 use App\Models\CustomerPaymentIntent;
 use App\Models\PaymentAccount;
+use App\Models\PaymentVoucher;
 use App\Models\SepayWebhookEvent;
 use App\Services\Payments\SepayWebhookService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -25,8 +26,12 @@ class CustomerFinanceSepayTest extends TestCase
     {
         parent::setUp();
         Config::set('sepay.enabled', true);
+        Config::set('sepay.webhook_enabled', true);
+        Config::set('sepay.deposit_auto_confirmation_enabled', true);
+        Config::set('sepay.direct_voucher_payment_enabled', true);
         Config::set('sepay.webhook_secret', 'test-webhook-secret');
         Config::set('sepay.timestamp_tolerance_seconds', 300);
+        Config::set('sepay.qr_base_url', 'https://img.vietqr.io/image');
         $customer = Customer::query()->create([
             'code' => 'CUS-FIN-'.bin2hex(random_bytes(3)), 'name' => 'Khách tài chính',
             'email' => bin2hex(random_bytes(4)).'@example.test', 'phone' => '0900000000', 'status' => 'active',
@@ -49,10 +54,62 @@ class CustomerFinanceSepayTest extends TestCase
     {
         $this->authenticate();
         $payload = ['amount_vnd' => 500000, 'idempotency_key' => 'topup-idempotent-1'];
-        $first = $this->postJson('/customer-portal/finance/top-up-intents', $payload)->assertCreated()->json('intent.reference');
+        $firstResponse = $this->postJson('/customer-portal/finance/top-up-intents', $payload)->assertCreated();
+        $first = $firstResponse->json('intent.reference');
+        $this->assertSame(
+            'https://img.vietqr.io/image/MB-123456789-compact2.svg?amount=500000&addInfo='.rawurlencode($first).'&accountName=VIETTRUNG%20QA',
+            $firstResponse->json('intent.qr_url'),
+        );
+        $this->assertSame('VIETTRUNG QA', $firstResponse->json('intent.bank.account_holder'));
         $second = $this->postJson('/customer-portal/finance/top-up-intents', $payload)->assertCreated()->json('intent.reference');
         $this->assertSame($first, $second);
         $this->assertSame(1, CustomerPaymentIntent::query()->where('customer_id', $this->account->customer_id)->count());
+        $this->assertSame(0, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_changing_topup_amount_uses_a_distinct_intent_without_touching_ledger(): void
+    {
+        $this->authenticate();
+        $first = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 10000, 'idempotency_key' => 'topup-amount-10000',
+        ])->assertCreated()->json('intent');
+        $second = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 100000, 'idempotency_key' => 'topup-amount-100000',
+        ])->assertCreated()->json('intent');
+
+        $this->assertNotSame($first['reference'], $second['reference']);
+        $this->assertSame(10000, $first['amount_vnd']);
+        $this->assertSame(100000, $second['amount_vnd']);
+        $this->assertSame(0, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_wallet_checkout_pays_multiple_vouchers_atomically_and_is_idempotent(): void
+    {
+        $this->authenticate();
+        CustomerBalanceLedger::query()->create([
+            'customer_id' => $this->account->customer_id,
+            'type' => 'credit', 'amount' => '400000.00', 'balance_after' => '400000.00',
+            'description' => 'Số dư fixture checkout cô lập',
+        ]);
+        $vouchers = collect([200000, 150000])->map(fn (int $amount, int $index) => PaymentVoucher::query()->create([
+            'voucher_code' => 'PV-BATCH-'.bin2hex(random_bytes(3)).'-'.$index,
+            'customer_id' => $this->account->customer_id,
+            'voucher_type' => $index === 0 ? 'deposit' : 'shipping',
+            'status' => PaymentVoucher::STATUS_WAITING_PAYMENT,
+            'subtotal' => $amount, 'discount_amount' => 0,
+            'total_amount' => $amount, 'paid_amount' => 0,
+        ]));
+        $payload = ['voucher_ids' => $vouchers->pluck('id')->all(), 'idempotency_key' => 'wallet-batch-1'];
+
+        $first = $this->postJson('/customer-portal/finance/payment-vouchers/wallet-checkout', $payload)
+            ->assertOk()->assertJsonCount(2, 'intents');
+        $this->assertSame(['completed', 'completed'], $first->json('intents.*.status'));
+        $this->assertSame(50000, (int) CustomerBalanceLedger::query()
+            ->where('customer_id', $this->account->customer_id)->latest('id')->value('balance_after'));
+
+        $this->postJson('/customer-portal/finance/payment-vouchers/wallet-checkout', $payload)
+            ->assertOk()->assertJsonCount(2, 'intents');
+        $this->assertSame(3, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
     }
 
     public function test_valid_signed_incoming_webhook_credits_once_and_duplicate_is_idempotent(): void
@@ -81,6 +138,37 @@ class CustomerFinanceSepayTest extends TestCase
         $this->signedWebhook($this->payload('provider-1002', $reference, 299000))
             ->assertOk()->assertJsonPath('event_status', 'reconciliation_needed');
         $this->assertDatabaseHas('sepay_webhook_events', ['provider_transaction_id' => 'provider-1002', 'reconciliation_reason' => 'amount_mismatch']);
+        $this->assertSame(0, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_wrong_receiving_account_requires_reconciliation_and_does_not_credit(): void
+    {
+        $this->authenticate();
+        $reference = $this->postJson('/customer-portal/finance/top-up-intents', [
+            'amount_vnd' => 310000, 'idempotency_key' => 'topup-wrong-account-1',
+        ])->assertCreated()->json('intent.reference');
+        $payload = $this->payload('provider-wrong-account', $reference, 310000);
+        $payload['accountNumber'] = '999999999';
+
+        $this->signedWebhook($payload)
+            ->assertOk()->assertJsonPath('event_status', 'reconciliation_needed');
+        $this->assertDatabaseHas('sepay_webhook_events', [
+            'provider_transaction_id' => 'provider-wrong-account',
+            'reconciliation_reason' => 'receiving_account_not_verified',
+        ]);
+        $this->assertSame(0, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
+    }
+
+    public function test_unknown_reference_requires_reconciliation_and_does_not_credit(): void
+    {
+        $reference = 'VT'.str_repeat('C', 24);
+
+        $this->signedWebhook($this->payload('provider-unknown-reference', $reference, 320000))
+            ->assertOk()->assertJsonPath('event_status', 'reconciliation_needed');
+        $this->assertDatabaseHas('sepay_webhook_events', [
+            'provider_transaction_id' => 'provider-unknown-reference',
+            'reconciliation_reason' => 'intent_not_found',
+        ]);
         $this->assertSame(0, CustomerBalanceLedger::query()->where('customer_id', $this->account->customer_id)->count());
     }
 

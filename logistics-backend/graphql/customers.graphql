@@ -7,6 +7,13 @@ type Customer {
   code: String!
   name: String!
   vip_group: String
+  vip_tier_id: ID
+  vip_qualified_spend_vnd: Float!
+  next_vip_tier_name: String
+  next_vip_threshold_vnd: Float
+  vip_progress_percent: Int!
+  vipTier: VipTier @belongsTo
+  vipHistories: [CustomerVipHistory!]! @hasMany
   phone: String!
   email: String
   province: String
@@ -19,6 +26,43 @@ type Customer {
   orders: [Order!]!
   orders_count: Int!
   addresses: [CustomerAddress!]! @hasMany
+}
+
+type VipTier {
+  id: ID!
+  code: String!
+  name: String!
+  priority: Int!
+  minimum_spend_vnd: Float!
+  base_deposit_percent: Float
+  credit_limit_vnd: Float
+  deposit_policy_enabled: Boolean!
+  is_default: Boolean!
+  is_active: Boolean!
+  customers_count: Int!
+  updated_at: DateTime
+}
+
+type CustomerVipHistory {
+  id: ID!
+  change_type: String!
+  qualified_spend_vnd: Float!
+  reason: String!
+  created_at: DateTime!
+  fromTier: VipTier @belongsTo
+  toTier: VipTier @belongsTo
+}
+
+input VipTierInput {
+  code: String!
+  name: String!
+  priority: Int!
+  minimum_spend_vnd: Float!
+  base_deposit_percent: Float
+  credit_limit_vnd: Float
+  deposit_policy_enabled: Boolean = false
+  is_default: Boolean = false
+  is_active: Boolean = true
 }
 
 type CustomerAddress {

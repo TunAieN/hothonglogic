@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CustomerAuthController;
+use App\Http\Controllers\CustomerAddressController;
 use App\Http\Controllers\CustomerFinanceController;
 use App\Http\Controllers\CustomerLogisticsController;
 use App\Http\Controllers\CustomerProductLookupController;
@@ -35,19 +36,32 @@ Route::prefix('customer-portal')->middleware(['auth:customer', 'customer.session
     Route::get('finance/summary', [CustomerFinanceController::class, 'summary']);
     Route::get('finance/ledger', [CustomerFinanceController::class, 'ledger']);
     Route::get('finance/payment-vouchers', [CustomerFinanceController::class, 'vouchers']);
+    Route::get('finance/payment-intents', [CustomerFinanceController::class, 'intents']);
+    Route::get('notifications', [CustomerFinanceController::class, 'notifications']);
     Route::get('finance/payment-intents/{reference}', [CustomerFinanceController::class, 'intentStatus'])->where('reference', '[A-Z0-9]+');
     Route::get('pricing', [CustomerFinanceController::class, 'pricing']);
     Route::post('pricing/estimate', [CustomerFinanceController::class, 'estimate'])->middleware('throttle:30,1');
     Route::get('orders/{order}/shipments', [CustomerLogisticsController::class, 'orderShipments'])->whereNumber('order');
     Route::get('orders/{order}', [CustomerPurchaseController::class, 'showOrder'])->whereNumber('order');
     Route::get('orders/{order}/history', [CustomerPurchaseController::class, 'orderHistory'])->whereNumber('order');
+    Route::get('addresses', [CustomerAddressController::class, 'index']);
+    Route::get('address-locations/provinces', [CustomerAddressController::class, 'provinces']);
+    Route::get('address-locations/districts', [CustomerAddressController::class, 'districts']);
+    Route::get('address-locations/wards', [CustomerAddressController::class, 'wards']);
 
     Route::middleware('business.writes')->group(function () {
         Route::post('purchase-requests', [CustomerPurchaseController::class, 'submitPurchaseRequest']);
+        Route::post('addresses', [CustomerAddressController::class, 'store']);
+        Route::put('addresses/{address}', [CustomerAddressController::class, 'update'])->whereNumber('address');
+        Route::delete('addresses/{address}', [CustomerAddressController::class, 'destroy'])->whereNumber('address');
+        Route::post('addresses/{address}/default', [CustomerAddressController::class, 'setDefault'])->whereNumber('address');
         Route::post('product-lookups', [CustomerProductLookupController::class, 'store'])->middleware('throttle:10,1');
-        Route::post('finance/top-up-intents', [CustomerFinanceController::class, 'createTopupIntent'])->middleware('throttle:10,1');
-        Route::post('finance/payment-vouchers/{voucher}/sepay-intents', [CustomerFinanceController::class, 'createVoucherSepayIntent'])->whereNumber('voucher')->middleware('throttle:10,1');
-        Route::post('finance/payment-vouchers/{voucher}/wallet-payments', [CustomerFinanceController::class, 'payVoucherFromWallet'])->whereNumber('voucher')->middleware('throttle:10,1');
+        Route::post('finance/top-up-intents', [CustomerFinanceController::class, 'createTopupIntent'])->middleware('throttle:10,1,customer-finance-write:');
+        Route::post('finance/payment-vouchers/wallet-checkout', [CustomerFinanceController::class, 'payVouchersFromWallet'])->middleware('throttle:10,1,customer-finance-write:');
+        Route::post('finance/payment-vouchers/{voucher}/sepay-intents', [CustomerFinanceController::class, 'createVoucherSepayIntent'])->whereNumber('voucher')->middleware('throttle:10,1,customer-finance-write:');
+        Route::post('finance/payment-vouchers/{voucher}/wallet-payments', [CustomerFinanceController::class, 'payVoucherFromWallet'])->whereNumber('voucher')->middleware('throttle:10,1,customer-finance-write:');
+        Route::post('notifications/read-all', [CustomerFinanceController::class, 'markAllNotificationsRead'])->middleware('throttle:30,1');
+        Route::post('notifications/{notification}/read', [CustomerFinanceController::class, 'markNotificationRead'])->whereNumber('notification')->middleware('throttle:60,1');
     });
 });
 

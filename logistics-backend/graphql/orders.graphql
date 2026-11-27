@@ -44,6 +44,8 @@ type Order {
     order_trackings: [OrderTracking!]! @hasMany(relation: "orderTrackings")
     cn_packages: [CnPackage!]! @hasMany(relation: "cnPackages")
     depositVoucher: PaymentVoucher @hasOne(relation: "depositVoucher")
+    depositPolicySnapshot: OrderDepositPolicySnapshot @hasOne
+    deliveryRequest: DeliveryRequest @hasOne(relation: "deliveryRequest")
 }
 
 type OrderItem {
@@ -105,9 +107,102 @@ input UpdateOrderInput {
     account_manager_id: ID
     status: String
     deposit_percent: Float
+    risk_level: String
+    risk_reason: String
+    risk_evidence: RiskAssessmentEvidenceInput
+    waive_deposit: Boolean
+    exception_reason: String
     note: String
     items: [OrderItemInput!]
     packages: [OrderPackageInput!]
+}
+
+type RiskDepositPolicy {
+    id: ID!
+    code: String!
+    name: String!
+    priority: Int!
+    minimum_deposit_percent: Float
+    surcharge_percent: Float
+    requires_manager_approval: Boolean!
+    is_active: Boolean!
+}
+
+type OrderDepositPolicySnapshot {
+    id: ID!
+    vip_code: String
+    vip_name: String
+    qualified_spend_vnd: Float!
+    vip_deposit_percent: Float
+    risk_code: String!
+    risk_name: String!
+    risk_reason: String!
+    automatic_risk_code: String
+    automatic_risk_reason: String
+    risk_selection_source: String
+    risk_minimum_percent: Float
+    risk_surcharge_percent: Float
+    additive_percent: Float
+    policy_formula: String
+    policy_version: String
+    capital_minimum_percent: Float
+    base_amount_vnd: Float!
+    recommended_percent: Float!
+    final_percent: Float!
+    deposit_waived: Boolean!
+    is_exception: Boolean!
+    exception_reason: String
+    assessed_by: ID!
+    approved_by: ID
+    assessed_at: DateTime!
+    approved_at: DateTime
+    voucher_issued_at: DateTime
+}
+
+"""Read-only policy explanation. No order, rate lock, or snapshot is written."""
+type OrderDepositPolicyPreview {
+    vip_code: String
+    vip_name: String
+    qualified_spend_vnd: Float!
+    vip_policy_enabled: Boolean!
+    vip_proposed_percent: Float
+    vip_effective_percent: Float
+    risk_code: String
+    risk_name: String
+    risk_minimum_percent: Float
+    risk_surcharge_percent: Float
+    additive_percent: Float
+    risk_requires_manager_approval: Boolean!
+    capital_minimum_percent: Float
+    recommended_percent: Float!
+    fallback_percent: Float!
+    fallback_applied: Boolean!
+    policy_formula: String!
+    policy_configuration_valid: Boolean!
+    product_total_cny: Float!
+    exchange_rate: Float
+    exchange_rate_locked: Boolean!
+    product_total_vnd: Float!
+    deposit_amount_vnd: Float
+    can_calculate: Boolean!
+    calculation_message: String!
+    can_approve_exception: Boolean!
+}
+
+input RiskDepositPolicyInput {
+    name: String!
+    priority: Int!
+    minimum_deposit_percent: Float
+    surcharge_percent: Float
+    requires_manager_approval: Boolean = false
+    is_active: Boolean = true
+}
+
+input RiskAssessmentEvidenceInput {
+    seller_checked: Boolean!
+    product_checked: Boolean!
+    returns_checked: Boolean!
+    anomaly_checked: Boolean!
 }
 
 input ConfirmOrderDepositPaymentInput {
@@ -126,6 +221,7 @@ input OrderPackageInput {
     note: String
     package_items: [OrderPackageItemInput!]
     tracking_items: [OrderPackageItemInput!]
+    taobao_purchase_order_ids: [ID!]
 }
 
 input OrderPackageItemInput {
@@ -151,6 +247,7 @@ type OrderTracking {
   order: Order! @belongsTo
   tracking_items: [OrderTrackingItem!]! @hasMany(relation: "trackingItems")
   packages: [CnPackage!]! @hasMany
+  taobao_purchase_orders: [TaobaoPurchaseOrder!]! @belongsToMany(relation: "taobaoPurchaseOrders")
 }
 
 type OrderTrackingItem {
@@ -160,4 +257,64 @@ type OrderTrackingItem {
   quantity: Int!
   order_tracking: OrderTracking! @belongsTo(relation: "orderTracking")
   order_item: OrderItem! @belongsTo(relation: "orderItem")
+}
+
+type TaobaoPurchaseProgress {
+  order_id: ID!
+  order_status: String!
+  ordered_quantity: Int!
+  purchased_quantity: Int!
+  remaining_quantity: Int!
+  purchase_order_count: Int!
+  is_complete: Boolean!
+  purchases: [TaobaoPurchaseOrder!]!
+}
+
+type TaobaoPurchaseOrder {
+  id: ID!
+  order_id: ID!
+  platform: String!
+  external_order_code: String!
+  shop_id: String
+  shop_name: String
+  purchased_at: DateTime
+  note: String
+  shop_exception_reason: String
+  status: String!
+  created_by: ID
+  updated_by: ID
+  confirmed_by: ID
+  confirmed_at: DateTime
+  created_at: DateTime!
+  updated_at: DateTime!
+  items: [TaobaoPurchaseOrderItem!]! @hasMany
+  trackings: [OrderTracking!]! @belongsToMany
+}
+
+type TaobaoPurchaseOrderItem {
+  id: ID!
+  taobao_purchase_order_id: ID!
+  order_item_id: ID!
+  quantity: Int!
+  order_item: OrderItem! @belongsTo(relation: "orderItem")
+}
+
+input TaobaoPurchaseProgressInput {
+  purchases: [TaobaoPurchaseOrderInput!]!
+}
+
+input TaobaoPurchaseOrderInput {
+  id: ID
+  external_order_code: String!
+  shop_id: String
+  shop_name: String
+  purchased_at: DateTime
+  note: String
+  shop_exception_reason: String
+  items: [TaobaoPurchaseOrderItemInput!]!
+}
+
+input TaobaoPurchaseOrderItemInput {
+  order_item_id: ID!
+  quantity: Int!
 }

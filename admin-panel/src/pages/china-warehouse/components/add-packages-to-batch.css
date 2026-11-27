@@ -1,0 +1,101 @@
+.cn-attach-modal .ant-modal-container,
+.cn-attach-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 89dvh;
+  overflow: hidden;
+  border-radius: 14px;
+  padding: 0;
+}
+
+.cn-attach-modal .ant-modal-header,
+.cn-attach-modal .ant-modal-footer {
+  flex: none;
+  margin: 0;
+  padding: 16px 22px;
+}
+
+.cn-attach-modal .ant-modal-header { border-bottom: 1px solid #e2e9f4; }
+.cn-attach-modal .ant-modal-footer { border-top: 1px solid #e2e9f4; }
+.cn-attach-modal .ant-modal-body {
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 18px 22px;
+}
+
+.cn-attach-modal .ant-modal-body,
+.cn-attach-options .rc-virtual-list-holder {
+  scrollbar-width: thin;
+  scrollbar-color: #afc1dc transparent;
+}
+
+.cn-attach-modal .ant-modal-body::-webkit-scrollbar { width: 4px; }
+.cn-attach-modal .ant-modal-body::-webkit-scrollbar-thumb { border-radius: 4px; background: #afc1dc; }
+.cn-attach-title { display: flex; align-items: center; gap: 13px; padding-right: 36px; color: #102b50; }
+.cn-attach-title strong { font-size: 22px; }
+.cn-attach-title div div { font-size: 13px; font-weight: 400; }
+.cn-attach-logo {
+  display: grid;
+  width: 49px;
+  height: 49px;
+  flex: none;
+  place-items: center;
+  border-radius: 11px;
+  background: #102b50;
+  color: white;
+  font-size: 24px;
+}
+
+.cn-attach-grid { display: grid; grid-template-columns: minmax(0, 27%) minmax(0, 1fr); gap: 16px; align-items: start; }
+.cn-attach-work { min-width: 0; }
+.cn-attach-work .ant-tabs-nav { margin-bottom: 12px; }
+.cn-attach-work .ant-tabs-card .ant-tabs-tab-active { background: #eaf2ff; border-color: #8bb5ed; border-bottom-color: #1755ad; }
+.cn-attach-work .ant-tabs-tab-btn { font-weight: 600; }
+.cn-attach-work > .ant-alert { margin-bottom: 10px; }
+.cn-attach-package { min-width: 0; border: 1px solid #dce5f3; border-radius: 12px; background: #f6f8fc; color: #102b50; }
+.cn-attach-package-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 14px; border-bottom: 1px solid #e2e9f4; }
+.cn-attach-package-head .ant-tag { margin: 0; }
+.cn-attach-fact { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 11px 0; align-items: start; margin: 0 14px; }
+.cn-attach-fact + .cn-attach-fact { border-top: 1px solid #e2e9f4; }
+.cn-attach-fact > .anticon { padding-top: 3px; font-size: 17px; color: #1755ad; }
+.cn-attach-fact strong { display: block; font-size: 19px; }
+.cn-attach-values { max-height: 132px; overflow-y: auto; scrollbar-width: thin; }
+.cn-attach-values .ant-btn { padding-inline: 0; }
+.cn-attach-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 11px; }
+.cn-attach-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cn-attach-metrics > div { min-width: 0; padding: 9px 11px; border: 1px solid #dce5f3; border-radius: 9px; background: #f6f8fc; color: #102b50; }
+.cn-attach-metrics strong { display: block; font-size: 17px; }
+.cn-attach-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+.cn-attach-form .ant-form-item { margin-bottom: 10px; min-width: 0; }
+.cn-attach-note.ant-form-item { margin-bottom: 14px; }
+.cn-attach-code { min-height: 32px; padding: 4px 9px; border: 1px solid #c6dcfa; border-radius: 6px; background: #eaf2ff; color: #1755ad; font-weight: 600; }
+.cn-attach-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 15px; padding: 11px 12px; border-radius: 8px; background: #eaf2ff; border: 1px solid #c6dcfa; color: #102b50; overflow-wrap: anywhere; }
+.cn-attach-summary strong { padding-right: 12px; border-right: 1px solid #c6dcfa; }
+.cn-attach-filters { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, .65fr); gap: 8px; }
+.cn-attach-modal .ant-table-wrapper { min-width: 0; }
+.cn-attach-modal .ant-table-thead > tr > th { color: #102b50; background: #f1f5fb; }
+.cn-attach-modal .ant-table-tbody > tr.ant-table-row-selected > td { background: #eaf2ff; }
+.cn-attach-ellipsis, .cn-attach-status { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; max-width: 100%; }
+.cn-attach-fact > div > .cn-attach-ellipsis, .cn-attach-metrics > div > .cn-attach-ellipsis { display: block; width: 100%; }
+.cn-attach-option-label { display: grid; grid-template-columns: minmax(0, 1fr); }
+.cn-attach-option-label small { color: #4a5c78; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cn-attach-status { width: max-content; }
+
+@media (max-width: 767px) {
+  .cn-attach-modal .ant-modal { width: calc(100vw - 16px) !important; }
+  .cn-attach-modal .ant-modal-header, .cn-attach-modal .ant-modal-footer, .cn-attach-modal .ant-modal-body { padding: 12px; }
+  .cn-attach-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .cn-attach-title strong { font-size: 17px; }
+  .cn-attach-title div div { font-size: 12px; }
+  .cn-attach-logo { width: 40px; height: 40px; }
+  .cn-attach-package { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cn-attach-package-head { grid-column: 1 / -1; }
+  .cn-attach-fact { margin-inline: 9px; padding-block: 6px; }
+  .cn-attach-fact + .cn-attach-fact { border-top: 0; }
+  .cn-attach-work .ant-tabs-nav-list { width: 100%; }
+  .cn-attach-work .ant-tabs-card .ant-tabs-tab { flex: 1 1 0; justify-content: center; min-width: 0; padding: 8px 5px; }
+  .cn-attach-work .ant-tabs-tab-btn { font-size: 12px; text-align: center; white-space: normal; }
+  .cn-attach-modal .ant-table-cell { padding-inline: 5px !important; }
+  .cn-attach-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cn-attach-filters .ant-input-search { grid-column: 1 / -1; }
+}

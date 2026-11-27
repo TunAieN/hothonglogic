@@ -4,6 +4,9 @@ export const CUSTOMER_FIELDS = {
     code
     name
     vip_group
+    vip_qualified_spend_vnd
+    next_vip_tier_name next_vip_threshold_vnd vip_progress_percent
+    vipTier { id code name priority minimum_spend_vnd base_deposit_percent credit_limit_vnd deposit_policy_enabled is_default is_active }
     phone
     email
     province
@@ -20,6 +23,10 @@ export const CUSTOMER_FIELDS = {
     code
     name
     vip_group
+    vip_qualified_spend_vnd
+    next_vip_tier_name next_vip_threshold_vnd vip_progress_percent
+    vipTier { id code name priority minimum_spend_vnd base_deposit_percent credit_limit_vnd deposit_policy_enabled is_default is_active }
+    vipHistories { id change_type qualified_spend_vnd reason created_at fromTier { id name } toTier { id name } }
     phone
     email
     province
@@ -56,6 +63,9 @@ export const CUSTOMER_FIELDS = {
     code
     name
     vip_group
+    vip_qualified_spend_vnd
+    next_vip_tier_name next_vip_threshold_vnd vip_progress_percent
+    vipTier { id code name priority minimum_spend_vnd base_deposit_percent credit_limit_vnd deposit_policy_enabled is_default is_active }
     phone
     email
     province

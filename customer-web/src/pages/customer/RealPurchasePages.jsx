@@ -14,6 +14,7 @@ import { detectProductSource, getProductMetadata, validateProductUrl } from "../
 import { detectCustomerExtension, extractProductWithExtension, mapExtensionProduct } from "../../services/customerExtension.js";
 import { priceForQuantity, semanticValue, variantLabel } from "../../services/skuSelection.js";
 import useCustomerCart from "../../hooks/useCustomerCart.js";
+import { AddressSelectionModal } from "../../components/customer/CustomerAddressBook.jsx";
 import { getTotals as getCartTotals } from "../../services/customerLocalCart.js";
 import styles from "../../components/customer/CustomerPortal.module.css";
 import feature from "../../components/customer/CustomerPortalFeatures.module.css";
@@ -317,6 +318,7 @@ export function RealCartAndDraftsPage({ routes, customerId, navigate = (destinat
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitPhase, setSubmitPhase] = useState("idle");
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
   const submittingRef = useRef(false);
   const selectedItems = cart.items.filter((item) => !excludedIds.has(item.local_item_id));
   const selectedIds = new Set(selectedItems.map((item) => item.local_item_id));
@@ -355,7 +357,13 @@ export function RealCartAndDraftsPage({ routes, customerId, navigate = (destinat
     if (!window.confirm(`Xóa “${draft.title}”? Giỏ hàng hiện tại sẽ không bị ảnh hưởng.`)) return;
     act(() => cart.deleteDraft(draft.draft_id), "Đã xóa bản nháp.");
   };
-  const submit = async () => {
+  const chooseAddress = () => {
+    if (!selectedItems.length) { setError("Vui lòng chọn ít nhất một sản phẩm trước khi gửi yêu cầu mua hộ."); return; }
+    const incompleteItem = selectedItems.find((item) => !item.product_url || !item.title || (item.sku_required && !item.sku_id));
+    if (incompleteItem) { setError(`Sản phẩm “${incompleteItem.title || "Chưa có tên"}” chưa đủ link, tên hoặc phân loại bắt buộc.`); return; }
+    setError(""); setMessage(""); setAddressModalOpen(true);
+  };
+  const submit = async (customerAddressId) => {
     const itemRefs = selectedItems.map((item) => item.local_item_id.slice(-8));
     submitDebug("click_received", { selectedCount: selectedItems.length, selectedItemRefs: itemRefs, locked: submittingRef.current });
     if (submittingRef.current) {
@@ -384,11 +392,12 @@ export function RealCartAndDraftsPage({ routes, customerId, navigate = (destinat
     try {
       const submission = cart.getOrCreateSubmission(snapshot, cart.requestNote);
       submitDebug("api_request_started", { selectedCount: snapshot.length, selectedItemRefs: itemRefs, locked: true, pendingKeyPresent: Boolean(submission.idempotency_key) });
-      const response = await submitCustomerPurchaseRequest({ idempotency_key: submission.idempotency_key, note: cart.requestNote || null, items: snapshot });
+      const response = await submitCustomerPurchaseRequest({ idempotency_key: submission.idempotency_key, customer_address_id: customerAddressId, note: cart.requestNote || null, items: snapshot });
       const order = response?.order;
       if (!order?.id) throw new Error("Hệ thống chưa trả về mã yêu cầu mua hộ. Giỏ hàng vẫn được giữ nguyên.");
       cart.removeSubmittedSnapshot(snapshot, submission.idempotency_key);
       setSubmitPhase("success");
+      setAddressModalOpen(false);
       setMessage(`Đã tạo yêu cầu ${order.order_code || order.id}. Đang mở chi tiết đơn...`);
       destination = `${routes.orderDetail}?id=${order.id}`;
       submitDebug("submit_succeeded", { selectedCount: snapshot.length, selectedItemRefs: itemRefs, locked: true, pendingKeyPresent: false, orderId: order.id });
@@ -422,8 +431,9 @@ export function RealCartAndDraftsPage({ routes, customerId, navigate = (destinat
         <div className={feature.cartRowActions}><button type="button" aria-label={`Chỉnh sửa ${item.title}`} onClick={() => setEditingNoteId(item.local_item_id)}><Pencil /></button><button type="button" aria-label={`Xóa ${item.title}`} onClick={() => removeOne(item)}><Trash2 /></button></div>
       </article>;
     })}</div></> : <div className={feature.cartEmpty}><ShoppingCart /><h2>Giỏ hàng đang trống</h2><p>Dán link sản phẩm, chọn SKU và thêm vào giỏ để chuẩn bị yêu cầu mua hộ.</p><a className={feature.primary} href={routes.createOrder}>Tạo yêu cầu mua hộ</a></div>}</section>
-      <aside className={feature.cartSummary}><header><ShoppingCart /><div><h2>Tóm tắt giỏ hàng</h2><p>Tính theo sản phẩm đang được chọn.</p></div></header><dl><div><dt>Sản phẩm trong giỏ</dt><dd>{cart.items.length}</dd></div><div><dt>Sản phẩm được chọn</dt><dd>{selectedItems.length}</dd></div><div><dt>Tổng số lượng đã chọn</dt><dd>{selectedTotals.totalQuantity}</dd></div><div><dt>Tổng tiền tham khảo</dt><dd>{totalLabel}</dd></div></dl>{selectedTotals.unknownPriceCount > 0 && <p className={feature.referenceNote}>{selectedTotals.unknownPriceCount} mặt hàng được chọn chưa có giá xác minh và không được tự tính là 0.</p>}<label className={feature.field}><span>Ghi chú chung cho yêu cầu</span><textarea value={cart.requestNote} maxLength="2000" onChange={(event) => act(() => cart.updateRequestNote(event.target.value), "")} placeholder="Ví dụ: giao hàng gộp, yêu cầu đóng gói..." /><small>{cart.requestNote.length}/2000 · tự động lưu trên trình duyệt</small></label><p className={feature.referenceNote}>Giá chỉ mang tính tham khảo. Chi phí thực tế sẽ được nhân viên xác nhận khi đặt hàng.</p><button type="button" className={feature.secondaryWide} disabled={!selectedItems.length} onClick={saveSelectedDraft}><ClipboardList />Lưu bản nháp</button><button type="button" className={`${feature.primary} ${feature.submitCartButton}`} data-submit-state={submitPhase} disabled={submitting || submitPhase === "validating"} aria-busy={submitting || submitPhase === "validating"} onClick={submit}><Send />{submitPhase === "validating" ? "Đang kiểm tra sản phẩm..." : submitting ? "Đang gửi yêu cầu..." : `Gửi ${selectedItems.length} sản phẩm mua hộ`}</button></aside>
+      <aside className={feature.cartSummary}><header><ShoppingCart /><div><h2>Tóm tắt giỏ hàng</h2><p>Tính theo sản phẩm đang được chọn.</p></div></header><dl><div><dt>Sản phẩm trong giỏ</dt><dd>{cart.items.length}</dd></div><div><dt>Sản phẩm được chọn</dt><dd>{selectedItems.length}</dd></div><div><dt>Tổng số lượng đã chọn</dt><dd>{selectedTotals.totalQuantity}</dd></div><div><dt>Tổng tiền tham khảo</dt><dd>{totalLabel}</dd></div></dl>{selectedTotals.unknownPriceCount > 0 && <p className={feature.referenceNote}>{selectedTotals.unknownPriceCount} mặt hàng được chọn chưa có giá xác minh và không được tự tính là 0.</p>}<label className={feature.field}><span>Ghi chú chung cho yêu cầu</span><textarea value={cart.requestNote} maxLength="2000" onChange={(event) => act(() => cart.updateRequestNote(event.target.value), "")} placeholder="Ví dụ: giao hàng gộp, yêu cầu đóng gói..." /><small>{cart.requestNote.length}/2000 · tự động lưu trên trình duyệt</small></label><p className={feature.referenceNote}>Giá chỉ mang tính tham khảo. Chi phí thực tế sẽ được nhân viên xác nhận khi đặt hàng.</p><button type="button" className={feature.secondaryWide} disabled={!selectedItems.length} onClick={saveSelectedDraft}><ClipboardList />Lưu bản nháp</button><button type="button" className={`${feature.primary} ${feature.submitCartButton}`} data-submit-state={submitPhase} disabled={submitting || submitPhase === "validating"} aria-busy={submitting || submitPhase === "validating"} onClick={chooseAddress}><Send />{submitPhase === "validating" ? "Đang kiểm tra sản phẩm..." : submitting ? "Đang gửi yêu cầu..." : `Gửi ${selectedItems.length} sản phẩm mua hộ`}</button></aside>
     </div>{renderDrafts(2)}</> : renderDrafts()}
+    <AddressSelectionModal open={addressModalOpen} busy={submitting} onClose={() => { if (!submitting) setAddressModalOpen(false); }} onConfirm={submit} />
   </>;
 }
 

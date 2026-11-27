@@ -2,9 +2,13 @@
 
 namespace App\GraphQL\Resolvers;
 
+use App\Exceptions\CnPackageInputException;
+use App\Models\AuditLog;
 use App\Models\CnBatch;
 use App\Models\CnPackage;
 use App\Models\CnWarehouse;
+use App\Models\VnWarehouse;
+use App\Services\Auth\PermissionService;
 use App\Support\BusinessWriteGuard;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,7 +21,13 @@ class CnBatchResolver
 {
     public function list(): Builder
     {
-        return CnBatch::query()
+        $query = CnBatch::query();
+        $ids = $this->allowedWarehouses();
+        if ($ids !== null) {
+            $query->whereIn('warehouse_id', $ids);
+        }
+
+        return $query
             ->with($this->relations())
             ->latest('created_at')
             ->latest('id');
@@ -25,9 +35,62 @@ class CnBatchResolver
 
     public function show($_, array $args): CnBatch
     {
-        return CnBatch::query()
-            ->with($this->relations())
-            ->findOrFail($args['id']);
+        $batch = CnBatch::query()->findOrFail($args['id']);
+        $this->assertSourceAccess($batch->warehouse_id);
+
+        return $batch->load($this->relations());
+    }
+
+    public function listForPackages($_, array $args): Builder
+    {
+        $this->assertSourceAccess($args['warehouse_id']);
+        $query = CnBatch::query()->where('warehouse_id', $args['warehouse_id']);
+        $status = $args['status'] ?? CnBatch::STATUS_PENDING;
+        if (in_array($status, CnBatch::VALID_STATUSES, true)) {
+            $query->where('status', $status);
+        } elseif ($status !== 'all') {
+            throw new CnPackageInputException('Trạng thái lô hàng không hợp lệ.');
+        }
+
+        $search = trim((string) ($args['search'] ?? ''));
+        if ($search !== '') {
+            $pattern = '%'.strtr(mb_substr($search, 0, 100), ['!' => '!!', '%' => '!%', '_' => '!_']).'%';
+            $query->where(fn (Builder $rows) => $rows
+                ->whereRaw("batch_code LIKE ? ESCAPE '!'", [$pattern])
+                ->orWhereRaw("note LIKE ? ESCAPE '!'", [$pattern]));
+        }
+
+        $direction = ($args['oldest_first'] ?? false) ? 'asc' : 'desc';
+
+        return $query->orderBy('created_at', $direction)->orderBy('id', $direction);
+    }
+
+    public function receivingOptions($_, array $args): array
+    {
+        $this->assertSourceAccess($args['warehouse_id']);
+        $source = CnWarehouse::query()->find($args['warehouse_id']);
+        if (! $source) {
+            throw new CnPackageInputException('Không tìm thấy kho Trung Quốc nguồn.');
+        }
+
+        return [
+            'preview_code' => $this->generateBatchCode($source),
+            'destinations' => VnWarehouse::query()->where('status', 'active')->orderBy('name')->orderBy('id')->get(),
+        ];
+    }
+
+    public function dispatchReview($_, array $args): array
+    {
+        $batch = CnBatch::query()->findOrFail($args['id']);
+        $this->assertSourceAccess($batch->warehouse_id);
+        $batch->load(['packages.packageItems', 'destinationWarehouse']);
+        $canDispatch = app(PermissionService::class)->allows(Auth::user(), 'cn_batches.dispatch');
+
+        return $this->reviewState($batch, $batch->packages) + [
+            'destination_ready' => $batch->destinationWarehouse?->status === 'active',
+            'destinations' => $canDispatch && $batch->status === CnBatch::STATUS_PENDING
+                ? VnWarehouse::query()->where('status', 'active')->orderBy('name')->get() : [],
+        ];
     }
 
     public function addPackages($_, array $args): CnBatch
@@ -43,58 +106,88 @@ class CnBatchResolver
                 ->values();
 
             if ($packageIds->isEmpty()) {
-                throw new HttpException(422, 'At least one package must be selected.');
+                throw new CnPackageInputException('Vui lòng chọn ít nhất một kiện hàng.');
             }
 
             $packages = CnPackage::query()
-                ->with(['warehouse', 'batchPackages'])
+                ->withExists(['batchPackages', 'packageItems' => fn (Builder $query) => $query->where('quantity', '>', 0), 'vnPackages'])
                 ->whereIn('id', $packageIds)
+                ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
 
             if ($packages->count() !== $packageIds->count()) {
-                throw new HttpException(404, 'One or more packages were not found.');
+                throw new CnPackageInputException('Một hoặc nhiều kiện không còn tồn tại.');
             }
 
             $warehouseIds = $packages->pluck('warehouse_id')->unique();
 
             if ($warehouseIds->count() !== 1) {
-                throw new HttpException(422, 'Packages in the same batch must belong to the same warehouse.');
+                throw new CnPackageInputException('Các kiện phải thuộc cùng một kho Trung Quốc.');
             }
 
-            if ($packages->contains(fn (CnPackage $package) => $package->batchPackages->isNotEmpty())) {
-                throw new HttpException(422, 'One or more packages are already assigned to a batch.');
+            if ($packages->contains(fn (CnPackage $package) => $package->batch_packages_exists || $package->vn_packages_exists)) {
+                throw new CnPackageInputException('Một hoặc nhiều kiện đã thuộc lô hoặc đã nhập kho Việt Nam.');
+            }
+            if ($packages->contains(fn (CnPackage $package) => ! $package->package_items_exists)) {
+                throw new CnPackageInputException('Vui lòng xác nhận sản phẩm của từng kiện trước khi thêm vào lô.');
             }
 
             $warehouseId = (int) $warehouseIds->first();
+            $this->assertSourceAccess($warehouseId);
+            foreach ($packages as $package) {
+                $issues = $this->packageIssues($package, $warehouseId);
+                if ($issues !== []) {
+                    throw new CnPackageInputException(($package->tracking_number ?: '#'.$package->id).': '.implode(', ', $issues).'.');
+                }
+            }
 
             $batch = null;
 
             if (! empty($input['cn_batch_id'])) {
+                if (! app(PermissionService::class)->allows(Auth::user(), 'cn_batches.read')) {
+                    throw new CnPackageInputException('Bạn không có quyền xem lô hàng hiện có.', null, 'CN_BATCH_FORBIDDEN', 403);
+                }
                 $batch = CnBatch::query()
-                    ->with('warehouse')
                     ->lockForUpdate()
-                    ->findOrFail($input['cn_batch_id']);
+                    ->find($input['cn_batch_id']);
+
+                if (! $batch) {
+                    throw new CnPackageInputException('Lô hàng đã chọn không còn tồn tại.');
+                }
 
                 if ((int) $batch->warehouse_id !== $warehouseId) {
-                    throw new HttpException(422, 'Existing batch belongs to a different warehouse.');
+                    throw new CnPackageInputException('Lô hàng đã chọn thuộc kho Trung Quốc khác.');
                 }
 
-                if (in_array($batch->status, [CnBatch::STATUS_EXPORTING, CnBatch::STATUS_ARRIVED_VN, CnBatch::STATUS_COMPLETED, CnBatch::STATUS_CANCELLED], true)) {
-                    throw new HttpException(422, 'Selected batch cannot receive more packages.');
+                if ($batch->status !== CnBatch::STATUS_PENDING) {
+                    throw new CnPackageInputException('Lô hàng đã chọn không còn nhận thêm kiện.');
                 }
             } else {
-                $warehouse = CnWarehouse::query()->findOrFail($warehouseId);
+                $warehouse = CnWarehouse::query()->lockForUpdate()->findOrFail($warehouseId);
+                $destination = VnWarehouse::query()->lockForUpdate()->find($input['destination_warehouse_id'] ?? null);
+                if (! $destination || $destination->status !== 'active') {
+                    throw new CnPackageInputException('Vui lòng chọn kho đích Việt Nam đang hoạt động.', 'destination_warehouse_id');
+                }
+                $shippingType = $input['shipping_type'] ?? 'normal';
+                if (! in_array($shippingType, ['fast', 'normal'], true)) {
+                    throw new CnPackageInputException('Hình thức vận chuyển không hợp lệ.', 'shipping_type');
+                }
+                $note = $this->normalizeOptionalString($input['note'] ?? null);
+                if ($note !== null && mb_strlen($note) > 500) {
+                    throw new CnPackageInputException('Ghi chú tối đa 500 ký tự.', 'note');
+                }
 
                 $batch = CnBatch::query()->create([
-                    'batch_code' => $this->generateBatchCode($warehouse),
+                    'batch_code' => $this->generateBatchCode($warehouse, true),
                     'warehouse_id' => $warehouse->id,
-                    'destination_warehouse_name' => $this->normalizeOptionalString($input['destination_warehouse_name'] ?? null),
+                    'destination_warehouse_id' => $destination->id,
+                    'destination_warehouse_name' => $destination->name,
                     'total_packages' => 0,
                     'status' => CnBatch::STATUS_PENDING,
-                    'shipping_type' => $this->normalizeShippingType($input['shipping_type'] ?? 'normal'),
+                    'shipping_type' => $shippingType,
                     'expected_arrival_at' => $input['expected_arrival_at'] ?? null,
-                    'note' => $this->normalizeOptionalString($input['note'] ?? null),
+                    'note' => $note,
                 ]);
             }
 
@@ -103,11 +196,16 @@ class CnBatchResolver
             $batch->update([
                 'total_packages' => $batch->packages()->count(),
                 'total_weight' => $this->calculateTotalWeight($batch->packages()->get()),
-                'note' => $this->normalizeOptionalString($input['note'] ?? $batch->note),
+            ]);
+
+            $this->audit($batch, empty($input['cn_batch_id']) ? 'cn_batch_created' : 'cn_batch_packages_added', [], [
+                'package_ids_added' => $packageIds->all(),
+                'destination_warehouse_id' => $batch->destination_warehouse_id,
+                'status' => $batch->status,
             ]);
 
             return $batch->fresh($this->relations());
-        });
+        }, 3);
     }
 
     public function update($_, array $args): CnBatch
@@ -116,16 +214,21 @@ class CnBatchResolver
 
         return DB::transaction(function () use ($args) {
             $batch = CnBatch::query()->lockForUpdate()->findOrFail($args['id']);
+            $this->assertSourceAccess($batch->warehouse_id);
 
             if ($batch->status !== CnBatch::STATUS_PENDING) {
                 throw new HttpException(422, 'Only pending batches can be updated.');
             }
 
+            $before = $this->editableAuditState($batch);
             $input = $args['input'] ?? [];
             $payload = [];
 
             if (array_key_exists('destination_warehouse_name', $input)) {
                 $payload['destination_warehouse_name'] = $this->normalizeOptionalString($input['destination_warehouse_name']);
+                if ($payload['destination_warehouse_name'] !== $batch->destination_warehouse_name) {
+                    $payload['destination_warehouse_id'] = null;
+                }
             }
 
             if (array_key_exists('shipping_type', $input)) {
@@ -178,6 +281,11 @@ class CnBatchResolver
                 }
             }
 
+            $after = $this->editableAuditState($batch);
+            if ($before !== $after) {
+                $this->audit($batch, 'cn_batch_updated', $before, $after);
+            }
+
             return $batch->fresh($this->relations());
         });
     }
@@ -191,6 +299,7 @@ class CnBatchResolver
                 ->with($this->relations())
                 ->lockForUpdate()
                 ->findOrFail($args['id']);
+            $this->assertSourceAccess($batch->warehouse_id);
 
             if ($batch->status !== CnBatch::STATUS_PENDING) {
                 throw new HttpException(422, 'Only pending batches can be deleted.');
@@ -207,37 +316,36 @@ class CnBatchResolver
         BusinessWriteGuard::assertEnabled(__METHOD__);
 
         return DB::transaction(function () use ($args) {
-            $batch = CnBatch::query()
-                ->with($this->relations())
-                ->lockForUpdate()
-                ->findOrFail($args['id']);
-
-            if ($batch->status !== CnBatch::STATUS_PENDING) {
-                throw new HttpException(422, 'Chi lo dang cho xuat kho moi co the ban giao van chuyen.');
+            $batch = CnBatch::query()->lockForUpdate()->findOrFail($args['id']);
+            $this->assertSourceAccess($batch->warehouse_id);
+            $permissions = app(PermissionService::class);
+            if (! $permissions->allows(Auth::user(), 'cn_batches.read') || ! $permissions->allows(Auth::user(), 'cn_batches.dispatch')) {
+                throw new CnPackageInputException('Bạn không có quyền xem hoặc xuất lô hàng.', null, 'CN_BATCH_FORBIDDEN', 403);
             }
-
-            $packages = $batch->packages;
-
-            if ($packages->isEmpty()) {
-                throw new HttpException(422, 'Lo hang chua co kien nao de xuat kho.');
-            }
-
-            $invalidPackages = $packages
-                ->filter(fn (CnPackage $package) => blank($package->tracking_number)
-                    || (float) $package->weight <= 0
-                    || $package->status !== 'matched'
-                    || $package->packageItems->isEmpty())
-                ->map(fn (CnPackage $package) => $package->tracking_number ?: '#'.$package->id)
-                ->values();
-
-            if ($invalidPackages->isNotEmpty()) {
-                throw new HttpException(
-                    422,
-                    'Cac kien sau chua du ma van don, can nang, trang thai khop hoac chi tiet item: '.$invalidPackages->join(', '),
-                );
-            }
-
+            $packages = $batch->packages()->orderBy('cn_packages.id')->lockForUpdate()
+                ->with(['packageItems.orderItem', 'order.customer', 'orderTracking'])->get();
             $input = $args['input'] ?? [];
+            $review = $this->reviewState($batch, $packages);
+            if ($review['issues'] !== []) {
+                throw new CnPackageInputException($review['issues'][0]);
+            }
+            foreach ($review['packages'] as $packageReview) {
+                if ($packageReview['issues'] !== []) {
+                    $package = $packages->firstWhere('id', $packageReview['id']);
+                    throw new CnPackageInputException(($package->tracking_number ?: '#'.$package->id).': '.implode(', ', $packageReview['issues']).'.');
+                }
+            }
+            if ($review['version'] !== ($input['review_version'] ?? null)) {
+                throw new CnPackageInputException('Dữ liệu lô đã thay đổi. Hãy tải lại lô và rà soát trước khi xuất.');
+            }
+            if (! ($input['review_confirmed'] ?? false)) {
+                throw new CnPackageInputException('Cần xác nhận danh sách kiện, ngoại lệ và thông tin vận chuyển.');
+            }
+            $destination = VnWarehouse::query()->lockForUpdate()->find($input['destination_warehouse_id'] ?? null);
+            if (! $destination || $destination->status !== 'active') {
+                throw new CnPackageInputException('Kho nhận Việt Nam không còn hoạt động. Hãy chọn lại kho nhận.');
+            }
+
             $reviewedPackageIds = collect($input['reviewed_package_ids'] ?? [])
                 ->map(fn ($id) => (string) $id)
                 ->filter()
@@ -246,26 +354,26 @@ class CnBatchResolver
             $expectedPackageIds = $packages->pluck('id')->map(fn ($id) => (string) $id)->sort()->values();
 
             if ($reviewedPackageIds->sort()->values()->all() !== $expectedPackageIds->all()) {
-                throw new HttpException(422, 'Can kiem tra va xac nhan item cua tung ma van don truoc khi xuat kho.');
+                throw new CnPackageInputException('Cần xác nhận đã rà soát từng kiện trước khi xuất kho.');
             }
 
             $packagingType = strtolower(trim((string) ($input['packaging_type'] ?? '')));
 
             if (! in_array($packagingType, ['bag', 'carton', 'cardboard', 'wood'], true)) {
-                throw new HttpException(422, 'Hinh thuc dong goi khong hop le.');
+                throw new CnPackageInputException('Hình thức đóng gói không hợp lệ.');
             }
 
             $positiveFields = [
-                'transport_container_count' => 'So bao/thung van chuyen',
-                'actual_batch_weight' => 'Khoi luong thuc te cua lo',
-                'actual_length' => 'Chieu dai lo',
-                'actual_width' => 'Chieu rong lo',
-                'actual_height' => 'Chieu cao lo',
+                'transport_container_count' => 'Số bao/thùng vận chuyển',
+                'actual_batch_weight' => 'Khối lượng thực tế của lô',
+                'actual_length' => 'Chiều dài lô',
+                'actual_width' => 'Chiều rộng lô',
+                'actual_height' => 'Chiều cao lô',
             ];
 
             foreach ($positiveFields as $field => $label) {
                 if ((float) ($input[$field] ?? 0) <= 0) {
-                    throw new HttpException(422, $label.' phai lon hon 0.');
+                    throw new CnPackageInputException($label.' phải lớn hơn 0.');
                 }
             }
 
@@ -273,14 +381,14 @@ class CnBatchResolver
             $actualBatchWeight = (float) $input['actual_batch_weight'];
 
             if ($packageMaterialWeight < 0 || $packageMaterialWeight >= $actualBatchWeight) {
-                throw new HttpException(422, 'Khoi luong vat lieu dong goi phai nho hon khoi luong thuc te cua lo.');
+                throw new CnPackageInputException('Khối lượng vật liệu đóng gói phải nhỏ hơn khối lượng thực tế của lô.');
             }
 
             $packageWeight = (float) $packages->sum(fn (CnPackage $package) => (float) $package->weight);
 
             if ($actualBatchWeight + 0.05 < $packageWeight) {
-                throw new HttpException(422, sprintf(
-                    'Khoi luong lo %.2f kg nho hon tong khoi luong cac kien %.2f kg.',
+                throw new CnPackageInputException(sprintf(
+                    'Khối lượng lô %.2f kg nhỏ hơn tổng khối lượng các kiện %.2f kg.',
                     $actualBatchWeight,
                     $packageWeight,
                 ));
@@ -288,9 +396,12 @@ class CnBatchResolver
 
             $departedAt = Carbon::parse($input['departed_at']);
             $expectedArrivalAt = Carbon::parse($input['expected_arrival_at']);
+            if ($departedAt->isFuture()) {
+                throw new CnPackageInputException('Thời gian xuất thực tế không được ở tương lai.');
+            }
 
             if ($expectedArrivalAt->lessThanOrEqualTo($departedAt)) {
-                throw new HttpException(422, 'Ngay den du kien phai sau thoi gian xuat kho.');
+                throw new CnPackageInputException('Ngày đến dự kiến phải sau thời gian xuất kho.');
             }
 
             $length = (float) $input['actual_length'];
@@ -314,8 +425,16 @@ class CnBatchResolver
                 ])->values()->all(),
             ])->values()->all();
 
+            $carrierName = $this->normalizeOptionalString($input['carrier_name'] ?? null);
+            if ($carrierName === null) {
+                throw new CnPackageInputException('Vui lòng nhập đơn vị vận chuyển.');
+            }
+            if (! in_array($input['shipping_type'] ?? null, ['fast', 'normal'], true)) {
+                throw new CnPackageInputException('Hình thức vận chuyển không hợp lệ.');
+            }
             $batch->update([
-                'destination_warehouse_name' => trim((string) $input['destination_warehouse_name']),
+                'destination_warehouse_name' => $destination->name,
+                'destination_warehouse_id' => $destination->id,
                 'shipping_type' => $this->normalizeShippingType($input['shipping_type']),
                 'packaging_type' => $packagingType,
                 'transport_container_count' => (int) $input['transport_container_count'],
@@ -325,7 +444,7 @@ class CnBatchResolver
                 'actual_width' => $width,
                 'actual_height' => $height,
                 'actual_volume' => round(($length * $width * $height) / 1_000_000, 4),
-                'carrier_name' => $this->requiredString($input['carrier_name'] ?? null, 'Don vi van chuyen'),
+                'carrier_name' => $carrierName,
                 'transport_code' => $this->normalizeOptionalString($input['transport_code'] ?? null),
                 'route_name' => $this->normalizeOptionalString($input['route_name'] ?? null),
                 'vehicle_plate' => $this->normalizeOptionalString($input['vehicle_plate'] ?? null),
@@ -347,9 +466,13 @@ class CnBatchResolver
                 'dispatch_note' => $this->normalizeOptionalString($input['dispatch_note'] ?? null),
                 'status' => CnBatch::STATUS_EXPORTING,
             ]);
+            $this->audit($batch, 'cn_batch_dispatched', ['status' => CnBatch::STATUS_PENDING], [
+                'status' => $batch->status, 'destination_warehouse_id' => $destination->id,
+                'reviewed_package_ids' => $reviewedPackageIds->all(), 'departed_at' => $departedAt->toDateTimeString(),
+            ]);
 
             return $batch->fresh($this->relations());
-        });
+        }, 3);
     }
 
     public function createVietnamInboundTask($_, array $args): array
@@ -375,6 +498,9 @@ class CnBatchResolver
 
             if ($batches->count() !== $batchIds->count()) {
                 throw new HttpException(404, 'One or more batches were not found.');
+            }
+            foreach ($batches as $batch) {
+                $this->assertSourceAccess($batch->warehouse_id);
             }
 
             $invalidBatch = $batches->first(fn (CnBatch $batch) => $batch->status !== CnBatch::STATUS_ARRIVED_VN);
@@ -407,15 +533,116 @@ class CnBatchResolver
         });
     }
 
-    private function generateBatchCode(CnWarehouse $warehouse): string
+    private function generateBatchCode(CnWarehouse $warehouse, bool $lock = false): string
     {
         $dateCode = now()->format('dmY');
         $prefix = strtoupper($warehouse->code).$dateCode;
-        $sequence = CnBatch::query()
-            ->where('batch_code', 'like', $prefix.'%')
-            ->count() + 1;
+        $codes = CnBatch::query()->where('batch_code', 'like', $prefix.'%')
+            ->when($lock, fn (Builder $query) => $query->lockForUpdate())
+            ->pluck('batch_code')->flip();
+        $sequence = $codes->count() + 1;
+        while ($codes->has($prefix.$sequence)) {
+            $sequence++;
+        }
 
         return $prefix.$sequence;
+    }
+
+    private function allowedWarehouses(): ?array
+    {
+        $actor = Auth::user();
+        $assignments = config('cn_warehouse.batch_warehouse_assignments', []);
+        if ($actor && array_key_exists($actor->id, $assignments)) {
+            return array_map('strval', $assignments[$actor->id]);
+        }
+
+        return $actor?->role?->key === 'china_warehouse_partner' ? [] : null;
+    }
+
+    private function assertSourceAccess(int|string $warehouseId): void
+    {
+        $allowed = $this->allowedWarehouses();
+        if ($allowed !== null && ! in_array((string) $warehouseId, $allowed, true)) {
+            throw new CnPackageInputException('Bạn không có quyền thao tác với lô của kho này.', null, 'CN_BATCH_FORBIDDEN', 403);
+        }
+    }
+
+    private function packageIssues(CnPackage $package, int|string $warehouseId): array
+    {
+        $issues = [];
+        if ((string) $package->warehouse_id !== (string) $warehouseId) {
+            $issues[] = 'Kiện không thuộc kho nguồn của lô';
+        }
+        if (! $package->received_at) {
+            $issues[] = 'Chưa tiếp nhận tại kho Trung Quốc';
+        }
+        if (blank($package->tracking_number) || $package->status !== 'matched') {
+            $issues[] = 'Tracking chưa khớp hợp lệ';
+        }
+        if ((float) $package->weight <= 0) {
+            $issues[] = 'Thiếu khối lượng thực tế';
+        }
+        if (! ($package->package_items_exists ?? $package->packageItems->contains(fn ($item) => (int) $item->quantity > 0))) {
+            $issues[] = 'Chưa xác nhận sản phẩm';
+        }
+
+        return $issues;
+    }
+
+    private function reviewState(CnBatch $batch, Collection $packages): array
+    {
+        $issues = [];
+        if ($batch->status !== CnBatch::STATUS_PENDING) {
+            $issues[] = 'Chỉ lô đang chờ xuất kho mới có thể xác nhận xuất.';
+        }
+        if ($packages->isEmpty()) {
+            $issues[] = 'Lô hàng chưa có kiện để xuất kho.';
+        }
+        $packages = $packages->sortBy('id')->values();
+        $version = hash('sha256', json_encode([
+            $batch->id, $batch->warehouse_id, $batch->status, $batch->destination_warehouse_id,
+            $batch->destination_warehouse_name, $batch->shipping_type,
+            $packages->map(fn (CnPackage $package) => [
+                $package->id, $package->warehouse_id, $package->tracking_number, $package->order_id,
+                $package->order_tracking_id, $package->weight, $package->status, $package->received_at?->toDateTimeString(),
+                $package->package_condition, $package->actual_length, $package->actual_width, $package->actual_height,
+                $package->packageItems->sortBy('id')->values()->map(fn ($item) => [$item->id, $item->order_item_id, $item->quantity]),
+            ]),
+        ], JSON_THROW_ON_ERROR));
+
+        return [
+            'version' => $version,
+            'issues' => $issues,
+            'packages' => $packages->map(fn (CnPackage $package) => [
+                'id' => $package->id,
+                'issues' => $this->packageIssues($package, $batch->warehouse_id),
+                'warnings' => match ($package->package_condition) {
+                    'damaged' => ['Vỏ kiện có dấu hiệu hư hỏng. Cần rà soát trước khi xuất.'],
+                    'other' => ['Vỏ kiện có ghi chú ngoại lệ. Cần rà soát trước khi xuất.'],
+                    default => [],
+                },
+            ])->all(),
+        ];
+    }
+
+    private function editableAuditState(CnBatch $batch): array
+    {
+        return collect($batch->getAttributes())->only(['destination_warehouse_id', 'destination_warehouse_name', 'shipping_type',
+            'expected_arrival_at', 'departed_at', 'arrived_at', 'note', 'freight_cost', 'total_weight'])->all() + [
+            'packages' => $batch->packages()->orderBy('cn_packages.id')->get()->map(fn (CnPackage $package) =>
+                $package->only(['id', 'weight', 'actual_length', 'actual_width', 'actual_height'])
+            )->all(),
+        ];
+    }
+
+    private function audit(CnBatch $batch, string $action, array $before, array $after): void
+    {
+        AuditLog::query()->create([
+            'user_id' => Auth::id(), 'action' => $action,
+            'entity_type' => CnBatch::class, 'entity_id' => $batch->id,
+            'before_data' => $before, 'after_data' => $after,
+            'created_at' => now(),
+        ]);
     }
 
     private function syncEditablePackages(CnBatch $batch, Collection $rows): void
@@ -485,6 +712,12 @@ class CnBatchResolver
                 if ($assignedToAnotherBatch) {
                     throw new HttpException(422, 'Ma van don '.$row['tracking_number'].' da thuoc lo khac.');
                 }
+                if (! $currentPackageIds->contains((string) $package->id)) {
+                    $issues = $this->packageIssues($package, $batch->warehouse_id);
+                    if ($package->vnPackages()->exists() || $issues !== []) {
+                        throw new CnPackageInputException($package->tracking_number.': '.implode(', ', $issues ?: ['Kiện đã nhập kho Việt Nam']).'.');
+                    }
+                }
             }
 
             $length = $row['actual_length'];
@@ -534,17 +767,6 @@ class CnBatchResolver
         $normalized = trim((string) ($value ?? ''));
 
         return $normalized !== '' ? $normalized : null;
-    }
-
-    private function requiredString(mixed $value, string $label): string
-    {
-        $normalized = $this->normalizeOptionalString($value);
-
-        if ($normalized === null) {
-            throw new HttpException(422, $label.' la bat buoc.');
-        }
-
-        return $normalized;
     }
 
     private function normalizeBatchStatus(mixed $value): string

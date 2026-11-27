@@ -51,6 +51,8 @@ class CustomerInputService
             ]
         )->validate();
 
+        unset($sanitized['vip_group'], $sanitized['code'], $sanitized['status']);
+
         return $sanitized;
     }
 
@@ -112,6 +114,9 @@ class CustomerInputService
                 'phone' => ['Phone number already exists.'],
             ]);
         }
+
+        // VIP is a governed field. Generic customer CRUD must not mutate it.
+        unset($sanitized['vip_group']);
 
         return $sanitized;
     }

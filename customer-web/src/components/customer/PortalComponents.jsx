@@ -37,7 +37,7 @@ export function OrderTable({ orders }) {
   return <><div className={`${styles.tableWrap} ${styles.desktopOnly}`}><table className={styles.table}><thead><tr><th>Mã đơn</th><th>Sản phẩm</th><th>Nguồn hàng</th><th>Tổng tiền</th><th>Trạng thái</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td><strong>{order.code}</strong></td><td><div className={styles.productCell}><ProductThumbnail src={order.items?.[0]?.imageUrl || order.items?.[0]?.productImage} alt={order.product} size="small" /><span><strong>{order.product}</strong><small>{order.quantity} sản phẩm</small></span></div></td><td>{order.source}</td><td>{formatVnd(order.totalVnd)}</td><td><StatusBadge status={order.status} /></td><td>{formatDateTime(order.updatedAt)}</td><td><a href={`${portalRoutes.orderDetail}?id=${encodeURIComponent(order.id)}`}>Chi tiết</a></td></tr>)}</tbody></table></div><div className={styles.mobileCards}>{orders.map((order) => <article className={styles.orderCard} key={order.id}><header><ProductThumbnail src={order.items?.[0]?.imageUrl || order.items?.[0]?.productImage} alt={order.product} size="small" /><div><h3>{order.code}</h3><p>{order.product}</p></div><Package aria-hidden="true" /></header><div className={styles.orderMeta}><span><small>Tổng tiền</small><strong>{formatVnd(order.totalVnd)}</strong></span><span><small>Nguồn hàng</small><strong>{order.source}</strong></span></div><footer><StatusBadge status={order.status} /><a href={`${portalRoutes.orderDetail}?id=${encodeURIComponent(order.id)}`}>Xem chi tiết</a></footer></article>)}</div></>;
 }
 
-export function Modal({ open, title, description, onClose, children }) {
+export function Modal({ open, title, description, onClose, children, className = "", icon: Icon = null }) {
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
   const returnFocusRef = useRef(null);
@@ -65,7 +65,7 @@ export function Modal({ open, title, description, onClose, children }) {
   }, [onClose, open]);
 
   if (!open) return null;
-  return <div className={styles.modalOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section ref={dialogRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="portal-modal-title"><header><div><h2 id="portal-modal-title">{title}</h2>{description && <p>{description}</p>}</div><button ref={closeRef} type="button" onClick={onClose} aria-label="Đóng hộp thoại"><X /></button></header>{children}</section></div>;
+  return <div className={styles.modalOverlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section ref={dialogRef} className={`${styles.modal} ${className}`} role="dialog" aria-modal="true" aria-labelledby="portal-modal-title"><header><div className={styles.modalHeading}>{Icon && <span className={styles.modalHeadingIcon}><Icon /></span>}<div><h2 id="portal-modal-title">{title}</h2>{description && <p>{description}</p>}</div></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Đóng hộp thoại"><X /></button></header>{children}</section></div>;
 }
 
 export function FieldError({ id, children }) {

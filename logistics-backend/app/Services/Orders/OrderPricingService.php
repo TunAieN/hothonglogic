@@ -145,11 +145,14 @@ class OrderPricingService
 
         $this->assertOrderItemAmountIsValid($item);
 
+        $subtotalCny = $this->multiplyCnyByQuantity((string) $item->price_cny, (int) $item->quantity);
+
         if ($exchangeRate === null) {
+            $item->forceFill(['subtotal_cny' => $subtotalCny])->save();
+
             return $item->fresh();
         }
 
-        $subtotalCny = $this->multiplyCnyByQuantity((string) $item->price_cny, (int) $item->quantity);
         $item->forceFill([
             'subtotal_cny' => $subtotalCny,
             'exchange_rate' => $this->formatRate($exchangeRate),

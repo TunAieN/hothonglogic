@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerBalanceLedger;
+use App\Models\CustomerNotification;
 use App\Models\CustomerPaymentIntent;
 use App\Models\PaymentVoucher;
 use App\Services\Orders\OrderPricingService;
@@ -28,6 +29,7 @@ class CustomerFinanceController extends Controller
     public function summary(Request $request): JsonResponse
     {
         $customerId = $this->customerId($request);
+        $paymentAccount = $this->sepayAccounts->verifiedPaymentAccount(false);
         $debt = PaymentVoucher::query()->where('customer_id', $customerId)
             ->whereIn('status', PaymentVoucher::ACTIVE_STATUSES)->get()->sum(fn ($voucher) => $this->finance->voucherRemaining($voucher));
 
@@ -35,6 +37,65 @@ class CustomerFinanceController extends Controller
             'balance_vnd' => $this->finance->balance($customerId),
             'outstanding_vnd' => (int) $debt,
             'sepay_available' => config('sepay.enabled') === true && $this->sepayAccounts->hasVerifiedPaymentAccount(),
+            'sepay_webhook_enabled' => config('sepay.webhook_enabled') === true,
+            'deposit_auto_confirmation_enabled' => config('sepay.deposit_auto_confirmation_enabled') === true,
+            'direct_voucher_payment_enabled' => config('sepay.direct_voucher_payment_enabled') === true,
+            'topup_rules' => [
+                'min_vnd' => CustomerFinanceService::MIN_TOPUP_VND,
+                'max_vnd' => CustomerFinanceService::MAX_TOPUP_VND,
+                'step_vnd' => CustomerFinanceService::TOPUP_STEP_VND,
+            ],
+            'payment_account' => $paymentAccount ? [
+                'bank_name' => $paymentAccount->bank_name,
+                'bank_code' => $paymentAccount->bank_code,
+                'account_number' => $paymentAccount->account_number,
+                'account_holder' => $paymentAccount->account_holder,
+            ] : null,
+        ]);
+    }
+
+    public function intents(Request $request): JsonResponse
+    {
+        $data = Validator::make($request->query(), [
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'status' => ['nullable', 'in:pending,completed,expired,failed,cancelled,reconciliation_needed,confirmation_delayed'],
+            'type' => ['nullable', 'in:wallet_topup,voucher_payment,wallet_voucher_payment'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'min_amount' => ['nullable', 'integer', 'min:0'],
+            'max_amount' => ['nullable', 'integer', 'min:0'],
+        ])->validate();
+        $query = CustomerPaymentIntent::query()
+            ->where('customer_id', $this->customerId($request))
+            ->with(['paymentAccount', 'webhookEvents' => fn ($events) => $events->latest('id')]);
+        if (($data['status'] ?? null) === 'expired') {
+            $query->where(fn ($builder) => $builder->where('status', 'expired')
+                ->orWhere(fn ($pending) => $pending->where('status', 'pending')->where('expires_at', '<=', now())));
+        } elseif (($data['status'] ?? null) === 'pending') {
+            $query->where('status', 'pending')->where('expires_at', '>', now());
+        } elseif (in_array($data['status'] ?? null, ['reconciliation_needed', 'confirmation_delayed'], true)) {
+            $eventStatus = $data['status'] === 'confirmation_delayed' ? 'retryable_failed' : 'reconciliation_needed';
+            $query->whereHas('webhookEvents', fn ($events) => $events->where('status', $eventStatus));
+        } elseif (! empty($data['status'])) {
+            $query->where('status', $data['status']);
+        }
+        if (! empty($data['type'])) {
+            $query->where('type', $data['type']);
+        }
+        if (! empty($data['search'])) {
+            $query->where('reference', 'like', '%'.strtoupper(trim($data['search'])).'%');
+        }
+        if (array_key_exists('min_amount', $data)) {
+            $query->where('amount_vnd', '>=', $data['min_amount']);
+        }
+        if (array_key_exists('max_amount', $data)) {
+            $query->where('amount_vnd', '<=', $data['max_amount']);
+        }
+        $rows = $query->latest('id')->paginate($data['per_page'] ?? 20);
+
+        return response()->json([
+            'data' => collect($rows->items())->map(fn ($intent) => $this->finance->qrPayload($intent))->values(),
+            'meta' => ['current_page' => $rows->currentPage(), 'last_page' => $rows->lastPage(), 'total' => $rows->total()],
         ]);
     }
 
@@ -57,7 +118,7 @@ class CustomerFinanceController extends Controller
     public function vouchers(Request $request): JsonResponse
     {
         $rows = PaymentVoucher::query()->where('customer_id', $this->customerId($request))
-            ->with('paymentAccount')->latest('id')->paginate(min(100, max(1, (int) $request->query('per_page', 20))));
+            ->with(['paymentAccount', 'order', 'transactions'])->latest('id')->paginate(min(100, max(1, (int) $request->query('per_page', 20))));
 
         return response()->json([
             'data' => collect($rows->items())->map(fn ($voucher) => $this->voucherPayload($voucher))->values(),
@@ -65,10 +126,52 @@ class CustomerFinanceController extends Controller
         ]);
     }
 
+    public function notifications(Request $request): JsonResponse
+    {
+        $customerId = $this->customerId($request);
+        $rows = CustomerNotification::query()->where('customer_id', $customerId)
+            ->latest('id')->paginate(min(100, max(1, (int) $request->query('per_page', 20))));
+
+        return response()->json([
+            'data' => collect($rows->items())->map(fn (CustomerNotification $notification) => [
+                'id' => $notification->id,
+                'type' => $notification->type,
+                'title' => $notification->title,
+                'body' => $notification->body,
+                'action_url' => $notification->action_url,
+                'sent_at' => $notification->sent_at?->toIso8601String(),
+                'read_at' => $notification->read_at?->toIso8601String(),
+                'created_at' => $notification->created_at?->toIso8601String(),
+            ])->values(),
+            'meta' => [
+                'current_page' => $rows->currentPage(), 'last_page' => $rows->lastPage(), 'total' => $rows->total(),
+                'unread' => CustomerNotification::query()->where('customer_id', $customerId)->whereNull('read_at')->count(),
+            ],
+        ]);
+    }
+
+    public function markNotificationRead(Request $request, int $notification): JsonResponse
+    {
+        $row = CustomerNotification::query()->where('customer_id', $this->customerId($request))->findOrFail($notification);
+        if (! $row->read_at) {
+            $row->update(['read_at' => now()]);
+        }
+
+        return response()->json(['notification' => ['id' => $row->id, 'read_at' => $row->fresh()->read_at?->toIso8601String()]]);
+    }
+
+    public function markAllNotificationsRead(Request $request): JsonResponse
+    {
+        $count = CustomerNotification::query()->where('customer_id', $this->customerId($request))
+            ->whereNull('read_at')->update(['read_at' => now(), 'updated_at' => now()]);
+
+        return response()->json(['updated' => $count]);
+    }
+
     public function createTopupIntent(Request $request): JsonResponse
     {
         $data = Validator::make($request->all(), [
-            'amount_vnd' => ['required', 'integer', 'min:1000', 'max:999999999999'],
+            'amount_vnd' => ['required', 'integer', 'min:'.CustomerFinanceService::MIN_TOPUP_VND, 'max:'.CustomerFinanceService::MAX_TOPUP_VND],
             'idempotency_key' => ['required', 'string', 'max:100'],
         ])->validate();
         $intent = $this->finance->createSepayIntent($this->customerId($request), 'wallet_topup', (int) $data['amount_vnd'], $data['idempotency_key']);
@@ -90,6 +193,12 @@ class CustomerFinanceController extends Controller
     {
         $data = Validator::make($request->all(), ['idempotency_key' => ['required', 'string', 'max:100']])->validate();
         $owned = PaymentVoucher::query()->where('customer_id', $this->customerId($request))->findOrFail($voucher);
+        $enabled = $owned->voucher_type === 'deposit'
+            ? config('sepay.deposit_auto_confirmation_enabled') === true
+            : config('sepay.direct_voucher_payment_enabled') === true;
+        if (! $enabled) {
+            throw new HttpException(503, 'Thanh toán trực tiếp qua ngân hàng đang tạm tắt.');
+        }
         $amount = $this->finance->voucherRemaining($owned);
         $intent = $this->finance->createSepayIntent($this->customerId($request), 'voucher_payment', $amount, $data['idempotency_key'], $owned->id);
 
@@ -102,6 +211,27 @@ class CustomerFinanceController extends Controller
         $intent = $this->finance->payVoucherFromWallet($this->customerId($request), $voucher, $data['idempotency_key']);
 
         return response()->json(['intent' => ['reference' => $intent->reference, 'status' => $intent->status, 'amount_vnd' => (int) $intent->amount_vnd]]);
+    }
+
+    public function payVouchersFromWallet(Request $request): JsonResponse
+    {
+        $data = Validator::make($request->all(), [
+            'voucher_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'voucher_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+            'idempotency_key' => ['required', 'string', 'max:100'],
+        ])->validate();
+        $intents = $this->finance->payVouchersFromWallet(
+            $this->customerId($request),
+            $data['voucher_ids'],
+            $data['idempotency_key'],
+        );
+
+        return response()->json(['intents' => collect($intents)->map(fn ($intent) => [
+            'reference' => $intent->reference,
+            'status' => $intent->status,
+            'amount_vnd' => (int) $intent->amount_vnd,
+            'payment_voucher_id' => (int) $intent->payment_voucher_id,
+        ])->values()]);
     }
 
     public function pricing(Request $request): JsonResponse
@@ -167,6 +297,10 @@ class CustomerFinanceController extends Controller
             'status' => $voucher->status, 'total_vnd' => $this->ledgerService->vnd($voucher->getRawOriginal('total_amount')),
             'paid_vnd' => $this->ledgerService->vnd($voucher->getRawOriginal('paid_amount')),
             'remaining_vnd' => $this->finance->voucherRemaining($voucher),
+            'content' => $voucher->note ?: ($voucher->order?->code ? 'Thanh toán đơn '.$voucher->order->code : null),
+            'order_code' => $voucher->order?->code,
+            'expires_at' => $voucher->expires_at?->toIso8601String(),
+            'paid_at' => $voucher->paid_at?->toIso8601String(),
             'created_at' => $voucher->created_at?->toIso8601String(),
         ];
     }

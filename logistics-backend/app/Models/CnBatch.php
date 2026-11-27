@@ -27,6 +27,7 @@ class CnBatch extends Model
     protected $fillable = [
         'batch_code',
         'warehouse_id',
+        'destination_warehouse_id',
         'destination_warehouse_name',
         'total_packages',
         'status',
@@ -83,6 +84,11 @@ class CnBatch extends Model
     public function batchPackages()
     {
         return $this->hasMany(CnBatchPackage::class, 'cn_batch_id');
+    }
+
+    public function destinationWarehouse()
+    {
+        return $this->belongsTo(VnWarehouse::class, 'destination_warehouse_id');
     }
 
     public function packages()

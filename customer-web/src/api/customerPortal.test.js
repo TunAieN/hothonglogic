@@ -12,7 +12,9 @@ import {
   createVoucherSepayIntent,
   getCustomerFinanceSummary,
   getCustomerPaymentIntent,
+  getCustomerPaymentIntents,
   payVoucherFromWallet,
+  payVouchersFromWallet,
 } from './customerPortal.js'
 
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -94,6 +96,7 @@ describe('customer purchase API', () => {
   it('uses customer-scoped finance endpoints and CSRF for every financial write', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse({ balance_vnd: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ data: [] }))
       .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(jsonResponse({ intent: { reference: 'VT1' } }, 201))
       .mockResolvedValueOnce(jsonResponse({ intent: { status: 'pending' } }))
@@ -103,6 +106,7 @@ describe('customer purchase API', () => {
       .mockResolvedValueOnce(jsonResponse({ intent: { status: 'completed' } }))
 
     await getCustomerFinanceSummary()
+    await getCustomerPaymentIntents({ status: 'pending', search: 'VT 1', empty: '' })
     await createCustomerTopupIntent({ amount_vnd: 100000, idempotency_key: 'topup-1' })
     await getCustomerPaymentIntent('VT1')
     await createVoucherSepayIntent(9, { idempotency_key: 'voucher-1' })
@@ -110,11 +114,38 @@ describe('customer purchase API', () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       '/customer-portal/finance/summary',
+      '/customer-portal/finance/payment-intents?status=pending&search=VT+1',
       '/sanctum/csrf-cookie', '/customer-portal/finance/top-up-intents',
       '/customer-portal/finance/payment-intents/VT1',
       '/sanctum/csrf-cookie', '/customer-portal/finance/payment-vouchers/9/sepay-intents',
       '/sanctum/csrf-cookie', '/customer-portal/finance/payment-vouchers/9/wallet-payments',
     ])
+  })
+
+  it('surfaces Retry-After on HTTP 429 without retrying a financial POST', async () => {
+    const limited = new Response(JSON.stringify({ message: 'Too Many Attempts.' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '17' },
+    })
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(limited)
+
+    await expect(createCustomerTopupIntent({ amount_vnd: 100000, idempotency_key: 'topup-limited' }))
+      .rejects.toMatchObject({ status: 429, retryAfter: 17, message: 'Bạn thao tác quá nhanh. Vui lòng thử lại sau 17 giây.' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('posts one customer-scoped atomic wallet checkout request', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({ intents: [{ payment_voucher_id: 1, status: 'completed' }] }))
+
+    const payload = { voucher_ids: [1, 2], idempotency_key: 'checkout-1' }
+    await payVouchersFromWallet(payload)
+
+    expect(fetchMock.mock.calls[1][0]).toBe('/customer-portal/finance/payment-vouchers/wallet-checkout')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(payload)
   })
 
 })

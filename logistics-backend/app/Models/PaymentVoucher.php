@@ -215,4 +215,14 @@ class PaymentVoucher extends Model
     {
         return $this->hasOne(Invoice::class);
     }
+
+    public function paymentIntents()
+    {
+        return $this->hasMany(CustomerPaymentIntent::class);
+    }
+
+    public function customerNotifications()
+    {
+        return $this->hasMany(CustomerNotification::class);
+    }
 }

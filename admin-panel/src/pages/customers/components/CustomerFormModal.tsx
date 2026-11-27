@@ -148,7 +148,6 @@ const getCustomerErrorMessage = (error: unknown) => {
 
 const buildCreateCustomerPayload = (values: CustomerCreateFormValues) => ({
     name: values.name.trim(),
-    vip_group: normalizeOptionalText(values.vip_group),
     phone: normalizeCustomerPhone(values.phone),
     email: normalizeCustomerEmail(values.email),
     province: normalizeOptionalText(values.province),
@@ -161,7 +160,6 @@ const buildCreateCustomerPayload = (values: CustomerCreateFormValues) => ({
 const buildEditCustomerPayload = (values: CustomerEditFormValues) => ({
     code: values.code.trim(),
     name: values.name.trim(),
-    vip_group: normalizeOptionalText(values.vip_group),
     phone: normalizeCustomerPhone(values.phone),
     email: normalizeCustomerEmail(values.email),
     province: normalizeOptionalText(values.province),
@@ -261,6 +259,7 @@ export const CustomerFormModal = ({
 
         if (!isEdit) {
             form.resetFields();
+            form.setFieldValue("vip_group", "Bronze");
             return;
         }
 
@@ -511,9 +510,10 @@ export const CustomerFormModal = ({
                                 ) : null}
 
                                 <Col xs={24} md={12}>
-                                    <Form.Item label="Nhóm VIP" name="vip_group">
+                                    <Form.Item label="Hạng VIP" name="vip_group" extra="Hệ thống tự gán Bronze. Điều chỉnh đặc biệt phải thực hiện bằng chức năng VIP có phân quyền và lưu lý do.">
                                         <Input
-                                            placeholder="Nhập nhóm VIP"
+                                            disabled
+                                            placeholder="Bronze"
                                             prefix={renderInputPrefix(<SafetyCertificateOutlined />)}
                                         />
                                     </Form.Item>

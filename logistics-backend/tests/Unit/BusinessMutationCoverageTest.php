@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 class BusinessMutationCoverageTest extends TestCase
 {
-    public function test_all_49_business_mutations_are_fail_closed(): void
+    public function test_all_58_business_mutations_are_fail_closed(): void
     {
         $schema = file_get_contents(__DIR__.'/../../graphql/schema.graphql');
         preg_match('/type Mutation\s*\{(?<body>.*?)^\}/ms', $schema, $match);
@@ -20,8 +20,8 @@ class BusinessMutationCoverageTest extends TestCase
             fn (string $name) => ! in_array($name, $authenticationMutations, true),
         ));
 
-        $this->assertCount(51, $mutations);
-        $this->assertCount(49, $businessMutations);
+        $this->assertCount(60, $mutations);
+        $this->assertCount(58, $businessMutations);
         $this->assertFalse(BusinessWriteDirective::protects('Mutation', 'login'));
         $this->assertFalse(BusinessWriteDirective::protects('Mutation', 'logout'));
         $this->assertFalse(BusinessWriteDirective::protects('Query', 'orders'));

@@ -1,6 +1,5 @@
 import type { Dayjs } from "dayjs";
 import type {
-  CnBatch,
   CnBatchStatus,
   CnPackage,
   CnPackageItem,
@@ -19,8 +18,11 @@ export type ChinaWarehousePackage = {
   orderId?: string;
   orderTrackingId?: string;
   receiverName: string;
+  receiverUserId?: string;
   trackingCode: string;
+  originalTrackingNumber?: string | null;
   receivedDate: string;
+  receivedAt?: string;
   weight: number;
   actualLength?: number;
   actualWidth?: number;
@@ -45,9 +47,10 @@ export type ChinaWarehousePackage = {
 };
 
 export type PackageFormValues = {
+  receiptConfirmed?: boolean;
   trackingCode: string;
-  receiverName: string;
-  warehouseName: string;
+  receiverUserId?: string;
+  warehouseId?: string;
   weight: number;
   actualLength?: number;
   actualWidth?: number;
@@ -56,6 +59,28 @@ export type PackageFormValues = {
   receivedDate: Dayjs;
   status: PackageMatchStatus;
   note?: string;
+};
+
+export type TrackingValidation = {
+  valid: boolean;
+  matched: boolean;
+  message?: string | null;
+  existing_package_id?: string | null;
+  order_code?: string | null;
+  purchase_orders?: Array<{ id: string; external_order_code: string; shop_name?: string | null }> | null;
+};
+
+export type ChinaWarehouseReceivingOptions = {
+  warehouses: Array<{ id: string; code: string; name: string; address?: string | null; status: string }>;
+  receivers: Array<{
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    department?: string | null;
+    status: string;
+    role?: { id: string; key?: string | null; name: string; description?: string | null; permissions?: string[] | null } | null;
+  }>;
 };
 
 export type ChinaWarehouseFilters = {
@@ -70,15 +95,3 @@ export type ChinaWarehouseFilters = {
 export type ChinaWarehouseApiRecord = CnPackage;
 export type ChinaWarehouseCreateInput = CnPackageCreateInput;
 export type ChinaWarehouseUpdateInput = CnPackageUpdateInput;
-export type ChinaWarehouseBatchRecord = CnBatch;
-
-export type BatchMode = "create" | "existing";
-
-export type BatchModalFormValues = {
-  batchMode: BatchMode;
-  cnBatchId?: string;
-  shippingType?: "fast" | "normal";
-  destinationWarehouseName?: string;
-  expectedArrivalAt?: Dayjs;
-  note?: string;
-};

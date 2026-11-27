@@ -9,7 +9,7 @@ import OrderDetailPage from "./OrderDetailPage.jsx";
 import ConsignmentPage from "./ConsignmentPage.jsx";
 import WalletPage from "./WalletPage.jsx";
 import AddressesPage from "./AddressesPage.jsx";
-import NotificationsPage from "./NotificationsPage.jsx";
+import NotificationsPage, { RealNotificationsPage } from "./NotificationsPage.jsx";
 import AccountSettingsPage from "./AccountSettingsPage.jsx";
 import CreateOrderPage from "./CreateOrderPage.jsx";
 import CartAndDraftsPage from "./CartAndDraftsPage.jsx";
@@ -23,6 +23,8 @@ import { RealCartAndDraftsPage, RealCreateOrderPage, RealOrderDetailPage, RealOr
 import RealCustomerDashboard from "./RealCustomerDashboard.jsx";
 import { ConsignmentComingSoon, RealConsignmentsPage, RealTrackingPage } from "./RealCustomerLogisticsPages.jsx";
 import { RealCustomerPricingPage, RealOrderPaymentsPage, RealWalletPage } from "./RealCustomerFinancePages.jsx";
+import { CheckCircle2, Eye, EyeOff, IdCard, LockKeyhole, Mail, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { getCustomerNotifications } from "../../api/customerPortal.js";
 
 const emptyDemoData = {
   ...customerPortalDemoData,
@@ -82,13 +84,25 @@ function RealCustomerPortal({ pathname }) {
   const [account, setAccount] = useState(null);
   const [error, setError] = useState("");
   const [passwords, setPasswords] = useState({ current: "", next: "", confirmation: "" });
+  const [passwordVisibility, setPasswordVisibility] = useState({ current: false, next: false, confirmation: false });
   const [feedback, setFeedback] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
     getCustomerSession().then((result) => setAccount(result.account)).catch(() => {
       const redirect = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
       window.location.replace(`/dang-nhap?redirect=${redirect}`);
     });
   }, []);
+  useEffect(() => {
+    if (!account) return undefined;
+    let active = true;
+    const refresh = () => getCustomerNotifications({ per_page: 1 }).then((result) => {
+      if (active) setUnreadCount(Number(result.meta?.unread || 0));
+    }).catch(() => {});
+    void refresh();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [account]);
   if (!account) return <main className={styles.portal}><LoadingState /></main>;
   const initials = account.name.split(" ").slice(-2).map((part) => part[0]).join("").toUpperCase();
   const signOut = async () => { await logoutCustomer(); window.location.replace("/dang-nhap"); };
@@ -102,7 +116,15 @@ function RealCustomerPortal({ pathname }) {
   };
   let content;
   if (pathname === portalRoutes.settings) {
-    content = <><PageHeader title="Tài khoản & bảo mật" description="Thông tin tài khoản khách hàng đã xác thực."/><section className={styles.settingsContent}><h2>Thông tin tài khoản</h2><div className={styles.formGrid}><div className={styles.field}><label>Họ và tên</label><input value={account.name} readOnly/></div><div className={styles.field}><label>Mã khách hàng</label><input value={account.customer_code} readOnly/></div><div className={styles.field}><label>Email</label><input value={account.email} readOnly/></div><div className={styles.field}><label>Số điện thoại</label><input value={account.phone} readOnly/></div></div><h2>Đổi mật khẩu</h2><form onSubmit={changePassword}><div className={styles.formGrid}>{[["current","Mật khẩu hiện tại"],["next","Mật khẩu mới"],["confirmation","Xác nhận mật khẩu"]].map(([key,label]) => <div className={styles.field} key={key}><label htmlFor={`real-${key}`}>{label}</label><input id={`real-${key}`} type="password" value={passwords[key]} onChange={(event) => setPasswords((value) => ({ ...value, [key]: event.target.value }))} required/></div>)}</div><button className={styles.primaryAction}>Đổi mật khẩu</button>{error && <p className={styles.fieldError} role="alert">{error}</p>}{feedback && <p className={styles.formFeedback} role="status">{feedback}</p>}</form></section></>;
+    const fields = [
+      ["Họ và tên", account.name, UserRound], ["Mã khách hàng", account.customer_code, IdCard],
+      ["Email", account.email, Mail], ["Số điện thoại", account.phone, Phone],
+    ];
+    const vip = account.vip || {};
+    const spend = Number(vip.qualified_spend_vnd || 0);
+    const nextSpend = Number(vip.next_tier_minimum_spend_vnd || 0);
+    const progress = nextSpend > 0 ? Math.min(100, Math.round((spend / nextSpend) * 100)) : 100;
+    content = <div className={styles.accountPage}><PageHeader title="Tài khoản & bảo mật" description="Thông tin tài khoản khách hàng và thiết lập mật khẩu."/><section className={styles.accountCard}><header><span><ShieldCheck /></span><h2>Hạng thành viên</h2></header><div className={styles.accountReadOnlyGrid}><label><span>Hạng VIP hiện tại</span><div><ShieldCheck /><input value={vip.name || "Chưa phân hạng"} readOnly /></div></label><label><span>Chi tiêu hợp lệ</span><div><IdCard /><input value={`${spend.toLocaleString("vi-VN")} ₫`} readOnly /></div></label><label><span>Quyền lợi cọc cơ bản</span><div><LockKeyhole /><input value={vip.deposit_policy_enabled && vip.base_deposit_percent != null ? `${vip.base_deposit_percent}%` : "Chờ chính sách được duyệt"} readOnly /></div></label><label><span>Tiến độ hạng tiếp theo</span><div><CheckCircle2 /><input value={vip.next_tier_name ? `${progress}% đến ${vip.next_tier_name}` : "Đã ở hạng cao nhất"} readOnly /></div></label></div><IntegrationNotice>Tỷ lệ cọc thực tế còn phụ thuộc mức rủi ro của từng đơn Taobao và phê duyệt ngoại lệ.</IntegrationNotice></section><section className={styles.accountCard}><header><span><UserRound /></span><h2>Thông tin tài khoản</h2></header><div className={styles.accountProfileGrid}><aside><div className={styles.accountAvatar}>{initials}</div><strong>{account.name}</strong>{account.email_verified && <span><CheckCircle2 /> Đã xác thực email</span>}</aside><div className={styles.accountReadOnlyGrid}>{fields.map(([label, value, Icon]) => <label key={label}><span>{label}</span><div><Icon /><input value={value || "Chưa cập nhật"} readOnly aria-label={label} /></div></label>)}</div></div></section><section className={styles.passwordCard}><header><span><LockKeyhole /></span><div><h2>Đổi mật khẩu</h2><p>Mật khẩu mới cần tối thiểu 12 ký tự.</p></div></header><form onSubmit={changePassword}><div className={styles.passwordGrid}>{[["current","Mật khẩu hiện tại"],["next","Mật khẩu mới"],["confirmation","Xác nhận mật khẩu mới"]].map(([key,label]) => <label key={key} className={key === "confirmation" ? styles.passwordFull : ""}><span>{label}</span><div><LockKeyhole /><input id={`real-${key}`} aria-label={label} type={passwordVisibility[key] ? "text" : "password"} autoComplete={key === "current" ? "current-password" : "new-password"} value={passwords[key]} onChange={(event) => setPasswords((value) => ({ ...value, [key]: event.target.value }))} required/><button type="button" aria-label={`${passwordVisibility[key] ? "Ẩn" : "Hiện"} ${label.toLowerCase()}`} onClick={() => setPasswordVisibility((value) => ({ ...value, [key]: !value[key] }))}>{passwordVisibility[key] ? <EyeOff /> : <Eye />}</button></div></label>)}</div>{error && <p className={styles.fieldError} role="alert">{error}</p>}{feedback && <p className={styles.formFeedback} role="status"><ShieldCheck /> {feedback}</p>}<button className={styles.primaryAction} disabled={!passwords.current || !passwords.next || !passwords.confirmation}><LockKeyhole /> Đổi mật khẩu</button></form></section></div>;
   } else if (pathname === portalRoutes.createOrder) {
     content = <RealCreateOrderPage routes={portalRoutes} customerId={account.customer_id} />;
   } else if (pathname === portalRoutes.cart) {
@@ -127,8 +149,12 @@ function RealCustomerPortal({ pathname }) {
     content = <RealOrderPaymentsPage />;
   } else if (pathname === portalRoutes.pricing) {
     content = <RealCustomerPricingPage />;
+  } else if (pathname === portalRoutes.notifications) {
+    content = <RealNotificationsPage onUnreadChange={setUnreadCount} />;
+  } else if (pathname === portalRoutes.addresses) {
+    content = <AddressesPage />;
   } else {
     content = <><PageHeader title="Chức năng đang được hoàn thiện" description="Không sử dụng API quản trị hoặc dữ liệu Demo trong phiên thật."/><IntegrationNotice>Module này chưa có API Customer được phân quyền theo customer_id.</IntegrationNotice></>;
   }
-  return <CustomerPortalLayout profile={{ ...account, initials }} unreadCount={0} onLogout={signOut}>{content}</CustomerPortalLayout>;
+  return <CustomerPortalLayout profile={{ ...account, initials }} unreadCount={unreadCount} onLogout={signOut}>{content}</CustomerPortalLayout>;
 }

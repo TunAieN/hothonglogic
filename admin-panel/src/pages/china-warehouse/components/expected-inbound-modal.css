@@ -1,0 +1,308 @@
+.cn-expected-modal .ant-modal {
+  max-width: calc(100vw - 32px);
+  padding-bottom: 0;
+}
+
+.cn-expected-modal .ant-modal-content {
+  overflow: hidden;
+  padding: 0;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgb(16 43 80 / 28%);
+}
+
+.cn-expected-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: min(90vh, 900px);
+  background: #fff;
+}
+
+.cn-expected-header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  color: #fff;
+  background: linear-gradient(110deg, #102b50, #1755ad 66%, #1763c8);
+}
+
+.cn-expected-header__identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cn-expected-header__identity > .anticon {
+  font-size: 30px;
+}
+
+.cn-expected-header h3.ant-typography,
+.cn-expected-header .ant-typography {
+  margin: 0;
+  color: #fff;
+}
+
+.cn-expected-header .ant-btn {
+  color: #fff;
+  font-size: 18px;
+}
+
+.cn-expected-body {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.cn-expected-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  flex: none;
+}
+
+.cn-expected-stats > div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid #d9e8fb;
+  border-radius: 11px;
+  color: #102b50;
+  background: #eaf2ff;
+}
+
+.cn-expected-stats .anticon {
+  color: #1755ad;
+  font-size: 19px;
+}
+
+.cn-expected-stats strong {
+  color: #1755ad;
+  font-size: 17px;
+  text-align: right;
+}
+
+.cn-expected-filters {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 210px 190px auto auto;
+  gap: 10px;
+  padding: 9px;
+  border: 1px solid #e1e8f2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.cn-expected-list {
+  min-height: 0;
+  max-height: min(49vh, 490px);
+  flex: 0 1 auto;
+  overflow: hidden auto;
+  border: 1px solid #e1e8f2;
+  border-radius: 10px;
+  background: #fff;
+  scrollbar-width: thin;
+  scrollbar-color: #b7c7dc transparent;
+}
+
+.cn-expected-list .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #102b50;
+  background: #eaf2ff;
+}
+
+.cn-expected-list .ant-table-cell {
+  padding-inline: 10px;
+  overflow-wrap: anywhere;
+}
+
+.cn-expected-actions .ant-btn {
+  padding-inline: 6px;
+}
+
+.cn-expected-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cn-expected-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cn-expected-list::-webkit-scrollbar-thumb {
+  background: #b7c7dc;
+  border-radius: 10px;
+}
+
+.cn-expected-tracking .cn-expected-ellipsis {
+  color: #102b50;
+}
+
+.cn-expected-cell-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  gap: 2px;
+}
+
+.cn-expected-cell-stack > div {
+  width: 100%;
+  min-width: 0;
+}
+
+.cn-expected-cell-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cn-expected-cell-line > :not(.cn-expected-ellipsis) {
+  flex: none;
+}
+
+.cn-expected-ellipsis {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cn-expected-status.ant-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin-inline-end: 0;
+}
+
+.cn-expected-status > .anticon {
+  flex: none;
+}
+
+.cn-expected-inline-link.ant-btn {
+  height: auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.cn-expected-product-popover {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 340px;
+}
+
+.cn-expected-product-popover > .ant-avatar {
+  flex: none;
+}
+
+.cn-expected-product-popover > div,
+.cn-expected-purchase-popover-line {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cn-expected-purchase-popover-line {
+  max-width: min(380px, 70vw);
+}
+
+.cn-expected-note {
+  flex: none;
+}
+
+.cn-expected-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-top: 1px solid #e1e8f2;
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .cn-expected-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cn-expected-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cn-expected-filters > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .cn-expected-modal .ant-modal {
+    max-width: calc(100vw - 16px);
+    margin: 8px auto;
+  }
+
+  .cn-expected-shell {
+    max-height: calc(100vh - 16px);
+  }
+
+  .cn-expected-header {
+    padding: 14px;
+  }
+
+  .cn-expected-header__identity > .anticon {
+    display: none;
+  }
+
+  .cn-expected-header h3.ant-typography {
+    font-size: 18px;
+  }
+
+  .cn-expected-body {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .cn-expected-list .ant-table-cell {
+    padding-inline: 4px;
+  }
+
+  .cn-expected-actions .ant-btn {
+    gap: 3px;
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+
+  .cn-expected-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cn-expected-stats > div:nth-child(n + 3) {
+    display: none;
+  }
+
+  .cn-expected-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 10px;
+  }
+
+  .cn-expected-footer > .ant-space {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

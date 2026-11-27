@@ -1,0 +1,62 @@
+.cn-batch-workspace .ant-modal-container,
+.cn-batch-workspace .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 89vh;
+  max-height: 89dvh;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.cn-batch-workspace .ant-modal-header,
+.cn-batch-workspace .ant-modal-footer { flex: none; margin: 0; padding: 16px 22px; }
+.cn-batch-workspace .ant-modal-header { background: #102b50; color: #fff; }
+.cn-batch-workspace .ant-modal-close { color: #fff; }
+.cn-batch-workspace .ant-modal-close:hover { color: #fff; background: rgb(255 255 255 / 14%); }
+.cn-batch-workspace .ant-modal-footer { border-top: 1px solid #e0e7f2; }
+.cn-batch-workspace .ant-modal-body { min-height: 0; padding: 18px 22px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: #aec1dd transparent; }
+.cn-batch-workspace .ant-modal-body::-webkit-scrollbar { width: 4px; }
+.cn-batch-workspace .ant-modal-body::-webkit-scrollbar-thumb { border-radius: 5px; background: #aec1dd; }
+.cn-workspace-heading { display: flex; gap: 15px; align-items: center; padding-right: 32px; color: #fff; }
+.cn-workspace-logo { flex: none; width: 42px; font-size: 31px; text-align: center; }
+.cn-workspace-heading-text { min-width: 0; padding-left: 14px; border-left: 1px solid rgb(255 255 255 / 45%); overflow-wrap: anywhere; }
+.cn-workspace-heading strong { display: block; font-size: 23px; }
+.cn-workspace-heading-text > div, .cn-workspace-code { font-size: 14px; font-weight: 400; }
+.cn-workspace-heading .cn-workspace-code, .cn-workspace-heading .ant-typography-copy { color: #fff; }
+.cn-workspace-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 13px; }
+.cn-workspace-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.cn-workspace-fact { display: grid; grid-template-columns: 39px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; padding: 13px; color: #102b50; background: #f7f9fc; border: 1px solid #dfe7f3; border-radius: 10px; }
+.cn-workspace-fact-icon { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 9px; background: #eaf0f9; font-size: 20px; }
+.cn-workspace-fact strong, .cn-workspace-fact > div > span { display: block; min-width: 0; }
+.cn-workspace-fact strong { margin-top: 2px; font-size: 16px; }
+.cn-workspace-fact strong .ant-typography { font-size: inherit; color: inherit; }
+.cn-workspace-panel { padding: 12px; min-width: 0; border: 1px solid #dfe7f3; border-radius: 10px; }
+.cn-workspace-panel h4.ant-typography, .cn-batch-workspace h4.ant-typography, .cn-batch-workspace h5.ant-typography { margin: 0; color: #102b50; }
+.cn-workspace-table .ant-table { border: 1px solid #e0e7f2; border-radius: 8px; }
+.cn-workspace-table .ant-table-thead > tr > th { background: #edf2f9; color: #102b50; }
+.cn-workspace-table .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.cn-workspace-ellipsis { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-workspace-issues { color: #a73732; overflow-wrap: anywhere; }
+.cn-workspace-footer, .cn-workspace-inline-title { display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+.cn-batch-workspace .ant-modal-footer .ant-btn-primary { background: #102b50; color: white; }
+.cn-batch-workspace .ant-modal-footer .ant-btn-primary:disabled { background: #e5ecf6; color: #5f728b; border-color: #dce5f1; }
+.cn-workspace-loading { text-align: center; padding: 28px; }
+.cn-workspace-review-button { display: flex; justify-content: flex-end; }
+.cn-workspace-step-fields .ant-form-item { margin-bottom: 12px; }
+.cn-workspace-checks .ant-form-item { margin-bottom: 5px; }
+.cn-workspace-view { max-width: 100%; }
+
+@media (max-width: 767px) {
+  .cn-batch-workspace .ant-modal-header, .cn-batch-workspace .ant-modal-footer, .cn-batch-workspace .ant-modal-body { padding: 11px; }
+  .cn-workspace-heading strong { font-size: 17px; }
+  .cn-workspace-heading-text > div, .cn-workspace-code { font-size: 12px; }
+  .cn-workspace-logo { width: 28px; font-size: 23px; }
+  .cn-workspace-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .cn-workspace-fact { padding: 8px; grid-template-columns: 26px minmax(0, 1fr); gap: 5px; }
+  .cn-workspace-fact-icon { width: 26px; height: 26px; font-size: 15px; }
+  .cn-workspace-fact strong { font-size: 13px; }
+  .cn-workspace-table .ant-table-cell { padding-inline: 4px !important; }
+  .cn-workspace-table .cn-workspace-view > span:last-child { display: none; }
+  .cn-workspace-panel { padding: 7px; }
+}

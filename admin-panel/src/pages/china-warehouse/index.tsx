@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react";
-import { useCreate, useDelete, useList, useUpdate } from "@refinedev/core";
+import { useDelete, useGetIdentity, useInvalidate, useList, useUpdate } from "@refinedev/core";
 import {
   Alert,
+  App as AntdApp,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Drawer,
@@ -15,11 +17,9 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Radio,
   Row,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Tooltip,
@@ -37,42 +37,48 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  TruckOutlined,
   UploadOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadProps } from "antd";
 import dayjs from "dayjs";
 import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
-import { CHINA_WAREHOUSE_OPTIONS } from "./mockData";
+import { CN_PACKAGE_TRACKING_VALIDATION_QUERY, CN_RECEIVING_OPTIONS_QUERY, RECEIVE_CN_PACKAGE_MUTATION } from "../../graphql/cnPackages";
+import { isCnReceivedAtInFuture } from "./receivedAt";
+import { DUPLICATE_CN_TRACKING, getReceivingError, getReceivingFormError, type ReceivingFeedback } from "./receivingFeedback";
 import {
-  calculateSelectedTotalWeight,
   canDeletePackage,
   canSelectPackage,
   formatWeight,
-  getAvailableBatchOptions,
-  getBatchDisplayName,
-  getNextBatchCode,
   getPackageSelectionReason,
   getStatusTag,
-  getWarehouseCode,
   isPackageEligibleForBatch,
-  mapBatchFormValuesToInput,
   mapApiRecordToPackage,
   mapFormValuesToCreateInput,
   mapFormValuesToUpdateInput,
   mapRecordToFormValues,
   renderBatchTag,
 } from "./helpers";
+import { AddPackagesToBatchModal } from "./components/AddPackagesToBatchModal";
 import { ConfirmPackageItemsModal } from "./components/ConfirmPackageItemsModal";
+import { ExpectedInboundModal } from "./components/ExpectedInboundModal";
+import type { ExpectedInboundRow } from "./components/ExpectedInboundModal";
+import { ReconcilePackageModal } from "./components/ReconcilePackageModal";
+import type { ItemQuantity } from "./components/packageInspectionSave";
+import type { ReconciliationInput } from "./components/ReconcilePackageModal";
+import { hasPermission } from "../../shared/auth/permissions";
+import type { User } from "../../shared/types";
 import { AdminTableSkeleton, LoadingOverlay, SkeletonStatCard } from "../../shared/components/admin-loading";
 import { PageHeader, StatCard, StatsGrid } from "../../shared/components/admin-page-summary";
 import type {
   ChinaWarehouseApiRecord,
-  ChinaWarehouseBatchRecord,
   ChinaWarehouseFilters,
   ChinaWarehousePackage,
-  BatchModalFormValues,
+  ChinaWarehouseReceivingOptions,
   PackageFormValues,
+  TrackingValidation,
 } from "./types";
 
 const { Text, Paragraph } = Typography;
@@ -98,24 +104,24 @@ const ChinaWarehouseStatsSkeleton = () => (
   </Row>
 );
 
-const ADD_PACKAGES_TO_BATCH_MUTATION = `
-  mutation AddPackagesToCnBatch($input: AddPackagesToCnBatchInput!) {
-    addPackagesToCnBatch(input: $input) {
+const CONFIRM_CN_PACKAGE_ITEMS_MUTATION = `
+  mutation ConfirmCnPackageItems($packageId: ID!, $items: [OrderPackageItemInput!]!, $expectedItems: [OrderPackageItemInput!]!, $inspectionNote: String) {
+    confirmCnPackageItems(package_id: $packageId, items: $items, expected_items: $expectedItems, inspection_note: $inspectionNote, preserve_unselected: true) {
       id
-      batch_code
-      status
-      total_weight
     }
   }
 `;
 
-const CONFIRM_CN_PACKAGE_ITEMS_MUTATION = `
-  mutation ConfirmCnPackageItems($packageId: ID!, $items: [OrderPackageItemInput!]!) {
-    confirmCnPackageItems(package_id: $packageId, items: $items) {
-      id
-    }
-  }
-`;
+const loadTrackingValidation = async (trackingNumber: string, ignorePackageId?: string) => {
+  syncGraphqlAuthToken();
+  const response = await client.request<{ cnPackageTrackingValidation: TrackingValidation }>({
+    document: CN_PACKAGE_TRACKING_VALIDATION_QUERY,
+    variables: { trackingNumber, ignorePackageId },
+    requestHeaders: getGraphqlAuthHeaders(),
+    signal: AbortSignal.timeout(10_000),
+  });
+  return response.cnPackageTrackingValidation;
+};
 
 const packageMatchesFilters = (
   record: ChinaWarehousePackage,
@@ -154,22 +160,41 @@ const packageMatchesFilters = (
 };
 
 export const ChinaWarehousePage = () => {
+  const { message: receivingMessage } = AntdApp.useApp();
+  const { data: identity } = useGetIdentity<User>();
+  const canReceive = hasPermission(identity, "cn_packages.create");
+  const canCreateBatch = hasPermission(identity, "cn_batches.create");
+  const canReadBatches = hasPermission(identity, "cn_batches.read");
+  const invalidate = useInvalidate();
+  const canReconcile = hasPermission(identity, "cn_packages.update");
+  const canReadOrders = hasPermission(identity, "orders.read");
+  const canVerifyPurchases = canReadOrders && hasPermission(identity, "orders.update");
+  const canInspect = hasPermission(identity, "cn_packages.inspect");
   const [filters, setFilters] = useState<ChinaWarehouseFilters>(defaultFilterValues);
   const [form] = Form.useForm<PackageFormValues>();
   const [filterForm] = Form.useForm<ChinaWarehouseFilters>();
-  const [batchForm] = Form.useForm<BatchModalFormValues>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<ChinaWarehousePackage | null>(null);
+  const [expectedReceipt, setExpectedReceipt] = useState<ExpectedInboundRow>();
+  const [reconciling, setReconciling] = useState<ChinaWarehousePackage>();
+  const [trackingCheck, setTrackingCheck] = useState<{ number: string; result: TrackingValidation }>();
+  const [duplicatePackage, setDuplicatePackage] = useState<ChinaWarehousePackage>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [selectedRows, setSelectedRows] = useState<ChinaWarehousePackage[]>([]);
   const [excelModalOpen, setExcelModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [submitFeedback, setSubmitFeedback] = useState<ReceivingFeedback>();
+  const packageSubmitLock = useRef(false);
+  const trackingPreviewRequest = useRef(0);
   const [isSyncingStatuses, setIsSyncingStatuses] = useState(false);
-  const [confirmItemsModalOpen, setConfirmItemsModalOpen] = useState(false);
   const [confirmingPackage, setConfirmingPackage] = useState<ChinaWarehousePackage | null>(null);
-  const [isConfirmingItems, setIsConfirmingItems] = useState(false);
+  const [expectedInboundOpen, setExpectedInboundOpen] = useState(false);
+  const [expectedInboundRefreshKey, setExpectedInboundRefreshKey] = useState(0);
+  const reopenExpectedInboundAfterDrawer = useRef(false);
+  const [receivingOptions, setReceivingOptions] = useState<ChinaWarehouseReceivingOptions>({ warehouses: [], receivers: [] });
+  const [isReceivingOptionsLoading, setIsReceivingOptionsLoading] = useState(true);
+  const [receivingOptionsError, setReceivingOptionsError] = useState<string | null>(null);
   const screens = Grid.useBreakpoint();
   const {
     result: packageListResponse,
@@ -181,25 +206,37 @@ export const ChinaWarehousePage = () => {
       pageSize: 1000,
     },
   });
-  const {
-    result: batchListResponse,
-    query: batchListQuery,
-  } = useList<ChinaWarehouseBatchRecord>({
-    resource: "cnBatches",
-    pagination: {
-      currentPage: 1,
-      pageSize: 1000,
-    },
-  });
-  const { mutateAsync: createPackage } = useCreate<ChinaWarehouseApiRecord>();
   const { mutateAsync: updatePackage } = useUpdate<ChinaWarehouseApiRecord>();
   const { mutateAsync: deletePackage } = useDelete<ChinaWarehouseApiRecord>();
+
+  const loadReceivingOptions = useCallback(async () => {
+    setIsReceivingOptionsLoading(true);
+    setReceivingOptionsError(null);
+
+    try {
+      syncGraphqlAuthToken();
+      const response = await client.request<{ cnReceivingOptions: ChinaWarehouseReceivingOptions }>(
+        CN_RECEIVING_OPTIONS_QUERY,
+        {},
+        getGraphqlAuthHeaders(),
+      );
+      setReceivingOptions(response.cnReceivingOptions);
+    } catch {
+      setReceivingOptions({ warehouses: [], receivers: [] });
+      setReceivingOptionsError("Kiểm tra kết nối hoặc phiên đăng nhập rồi bấm Thử lại.");
+    } finally {
+      setIsReceivingOptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadReceivingOptions();
+  }, [loadReceivingOptions]);
 
   const packages = useMemo(
     () => (packageListResponse?.data ?? []).map(mapApiRecordToPackage),
     [packageListResponse?.data],
   );
-  const batches = useMemo(() => batchListResponse?.data ?? [], [batchListResponse?.data]);
 
   const filteredPackages = useMemo(
     () => packages.filter((item) => packageMatchesFilters(item, filters)),
@@ -216,34 +253,12 @@ export const ChinaWarehousePage = () => {
     [packages],
   );
 
-  const selectedTotalWeight = useMemo(
-    () => calculateSelectedTotalWeight(selectedRows),
-    [selectedRows],
-  );
-
-  const predictedBatchCode = useMemo(() => {
-    if (!selectedRows.length) {
-      return undefined;
-    }
-
-    const warehouseCode = getWarehouseCode(selectedRows[0].warehouseName);
-    const existingBatches = batches
-      .map((item) => item.batch_code)
-      .filter((value): value is string => Boolean(value));
-
-    return getNextBatchCode(warehouseCode, new Date(), existingBatches);
-  }, [batches, selectedRows]);
-
-  const selectedWarehouseId = selectedRows[0]?.warehouseId;
-  const availableBatches = useMemo(
-    () => getAvailableBatchOptions(batches, selectedWarehouseId),
-    [batches, selectedWarehouseId],
-  );
-  const batchMode = Form.useWatch("batchMode", batchForm) ?? "create";
   const watchedWeight = Form.useWatch("weight", form) ?? 0;
   const watchedLength = Form.useWatch("actualLength", form) ?? 0;
   const watchedWidth = Form.useWatch("actualWidth", form) ?? 0;
   const watchedHeight = Form.useWatch("actualHeight", form) ?? 0;
+  const watchedTrackingCode = Form.useWatch("trackingCode", form)?.trim().toUpperCase();
+  const activeTrackingCheck = trackingCheck?.number === watchedTrackingCode ? trackingCheck?.result : undefined;
 
   const measuredVolume = useMemo(() => {
     if (!watchedLength || !watchedWidth || !watchedHeight) {
@@ -266,34 +281,30 @@ export const ChinaWarehousePage = () => {
     [volumetricWeight, watchedWeight],
   );
 
-  useEffect(() => {
-    if (!batchModalOpen) {
-      return;
-    }
-
-    batchForm.setFieldsValue({
-      batchMode: "create",
-      cnBatchId: undefined,
-      shippingType: "normal",
-      destinationWarehouseName: undefined,
-      expectedArrivalAt: undefined,
-      note: undefined,
-    });
-  }, [batchForm, batchModalOpen]);
-
-  const openCreateDrawer = () => {
+  const openCreateDrawer = (prefill?: ExpectedInboundRow) => {
     setEditingRecord(null);
+    setSubmitFeedback(undefined);
+    setTrackingCheck(undefined);
+    setExpectedReceipt(prefill);
+    if (prefill) {
+      reopenExpectedInboundAfterDrawer.current = true;
+      setExpectedInboundOpen(false);
+    }
+    form.resetFields();
     form.setFieldsValue({
-      trackingCode: "",
-      receiverName: "",
-      warehouseName: "Kho Quảng Châu",
-      weight: 0.1,
+      trackingCode: prefill?.tracking_number ?? "",
+      receiverUserId: undefined,
+      warehouseId: prefill
+        ? receivingOptions.warehouses.find(({ id }) => id === prefill.warehouse?.id)?.id
+        : (receivingOptions.warehouses.length === 1 ? receivingOptions.warehouses[0].id : undefined),
+      weight: undefined,
       actualLength: 0,
       actualWidth: 0,
       actualHeight: 0,
       packageCondition: "normal",
       receivedDate: dayjs(),
-      status: "unmatched",
+      receiptConfirmed: false,
+      status: prefill ? "matched" : "unmatched",
       note: "",
     });
     setDrawerOpen(true);
@@ -301,20 +312,62 @@ export const ChinaWarehousePage = () => {
 
   const openEditDrawer = (record: ChinaWarehousePackage) => {
     setEditingRecord(record);
+    setSubmitFeedback(undefined);
+    setTrackingCheck(undefined);
     form.setFieldsValue(mapRecordToFormValues(record));
     setDrawerOpen(true);
   };
 
+  const receiverOptions = useMemo(() => {
+    const options = receivingOptions.receivers.map((receiver) => ({
+      value: receiver.id,
+      label: `${receiver.name} — ${receiver.role?.name || "Nhân viên kho Trung Quốc"}`,
+      searchText: `${receiver.name} ${receiver.email} ${receiver.phone || ""} ${receiver.role?.name || ""}`.toLowerCase(),
+    }));
+
+    if (editingRecord && !editingRecord.receiverUserId && editingRecord.receiverName) {
+      options.unshift({
+        value: `legacy:${editingRecord.id}`,
+        label: `${editingRecord.receiverName} — dữ liệu lịch sử`,
+        searchText: editingRecord.receiverName.toLowerCase(),
+      });
+    }
+
+    return options;
+  }, [editingRecord, receivingOptions.receivers]);
+
   const openConfirmItemsModal = (record: ChinaWarehousePackage) => {
     setConfirmingPackage(record);
-    setConfirmItemsModalOpen(true);
   };
 
+  const hasReceivedTracking = (record: ChinaWarehousePackage) =>
+    Boolean(record.status === "matched" && record.receivedAt && record.orderId && record.orderTrackingId);
+  const canInspectPackage = (record: ChinaWarehousePackage) =>
+    canInspect && hasReceivedTracking(record) && !record.batchId && record.orderItems.length > 0;
+
   const closeDrawer = () => {
+    trackingPreviewRequest.current += 1;
     setDrawerOpen(false);
+    setSubmitFeedback(undefined);
     setEditingRecord(null);
+    setExpectedReceipt(undefined);
+    setTrackingCheck(undefined);
     form.resetFields();
+    if (reopenExpectedInboundAfterDrawer.current) {
+      reopenExpectedInboundAfterDrawer.current = false;
+      setExpectedInboundOpen(true);
+    }
   };
+
+  const requestCloseDrawer = () => {
+    if (!packageSubmitLock.current) closeDrawer();
+  };
+
+  useEffect(() => {
+    if (drawerOpen && !isSubmitting && submitFeedback?.field) {
+      form.scrollToField(submitFeedback.field, { focus: true, block: "center" });
+    }
+  }, [drawerOpen, form, isSubmitting, submitFeedback]);
 
   const handleManualReceivingStatusSync = async () => {
     setIsSyncingStatuses(true);
@@ -323,8 +376,15 @@ export const ChinaWarehousePage = () => {
   };
 
   const handleSubmitPackage = async () => {
+    if (packageSubmitLock.current) return;
+
+    packageSubmitLock.current = true;
+    trackingPreviewRequest.current += 1;
+    setIsSubmitting(true);
+    setSubmitFeedback(undefined);
+    let submittedTracking: string | undefined;
+
     try {
-      setIsSubmitting(true);
       const values = await form.validateFields();
 
       if (editingRecord) {
@@ -332,28 +392,134 @@ export const ChinaWarehousePage = () => {
           resource: "cnPackages",
           id: editingRecord.id,
           values: mapFormValuesToUpdateInput(values),
+          successNotification: false,
+          errorNotification: false,
         });
-        await packageListQuery.refetch();
-        message.success("Đã cập nhật thông tin kiện hàng.");
+        receivingMessage.success("Đã cập nhật thông tin kiện hàng.");
       } else {
-        await createPackage({
-          resource: "cnPackages",
-          values: mapFormValuesToCreateInput(values),
+        const input = mapFormValuesToCreateInput(values);
+        const number = input.tracking_number;
+        let result: TrackingValidation;
+        try {
+          // Always check the current tracking before sending a write, including after an uncertain outcome.
+          result = await loadTrackingValidation(number);
+        } catch (error) {
+          reportReceivingError(getReceivingError(error, "tracking"));
+          return;
+        }
+        applyTrackingCheck(number, result);
+        if (!result.valid || result.existing_package_id) {
+          reportReceivingError({
+            field: "trackingCode",
+            message: result.existing_package_id ? DUPLICATE_CN_TRACKING : result.message || "Mã vận đơn không hợp lệ.",
+          });
+          return;
+        }
+        if (!result.matched && !input.note) {
+          reportReceivingError({ field: "note", message: "Vui lòng nhập ghi chú bàn giao hoặc lý do cần đối chiếu." });
+          return;
+        }
+        submittedTracking = number;
+        const response = await client.request<{ createCnPackage: { id: string } | null }>({
+          document: RECEIVE_CN_PACKAGE_MUTATION,
+          variables: { input: {
+            ...input,
+            status: result.matched ? "matched" : "unmatched",
+            expected_tracking_id: expectedReceipt?.id,
+            expected_order_id: expectedReceipt?.order?.id,
+          } },
+          requestHeaders: getGraphqlAuthHeaders(),
+          signal: AbortSignal.timeout(25_000),
         });
-        await packageListQuery.refetch();
-        message.success("Đã thêm kiện hàng vào kho Trung Quốc.");
+        if (!response.createCnPackage?.id) throw new Error("The create response did not confirm a package ID.");
+        setExpectedInboundRefreshKey((value) => value + 1);
+        receivingMessage.success("Nhập kiện thành công");
       }
 
       closeDrawer();
+      void packageListQuery.refetch({ throwOnError: true }).catch(() => {
+        receivingMessage.warning("Kiện đã được lưu. Chưa tải lại được bảng kho. Hãy tải lại trang để cập nhật danh sách.");
+      });
     } catch (error) {
-      console.error(error);
-      message.error(
-        editingRecord
-          ? "Không thể cập nhật kiện hàng."
-          : "Không thể thêm kiện hàng. Vui lòng thử lại.",
-      );
+      const formError = getReceivingFormError(error);
+      if (formError) {
+        setSubmitFeedback(formError);
+        return;
+      }
+      const feedback = getReceivingError(error, editingRecord ? "update" : "create");
+      reportReceivingError(feedback);
+      if (submittedTracking && feedback.checkExisting) {
+        const result = await loadTrackingValidation(submittedTracking).catch(() => undefined);
+        if (result) {
+          applyTrackingCheck(submittedTracking, result);
+          if (result.existing_package_id) {
+            reportReceivingError({ field: "trackingCode", message: DUPLICATE_CN_TRACKING });
+          }
+        }
+      }
     } finally {
+      packageSubmitLock.current = false;
       setIsSubmitting(false);
+    }
+  };
+
+  const reportReceivingError = (feedback: ReceivingFeedback) => {
+    setSubmitFeedback(feedback);
+    if (feedback.field) form.setFields([{ name: feedback.field, errors: [feedback.message] }]);
+  };
+
+  const applyTrackingCheck = (number: string, result: TrackingValidation) => {
+    setTrackingCheck({ number, result });
+    form.setFieldValue("status", result.matched ? "matched" : "unmatched");
+  };
+
+  const previewTrackingCode = async (value: string) => {
+    const trackingNumber = value?.trim().toUpperCase();
+    if (!trackingNumber || editingRecord || packageSubmitLock.current) return;
+    const request = ++trackingPreviewRequest.current;
+    const isCurrent = () => request === trackingPreviewRequest.current
+      && form.getFieldValue("trackingCode")?.trim().toUpperCase() === trackingNumber;
+    try {
+      const result = await loadTrackingValidation(trackingNumber);
+      if (!isCurrent()) return;
+      applyTrackingCheck(trackingNumber, result);
+      form.setFields([{ name: "trackingCode", errors: result.valid ? [] : [result.message || "Mã vận đơn không hợp lệ."] }]);
+    } catch (error) {
+      if (isCurrent()) form.setFields([{ name: "trackingCode", errors: [getReceivingError(error, "tracking").message] }]);
+    }
+  };
+
+  const showExistingPackage = async (id: string) => {
+    try {
+      syncGraphqlAuthToken();
+      const response = await client.request<{ cnPackage: ChinaWarehouseApiRecord | null }>(`
+        query ExistingCnPackage($id: ID!) {
+          cnPackage(id: $id) {
+            id warehouse_id tracking_number receiver_name received_at weight status note
+            warehouse { id name }
+          }
+        }
+      `, { id }, getGraphqlAuthHeaders());
+      if (!response.cnPackage) throw new Error();
+      setDuplicatePackage(mapApiRecordToPackage(response.cnPackage));
+    } catch {
+      message.error("Không tải được kiện đã tiếp nhận. Vui lòng tải lại bảng kho.");
+    }
+  };
+
+  const saveReconciliation = async (input: ReconciliationInput) => {
+    if (!reconciling) return;
+    try {
+      await updatePackage({ resource: "cnPackages", id: reconciling.id, values: { reconciliation: input } });
+      setReconciling(undefined);
+      void packageListQuery.refetch();
+      setExpectedInboundRefreshKey((value) => value + 1);
+      message.success("Đã lưu kết quả đối chiếu.");
+    } catch (error) {
+      const graphqlMessage = (error as { response?: { errors?: { message?: string }[] } })?.response?.errors?.[0]?.message;
+      throw new Error(graphqlMessage && graphqlMessage !== "Internal server error"
+        ? graphqlMessage
+        : "Không thể lưu đối chiếu. Vui lòng thử lại.");
     }
   };
 
@@ -370,7 +536,7 @@ export const ChinaWarehousePage = () => {
         resource: "cnPackages",
         id: record.id,
       });
-      await Promise.all([packageListQuery.refetch(), batchListQuery.refetch()]);
+      await packageListQuery.refetch();
       setSelectedRowKeys((current) => current.filter((key) => key !== record.id));
       setSelectedRows((current) => current.filter((item) => item.id !== record.id));
       message.success("Đã xóa kiện hàng.");
@@ -398,7 +564,7 @@ export const ChinaWarehousePage = () => {
     const invalidPackage = selectedRows.find((item) => !isPackageEligibleForBatch(item));
 
     if (invalidPackage) {
-      message.error("Có kiện hàng đã thuộc lô hoặc không còn hợp lệ để thêm vào lô.");
+      message.error(`${invalidPackage.trackingCode}: ${getPackageSelectionReason(invalidPackage)}`);
       return;
     }
 
@@ -406,80 +572,45 @@ export const ChinaWarehousePage = () => {
   };
 
   const handleConfirmPackageItems = async (
-    items: Array<{ order_item_id: string; quantity: number }>,
+    items: ItemQuantity[],
+    expectedItems: ItemQuantity[],
+    inspectionNote?: string,
   ) => {
     if (!confirmingPackage) {
-      return;
+      throw new Error("Kiện đang kiểm không còn được chọn.");
     }
 
     try {
-      setIsConfirmingItems(true);
       syncGraphqlAuthToken();
       await client.request(
         CONFIRM_CN_PACKAGE_ITEMS_MUTATION,
         {
           packageId: confirmingPackage.id,
           items,
+          expectedItems,
+          inspectionNote,
         },
         getGraphqlAuthHeaders(),
       );
-      await packageListQuery.refetch();
-      setConfirmItemsModalOpen(false);
-      setConfirmingPackage(null);
-      message.success("Da xac nhan item trong kien hang.");
+      void packageListQuery.refetch();
     } catch (error) {
-      console.error(error);
-      message.error("Khong the xac nhan item trong kien hang.");
-      throw error;
-    } finally {
-      setIsConfirmingItems(false);
+      const detail = (error as { response?: { errors?: { message?: string; extensions?: { category?: string } }[] } }).response?.errors?.[0];
+      throw new Error(detail?.extensions?.category === "validation" && detail.message
+        ? detail.message : "Không thể xác nhận sản phẩm. Vui lòng thử lại.");
     }
   };
 
-  const handleAddToBatch = async () => {
-    if (!selectedRows.length) {
-      message.warning("Vui lòng chọn ít nhất một kiện hàng.");
-      return;
-    }
-
-    try {
-      setIsBatchSubmitting(true);
-      const values = await batchForm.validateFields();
-
-      if (values.batchMode === "existing") {
-        const selectedBatch = availableBatches.find((batch) => batch.id === values.cnBatchId);
-
-        if (!selectedBatch) {
-          message.error("Vui lòng chọn một lô hàng hợp lệ.");
-          return;
-        }
-
-        if (["exporting", "arrived_vn", "completed", "cancelled"].includes(selectedBatch.status)) {
-          message.error("Không thể thêm kiện vào lô đang vận chuyển, đã về kho Việt Nam, hoàn tất hoặc đã hủy.");
-          return;
-        }
-      }
-
-      syncGraphqlAuthToken();
-      await client.request(
-        ADD_PACKAGES_TO_BATCH_MUTATION,
-        {
-          input: mapBatchFormValuesToInput(values, selectedRows.map((item) => item.id)),
-        },
-        getGraphqlAuthHeaders(),
-      );
-      await Promise.all([packageListQuery.refetch(), batchListQuery.refetch()]);
-      setSelectedRowKeys([]);
-      setSelectedRows([]);
-      setBatchModalOpen(false);
-      batchForm.resetFields();
-      message.success("Đã thêm kiện vào lô hàng.");
-    } catch (error) {
-      console.error(error);
-      message.error("Không thể thêm kiện vào lô hàng.");
-    } finally {
-      setIsBatchSubmitting(false);
-    }
+  const finishAddToBatch = (code: string, mode: "create" | "existing") => {
+    setSelectedRowKeys([]);
+    setSelectedRows([]);
+    setBatchModalOpen(false);
+    receivingMessage.success(mode === "create"
+      ? `Đã tạo lô hàng và thêm các kiện thành công. Mã lô: ${code}`
+      : `Đã thêm các kiện vào lô hàng ${code}.`);
+    void invalidate({ resource: "cnBatches", invalidates: ["list", "detail"] });
+    void packageListQuery.refetch({ throwOnError: true }).catch(() => {
+      receivingMessage.warning("Đã lưu lô. Chưa tải lại được bảng kiện, vui lòng tải lại trang.");
+    });
   };
 
   const handleSearch = (values: ChinaWarehouseFilters) => {
@@ -636,23 +767,25 @@ export const ChinaWarehousePage = () => {
           width: 180,
           render: (_: unknown, record: ChinaWarehousePackage) => {
             const deleteState = canDeletePackage(record);
-            const canConfirmItems = Boolean(
-              record.orderId && record.orderTrackingId && record.orderItems.length > 0,
-            );
+            const canOpenInspection = canInspectPackage(record) || (canVerifyPurchases && hasReceivedTracking(record));
 
             return (
               <Space size="small">
+                {canReconcile && record.status === "unmatched" && record.receivedAt && (
+                  <Button size="small" type="link" onClick={() => setReconciling(record)}>Đối chiếu</Button>
+                )}
                 <Tooltip
                   title={
-                    canConfirmItems
+                    canOpenInspection
                       ? "Xác nhận item trong kiện"
-                      : "Tracking chua khop don hang de xac nhan item"
+                      : "Kiện hoặc quyền hiện tại chưa cho phép kiểm hàng"
                   }
                 >
                   <Button
                     type="text"
+                    aria-label="Xác nhận item trong kiện"
                     icon={<FileSearchOutlined />}
-                    disabled={!canConfirmItems}
+                    disabled={!canOpenInspection}
                     onClick={() => openConfirmItemsModal(record)}
                   />
                 </Tooltip>
@@ -691,15 +824,9 @@ export const ChinaWarehousePage = () => {
     });
   })();
 
-  const isInitialLoading = (packageListQuery.isLoading || batchListQuery.isLoading) && !packageListResponse && !batchListResponse;
-  const isRefreshing = Boolean(
-    (packageListQuery.isFetching || batchListQuery.isFetching) && !isInitialLoading,
-  );
-  const pageError = packageListQuery.isError
-    ? packageListQuery.error instanceof Error
-      ? packageListQuery.error.message
-      : "Không thể tải dữ liệu kiện hàng."
-    : null;
+  const isInitialLoading = packageListQuery.isLoading && !packageListResponse;
+  const isRefreshing = packageListQuery.isFetching && !isInitialLoading;
+  const pageError = packageListQuery.isError ? "Không thể tải dữ liệu kiện hàng. Vui lòng tải lại trang." : null;
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -727,7 +854,8 @@ export const ChinaWarehousePage = () => {
               <Form.Item label="Kho hàng" name="warehouseName">
                 <Select
                   allowClear
-                  options={CHINA_WAREHOUSE_OPTIONS.map((item) => ({ label: item, value: item }))}
+                  loading={isReceivingOptionsLoading}
+                  options={receivingOptions.warehouses.map((warehouse) => ({ label: warehouse.name, value: warehouse.name }))}
                   placeholder="Chọn kho hàng"
                 />
               </Form.Item>
@@ -785,6 +913,14 @@ export const ChinaWarehousePage = () => {
           </Col>
           <Col xs={24} lg="auto">
             <Space wrap>
+              <Button
+                type="primary"
+                ghost
+                icon={<TruckOutlined />}
+                onClick={() => setExpectedInboundOpen(true)}
+              >
+                Hàng dự kiến về kho
+              </Button>
               <Button icon={<UploadOutlined />} onClick={openExcelImportModal}>
                 Nhập kho bằng Excel
               </Button>
@@ -792,7 +928,7 @@ export const ChinaWarehousePage = () => {
                 type="primary"
                 ghost
                 icon={<PlusCircleOutlined />}
-                disabled={!selectedRowKeys.length}
+                disabled={!canCreateBatch || !selectedRowKeys.length}
                 onClick={openBatchModal}
               >
                 Thêm vào lô hàng
@@ -800,7 +936,7 @@ export const ChinaWarehousePage = () => {
               <Button loading={isSyncingStatuses} onClick={handleManualReceivingStatusSync}>
                 Dong bo trang thai
               </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+              <Button type="primary" disabled={!canReceive} icon={<PlusOutlined />} onClick={() => openCreateDrawer()}>
                 Nhập hàng
               </Button>
             </Space>
@@ -834,7 +970,7 @@ export const ChinaWarehousePage = () => {
               />
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có kiện hàng nào trong kho Trung Quốc.">
-                <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDrawer}>
+                <Button type="primary" disabled={!canReceive} icon={<PlusOutlined />} onClick={() => openCreateDrawer()}>
                   Nhập hàng
                 </Button>
               </Empty>
@@ -843,19 +979,48 @@ export const ChinaWarehousePage = () => {
         )}
       </Card>
 
+      <ExpectedInboundModal
+        open={expectedInboundOpen}
+        refreshKey={expectedInboundRefreshKey}
+        onClose={() => setExpectedInboundOpen(false)}
+        canReceive={canReceive}
+        onReceive={openCreateDrawer}
+      />
+
+      {reconciling && <ReconcilePackageModal
+        key={reconciling.id}
+        record={reconciling}
+        canSearch={canReadOrders}
+        onClose={() => setReconciling(undefined)}
+        onSave={saveReconciliation}
+      />}
+      {duplicatePackage && <Modal centered open title="Kiện đã tiếp nhận" footer={null}
+        onCancel={() => setDuplicatePackage(undefined)}>
+        <Space direction="vertical">
+          <Text strong>{duplicatePackage.trackingCode}</Text>
+          <Text>Kiện #{duplicatePackage.id} · {duplicatePackage.warehouseName}</Text>
+          <Text>{duplicatePackage.receiverName} · {duplicatePackage.receivedDate} · {formatWeight(duplicatePackage.weight)}</Text>
+          {getStatusTag(duplicatePackage.status)}
+          {duplicatePackage.note && <Paragraph>{duplicatePackage.note}</Paragraph>}
+        </Space>
+      </Modal>}
+
       <Drawer
         title={editingRecord ? "Sửa thông tin kiện hàng" : "Nhập hàng / Thêm kiện hàng"}
         placement="right"
         width={screens.md ? 560 : "100%"}
         destroyOnClose
         open={drawerOpen}
-        onClose={closeDrawer}
+        onClose={requestCloseDrawer}
         footer={
-          <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button onClick={closeDrawer}>Hủy</Button>
-            <Button type="primary" loading={isSubmitting} onClick={handleSubmitPackage}>
-              {editingRecord ? "Lưu thay đổi" : "Thêm mới"}
-            </Button>
+          <Space direction="vertical" style={{ display: "flex" }}>
+            {submitFeedback && <Alert type="error" showIcon message={submitFeedback.message} />}
+            <Space style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button disabled={isSubmitting} onClick={requestCloseDrawer}>Hủy</Button>
+              <Button type="primary" loading={isSubmitting} disabled={isReceivingOptionsLoading || Boolean(receivingOptionsError)} onClick={handleSubmitPackage}>
+                {editingRecord ? "Lưu thay đổi" : "Thêm mới"}
+              </Button>
+            </Space>
           </Space>
         }
       >
@@ -863,8 +1028,60 @@ export const ChinaWarehousePage = () => {
           <Alert
             showIcon
             type="info"
-            message="Nếu thay đổi mã vận đơn, hệ thống sẽ cập nhật lại trạng thái khớp của kiện hàng theo dữ liệu đơn hàng."
+            message={editingRecord
+              ? "Dùng thao tác Đối chiếu để sửa mã của kiện chưa khớp."
+              : "Chỉ lưu khi kho đã thực tế tiếp nhận kiện. Sản phẩm được xác nhận riêng sau khi khớp đơn."}
           />
+
+          {expectedReceipt && <Alert showIcon type="info" message="Tracking đã được khai báo"
+            description={<div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 2 }}>
+              <Text>Đơn VietTrung: {expectedReceipt.order?.order_code || "Chưa xác định"}</Text>
+              {expectedReceipt.purchase_orders.map((purchase) => <Text
+                key={purchase.id} style={{ display: "block" }}
+                ellipsis={{ tooltip: `${purchase.external_order_code} · ${purchase.shop_name || "Chưa có tên shop"}` }}>
+                {purchase.external_order_code} · {purchase.shop_name || "Chưa có tên shop"}
+              </Text>)}
+              {!expectedReceipt.purchase_orders.length &&
+                <Text>Tracking đã thuộc đơn VietTrung. Chưa xác định đơn mua Taobao liên quan.</Text>}
+            </div>}
+          />}
+
+          {activeTrackingCheck?.existing_package_id && <Alert type="warning" showIcon
+            message="Mã vận đơn đã có kiện trong kho."
+            action={<Button size="small" onClick={() => void showExistingPackage(activeTrackingCheck.existing_package_id!)}>
+              Xem kiện hiện hữu
+            </Button>}
+          />}
+          {activeTrackingCheck?.valid && !activeTrackingCheck.matched && <Alert type="warning" showIcon
+            message="Chưa tìm thấy tracking đã khai báo"
+            description="Nếu kiện đã đến kho, có thể tạm tiếp nhận. Hãy ghi chú nguồn bàn giao hoặc thông tin cần xác minh."
+          />}
+          {!expectedReceipt && activeTrackingCheck?.valid && activeTrackingCheck.matched && <Alert type="info" showIcon
+            message={activeTrackingCheck.order_code ? `Khớp đơn VietTrung ${activeTrackingCheck.order_code}` : "Đã khớp tracking"}
+            description={activeTrackingCheck.purchase_orders
+              ? activeTrackingCheck.purchase_orders.map(({ external_order_code }) => external_order_code).join(", ")
+                || "Tracking đã thuộc đơn VietTrung. Chưa xác định đơn mua Taobao liên quan."
+              : "Có thể tiếp nhận và kiểm sản phẩm theo quyền được cấp."}
+          />}
+
+          {receivingOptionsError ? (
+            <Alert
+              showIcon
+              type="error"
+              message="Không thể tải danh sách nhân viên hoặc kho Trung Quốc"
+              description={receivingOptionsError}
+              action={<Button size="small" onClick={() => void loadReceivingOptions()}>Thử lại</Button>}
+            />
+          ) : null}
+
+          {editingRecord && !editingRecord.receiverUserId && editingRecord.receiverName ? (
+            <Alert
+              showIcon
+              type="warning"
+              message={`Người nhận lịch sử: ${editingRecord.receiverName}`}
+              description="Bản ghi cũ chưa có định danh nhân viên. Tên snapshot vẫn được giữ nguyên; hãy chọn nhân viên hợp lệ nếu cần cập nhật người nhận."
+            />
+          ) : null}
 
           {editingRecord?.orderId ? (
             <Card size="small" style={{ background: "#fafcff" }}>
@@ -895,31 +1112,62 @@ export const ChinaWarehousePage = () => {
             </Card>
           ) : null}
 
-          <Form<PackageFormValues> form={form} layout="vertical">
+          <Form<PackageFormValues> name="cnPackageReceipt" form={form} layout="vertical" disabled={isSubmitting}
+            onValuesChange={(changed) => {
+              if (submitFeedback?.field && Object.hasOwn(changed, submitFeedback.field)) setSubmitFeedback(undefined);
+            }}
+          >
             <Form.Item
               label="Mã vận đơn"
               name="trackingCode"
-              rules={[{ required: true, message: "Vui lòng nhập mã vận đơn." }]}
+              validateTrigger="onBlur"
+              rules={[
+                { required: true, whitespace: true, message: "Vui lòng nhập mã vận đơn thực tế." },
+              ]}
             >
-              <Input placeholder="Nhập mã vận đơn..." />
+              <Input readOnly={Boolean(editingRecord || expectedReceipt)} maxLength={100}
+                onBlur={(event) => void previewTrackingCode(event.target.value)}
+                autoComplete="off" placeholder="Nhập mã vận đơn thực tế, không nhập mã đơn hàng..." />
             </Form.Item>
 
             <Form.Item
               label="Người nhận hàng"
-              name="receiverName"
-              rules={[{ required: true, message: "Vui lòng nhập người nhận hàng." }]}
+              name="receiverUserId"
+              rules={[{ required: true, message: "Vui lòng chọn người nhận hàng hợp lệ." }]}
             >
-              <Input placeholder="Nhập người nhận hàng..." />
+              <Select
+                showSearch
+                allowClear
+                loading={isReceivingOptionsLoading}
+                disabled={Boolean(receivingOptionsError)}
+                placeholder="Tìm hoặc chọn nhân viên kho Trung Quốc"
+                prefix={<UserOutlined />}
+                options={receiverOptions}
+                filterOption={(input, option) => String(option?.searchText || "").includes(input.trim().toLowerCase())}
+                notFoundContent={isReceivingOptionsLoading ? "Đang tải nhân viên..." : "Không có nhân viên phù hợp"}
+              />
             </Form.Item>
 
             <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item
                   label="Kho hàng"
-                  name="warehouseName"
+                  name="warehouseId"
                   rules={[{ required: true, message: "Vui lòng chọn kho hàng." }]}
                 >
-                  <Select options={CHINA_WAREHOUSE_OPTIONS.map((item) => ({ label: item, value: item }))} />
+                  <Select
+                    showSearch
+                    allowClear
+                    loading={isReceivingOptionsLoading}
+                    disabled={Boolean(receivingOptionsError)}
+                    placeholder="Chọn kho hàng Trung Quốc"
+                    optionFilterProp="label"
+                    options={receivingOptions.warehouses.map((warehouse) => ({
+                      label: `${warehouse.name} (${warehouse.code})`,
+                      value: warehouse.id,
+                    }))}
+                    notFoundContent={isReceivingOptionsLoading ? "Đang tải kho..." : "Không có kho Trung Quốc đang hoạt động"}
+                  />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
@@ -962,9 +1210,16 @@ export const ChinaWarehousePage = () => {
                 <Form.Item
                   label="Ngày nhận hàng"
                   name="receivedDate"
-                  rules={[{ required: true, message: "Vui lòng chọn ngày nhận hàng." }]}
+                  rules={[
+                    { required: true, message: "Vui lòng chọn ngày nhận hàng." },
+                    { validator: async (_, value?: PackageFormValues["receivedDate"]) => {
+                      if (value && isCnReceivedAtInFuture(value)) {
+                        throw new Error("Thời gian nhận hàng không được ở tương lai.");
+                      }
+                    } },
+                  ]}
                 >
-                  <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+                  <DatePicker showTime format="DD/MM/YYYY HH:mm" disabledDate={(date) => date.isAfter(dayjs(), "day")} style={{ width: "100%" }} />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
@@ -973,10 +1228,10 @@ export const ChinaWarehousePage = () => {
                   name="status"
                   rules={[{ required: true, message: "Vui lòng chọn trạng thái." }]}
                 >
-                  <Select
+                  <Select disabled
                     options={[
                       { value: "matched", label: "Khớp" },
-                      { value: "unmatched", label: "Chưa khớp" },
+                      { value: "unmatched", label: "Chưa khớp / đang chờ xác minh" },
                     ]}
                   />
                 </Form.Item>
@@ -986,6 +1241,17 @@ export const ChinaWarehousePage = () => {
             <Form.Item label="Ghi chú" name="note">
               <Input.TextArea rows={4} placeholder="Nhập ghi chú nếu có..." />
             </Form.Item>
+            <Form.Item label="Tình trạng bên ngoài" name="packageCondition">
+              <Select options={[
+                { value: "normal", label: "Bình thường" },
+                { value: "damaged", label: "Có dấu hiệu hư hỏng" },
+                { value: "other", label: "Khác – mô tả trong ghi chú" },
+              ]} />
+            </Form.Item>
+            {!editingRecord && <Form.Item name="receiptConfirmed" valuePropName="checked"
+              rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error("Vui lòng xác nhận đã nhận kiện thực tế.")) }]}>
+              <Checkbox>Tôi xác nhận kho đã nhận kiện và thời gian nhận là chính xác.</Checkbox>
+            </Form.Item>}
             <Row gutter={16}>
               <Col xs={24} md={8}>
                 <Form.Item label="The tich tu tinh (m3)">
@@ -1030,132 +1296,27 @@ export const ChinaWarehousePage = () => {
         </Space>
       </Modal>
 
-      <Modal
-        title="Thêm kiện vào lô hàng"
-        open={batchModalOpen}
-        onCancel={() => {
-          setBatchModalOpen(false);
-          batchForm.resetFields();
-        }}
-        onOk={handleAddToBatch}
-        okText="Xác nhận thêm vào lô"
-        cancelText="Hủy"
-        confirmLoading={isBatchSubmitting}
-      >
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-          <Card size="small">
-            <Row gutter={[12, 12]}>
-              <Col span={12}>
-                <Statistic title="Số kiện đã chọn" value={selectedRows.length} />
-              </Col>
-              <Col span={12}>
-                <Statistic title="Tổng khối lượng" value={selectedTotalWeight} suffix="kg" precision={2} />
-              </Col>
-            </Row>
-          </Card>
+      {batchModalOpen && selectedRows.length > 0 && <AddPackagesToBatchModal
+        packages={selectedRows}
+        canReadOrders={canReadOrders}
+        canReadBatches={canReadBatches}
+        onCancel={() => setBatchModalOpen(false)}
+        onSuccess={finishAddToBatch}
+      />}
 
-          <div>
-            <Text strong>Kho hàng</Text>
-            <div style={{ marginTop: 8 }}>
-              <Space wrap>
-                {Array.from(new Set(selectedRows.map((item) => item.warehouseName))).map((name) => (
-                  <Tag key={name}>{name}</Tag>
-                ))}
-              </Space>
-            </div>
-          </div>
-
-
-          <div>
-            <Text strong>Danh sách mã vận đơn</Text>
-            <div style={{ marginTop: 8 }}>
-              <Space wrap>
-                {selectedRows.map((item) => (
-                  <Tag key={item.id}>{item.trackingCode}</Tag>
-                ))}
-              </Space>
-            </div>
-          </div>
-
-          <Form<BatchModalFormValues>
-            form={batchForm}
-            layout="vertical"
-            initialValues={{ batchMode: "create", shippingType: "normal" }}
-          >
-            <Form.Item label={"Lựa chọn"} name="batchMode">
-              <Radio.Group
-                options={[
-                  { label: "Tạo lô hàng mới", value: "create" },
-                  { label: "Thêm vào lô hàng có sẵn", value: "existing" },
-                ]}
-              />
-            </Form.Item>
-
-            {batchMode === "create" ? (
-              <>
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong>{"Mã lô hàng dự kiến"}</Text>
-                  <div style={{ marginTop: 8 }}>
-                    <Tag color="blue">{predictedBatchCode}</Tag>
-                  </div>
-                </div>
-
-                <Row gutter={16}>
-                  <Col xs={24} md={12}>
-                    <Form.Item label={"Hình thức vận chuyển"} name="shippingType">
-                      <Select
-                        options={[
-                          { label: "Thường", value: "normal" },
-                          { label: "Nhanh", value: "fast" },
-                        ]}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item label={"Ngày dự kiến về kho"} name="expectedArrivalAt">
-                      <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Form.Item label={"Kho đích"} name="destinationWarehouseName">
-                  <Input placeholder={"Nhập tên kho đích..."} />
-                </Form.Item>
-
-                <Form.Item label={"Ghi chú"} name="note">
-                  <Input.TextArea rows={3} placeholder={"Nhập ghi chú nếu có..."} />
-                </Form.Item>
-              </>
-            ) : (
-              <Form.Item
-                label={"Lô hàng hiện có"}
-                name="cnBatchId"
-                rules={[{ required: true, message: "Vui lòng chọn lô hàng." }]}
-              >
-                <Select
-                  placeholder={"Chọn lô hàng"}
-                  options={availableBatches.map((batch) => ({
-                    label: getBatchDisplayName(batch),
-                    value: batch.id,
-                  }))}
-                  notFoundContent={"Không có lô hàng phù hợp"}
-                />
-              </Form.Item>
-            )}
-          </Form>
-        </Space>
-      </Modal>
-
-      <ConfirmPackageItemsModal
-        open={confirmItemsModalOpen}
-        loading={isConfirmingItems}
+      {confirmingPackage && <ConfirmPackageItemsModal
+        key={confirmingPackage.id}
         packageRecord={confirmingPackage}
-        onCancel={() => {
-          setConfirmItemsModalOpen(false);
-          setConfirmingPackage(null);
+        canInspect={canInspectPackage(confirmingPackage)}
+        canVerify={canVerifyPurchases && hasReceivedTracking(confirmingPackage)}
+        canReadOrders={canReadOrders}
+        onCancel={() => setConfirmingPackage(null)}
+        onVerificationSaved={() => {
+          setExpectedInboundRefreshKey((value) => value + 1);
+          void packageListQuery.refetch();
         }}
         onSubmit={handleConfirmPackageItems}
-      />
+      />}
     </Space>
   );
 };

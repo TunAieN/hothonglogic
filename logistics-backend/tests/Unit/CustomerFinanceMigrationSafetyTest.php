@@ -24,6 +24,7 @@ class CustomerFinanceMigrationSafetyTest extends TestCase
     {
         $source = file_get_contents(__DIR__.'/../../config/sepay.php');
         $this->assertStringContainsString("env('SEPAY_ENABLED', false)", $source);
+        $this->assertStringContainsString("env('SEPAY_WEBHOOK_ENABLED', false)", $source);
         $this->assertStringContainsString("env('SEPAY_VERIFIED_ACCOUNTS', '[]')", $source);
     }
 
@@ -40,5 +41,28 @@ class CustomerFinanceMigrationSafetyTest extends TestCase
         $source = file_get_contents(__DIR__.'/../../app/Http/Controllers/CustomerFinanceController.php');
         $this->assertStringContainsString('customer?->vip_group', $source);
         $this->assertStringNotContainsString("customer_type' => 'retail'", $source);
+    }
+
+    public function test_finance_write_throttle_has_a_bucket_separate_from_status_polling(): void
+    {
+        $routes = file_get_contents(__DIR__.'/../../routes/web.php');
+
+        $this->assertSame(3, substr_count($routes, "throttle:10,1,customer-finance-write:"));
+        $this->assertStringContainsString("Route::get('finance/payment-intents/{reference}'", $routes);
+    }
+
+    public function test_customer_payment_intent_history_is_scoped_and_expiration_is_scheduled_safely(): void
+    {
+        $routes = file_get_contents(__DIR__.'/../../routes/web.php');
+        $controller = file_get_contents(__DIR__.'/../../app/Http/Controllers/CustomerFinanceController.php');
+        $service = file_get_contents(__DIR__.'/../../app/Services/Payments/CustomerFinanceService.php');
+        $kernel = file_get_contents(__DIR__.'/../../app/Console/Kernel.php');
+
+        $this->assertStringContainsString("Route::get('finance/payment-intents',", $routes);
+        $this->assertStringContainsString("->where('customer_id', \$this->customerId(\$request))", $controller);
+        $this->assertStringContainsString("->where('expires_at', '<=', now())", $service);
+        $this->assertStringContainsString('->lockForUpdate()', $service);
+        $this->assertStringContainsString("sepay:expire-intents --limit=500", $kernel);
+        $this->assertStringContainsString("if (config('sepay.webhook_enabled'))", $kernel);
     }
 }

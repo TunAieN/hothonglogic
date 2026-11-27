@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class DeliveryAddress extends Model
 {
-    protected $fillable = ['delivery_request_id', 'source_customer_address_id', 'receiver_name', 'receiver_phone', 'province_code', 'province_name', 'district_code', 'district_name', 'ward_code', 'ward_name', 'address_line', 'full_address'];
+    protected $fillable = ['delivery_request_id', 'source_customer_address_id', 'receiver_name', 'receiver_phone', 'country_code', 'country_name', 'province_code', 'province_name', 'district_code', 'district_name', 'ward_code', 'ward_name', 'address_line', 'full_address'];
 
     public function deliveryRequest()
     {

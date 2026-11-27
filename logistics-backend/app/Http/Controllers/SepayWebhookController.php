@@ -16,8 +16,8 @@ class SepayWebhookController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        if (! config('sepay.enabled')) {
-            return response()->json(['success' => false, 'message' => 'SePay disabled.'], 503);
+        if (! config('sepay.enabled') || ! config('sepay.webhook_enabled')) {
+            return response()->json(['success' => false, 'message' => 'SePay webhook disabled.'], 503);
         }
         $secret = (string) config('sepay.webhook_secret');
         if ($secret === '') {

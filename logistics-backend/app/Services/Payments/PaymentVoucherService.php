@@ -18,6 +18,8 @@ use App\Services\Auth\PermissionService;
 use App\Services\Customers\CustomerAddressService;
 use App\Services\Delivery\DeliveryRequestService;
 use App\Services\Orders\OrderPricingService;
+use App\Models\OrderDepositPolicySnapshot;
+use App\Services\Orders\OrderDepositPolicyService;
 use App\Services\Shipping\GhnInsuranceValueService;
 use App\Services\Shipping\GhnService;
 use App\Services\Shipping\ShippingRateService;
@@ -37,6 +39,7 @@ class PaymentVoucherService
         private readonly CustomerAddressService $customerAddressService,
         private readonly GhnInsuranceValueService $ghnInsuranceValueService,
         private readonly CustomerLedgerService $ledger,
+        private readonly DepositPaymentAutomationService $depositAutomation,
     ) {}
 
     public function eligiblePackages(array $filter = [])
@@ -122,6 +125,18 @@ class PaymentVoucherService
                 return $existing->fresh($this->voucherRelations());
             }
 
+            if (Schema::hasTable('order_deposit_policy_snapshots')) {
+                $snapshot = OrderDepositPolicySnapshot::query()->where('order_id', $order->id)->lockForUpdate()->first();
+                if ($snapshot) {
+                    if ($snapshot->deposit_waived) {
+                        throw new HttpException(422, 'Đơn hàng đã được phê duyệt không đặt cọc.');
+                    }
+                    $depositPercent = $snapshot->final_percent;
+                } else {
+                    $depositPercent = $order->deposit_percent ?? $depositPercent;
+                }
+            }
+
             $percent = round((float) ($depositPercent ?? 70), 2);
             if ($percent <= 0 || $percent > 100) {
                 throw new HttpException(422, 'Tỷ lệ đặt cọc phải lớn hơn 0 và không vượt quá 100%.');
@@ -199,7 +214,10 @@ class PaymentVoucherService
                 'remaining_amount' => $depositAmount,
             ]);
 
+            $this->depositAutomation->prepare($voucher);
+            $voucher->refresh();
             $this->syncOrderDepositSnapshot($lockedOrder, $voucher);
+            app(OrderDepositPolicyService::class)->markVoucherIssued($lockedOrder);
 
             $this->audit('create_deposit_payment_voucher', $voucher, null, $voucher->toArray());
 
@@ -291,6 +309,11 @@ class PaymentVoucherService
 
             $receivedAt = $this->parseReceivedAt($input['received_at'] ?? null);
             $paymentMethod = (string) ($input['payment_method'] ?? ($voucher->payment_method_expected ?: 'bank_transfer'));
+            $confirmationSource = (string) ($input['confirmation_source'] ?? 'manual');
+            $manualReason = trim((string) ($input['note'] ?? ''));
+            if ($confirmationSource === 'manual' && mb_strlen($manualReason) < 10) {
+                throw new HttpException(422, 'Xác nhận thủ công cần lý do và căn cứ ngân hàng tối thiểu 10 ký tự.');
+            }
             $transaction = PaymentTransaction::query()->create([
                 'transaction_code' => $this->nextCode('GD', 'payment_transactions', 'transaction_code'),
                 'payment_voucher_id' => $voucher->id,
@@ -300,6 +323,10 @@ class PaymentVoucherService
                 'bank_transaction_code' => $bankTransactionCode,
                 'received_at' => $receivedAt,
                 'confirmed_by' => Auth::id(),
+                'confirmation_source' => $confirmationSource,
+                'provider' => $input['provider'] ?? null,
+                'provider_transaction_id' => $input['provider_transaction_id'] ?? null,
+                'verification_details' => $input['verification_details'] ?? null,
                 'status' => PaymentTransaction::STATUS_CONFIRMED,
                 'note' => $input['note'] ?? null,
                 'proof_image_path' => $input['proof_image_path'] ?? null,
@@ -323,11 +350,11 @@ class PaymentVoucherService
                 'deposit_status' => PaymentVoucher::STATUS_PAID,
                 'deposit_paid_at' => $receivedAt,
                 'deposit_confirmed_by' => Auth::id(),
-                'deposit_manual_transaction_code' => $bankTransactionCode,
+                'deposit_manual_transaction_code' => $confirmationSource === 'manual' ? $bankTransactionCode : $order->deposit_manual_transaction_code,
                 'deposit_note' => $input['note'] ?? $order->deposit_note,
             ])->save();
 
-            $this->audit('confirm_deposit_payment', $transaction, null, $transaction->toArray());
+            $this->audit($confirmationSource === 'manual' ? 'confirm_deposit_payment_manual' : 'confirm_deposit_payment_auto', $transaction, null, $transaction->toArray());
             $this->audit('update_deposit_payment_voucher', $voucher, $before, $voucher->fresh()->toArray());
             $this->issueInvoice($voucher->id, $transaction, false);
 
@@ -651,10 +678,13 @@ class PaymentVoucherService
         string $bankTransactionCode,
         ?string $bankName = null,
         mixed $receivedAt = null,
+        string $confirmationSource = 'customer_portal',
+        ?string $providerTransactionId = null,
+        array $verificationDetails = [],
     ): array {
         BusinessWriteGuard::assertFinancialEnabled(__METHOD__);
 
-        return DB::transaction(function () use ($voucherId, $amountVnd, $paymentMethod, $bankTransactionCode, $bankName, $receivedAt) {
+        return DB::transaction(function () use ($voucherId, $amountVnd, $paymentMethod, $bankTransactionCode, $bankName, $receivedAt, $confirmationSource, $providerTransactionId, $verificationDetails) {
             $customerId = PaymentVoucher::query()->whereKey($voucherId)->value('customer_id');
             if ($customerId) {
                 Customer::query()->lockForUpdate()->findOrFail($customerId);
@@ -693,7 +723,11 @@ class PaymentVoucherService
                     'payment_method' => $paymentMethod,
                     'bank_name' => $bankName,
                     'received_at' => $receivedAt,
-                    'note' => 'Customer Portal: '.$paymentMethod,
+                    'note' => $confirmationSource === 'sepay_auto' ? 'Được đối soát tự động qua SePay.' : 'Customer Portal: '.$paymentMethod,
+                    'confirmation_source' => $confirmationSource,
+                    'provider' => $confirmationSource === 'sepay_auto' ? 'sepay' : null,
+                    'provider_transaction_id' => $providerTransactionId,
+                    'verification_details' => $verificationDetails,
                 ], false);
                 $fresh = $order->depositVoucher?->fresh($this->voucherRelations())
                     ?? PaymentVoucher::query()->with($this->voucherRelations())->findOrFail($voucher->id);
@@ -711,6 +745,10 @@ class PaymentVoucherService
                 'bank_transaction_code' => $bankTransactionCode,
                 'received_at' => $this->parseReceivedAt($receivedAt),
                 'confirmed_by' => null,
+                'confirmation_source' => $confirmationSource,
+                'provider' => $confirmationSource === 'sepay_auto' ? 'sepay' : null,
+                'provider_transaction_id' => $providerTransactionId,
+                'verification_details' => $verificationDetails,
                 'status' => PaymentTransaction::STATUS_CONFIRMED,
                 'note' => 'Được xác nhận tự động từ Customer Portal.',
             ]);

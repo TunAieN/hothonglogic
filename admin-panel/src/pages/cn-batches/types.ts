@@ -8,6 +8,7 @@ export type BatchViewModel = {
   batchCode: string;
   originWarehouseName: string;
   receivingWarehouseName: string;
+  receivingWarehouseId?: string;
   status: CnBatchStatus;
   shippingType: BatchShippingType;
   totalPackages: number;
@@ -36,6 +37,14 @@ export type BatchViewModel = {
   createdAt?: string;
   note?: string;
   packages: CnPackage[];
+};
+
+export type BatchDispatchReview = {
+  version: string;
+  destination_ready: boolean;
+  issues: string[];
+  packages: { id: string; issues: string[]; warnings: string[] }[];
+  destinations: { id: string; name: string; code: string }[];
 };
 
 export type BatchFilters = {
@@ -72,5 +81,8 @@ export type BatchPackageRow = {
   volume?: number;
 };
 
-export type BatchApiRecord = CnBatch;
+export type BatchApiRecord = CnBatch & {
+  destination_warehouse_id?: string | null;
+  destination_warehouse?: { id: string; name: string } | null;
+};
 export type BatchUpdateInput = CnBatchUpdateInput;

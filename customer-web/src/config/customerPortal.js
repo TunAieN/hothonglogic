@@ -6,7 +6,7 @@ export const customerPortalCapabilities = Object.freeze({
   consignments: "needs-backend",
   wallet: "ready",
   transactions: "ready",
-  addresses: "blocked",
+  addresses: "ready",
   notifications: "needs-backend",
   profile: "read-only",
   password: "ready",

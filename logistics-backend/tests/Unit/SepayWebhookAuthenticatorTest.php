@@ -31,4 +31,19 @@ class SepayWebhookAuthenticatorTest extends TestCase
             '{"id":1}', $timestamp, $signature, 'secret', 1800000400, 300,
         ));
     }
+
+    public function test_missing_secret_signature_and_timestamp_fail_closed(): void
+    {
+        $auth = new SepayWebhookAuthenticator;
+
+        $this->assertSame('secret_missing', $auth->verificationError(
+            '{}', '1800000000', '', '', 1800000000, 300,
+        ));
+        $this->assertSame('signature_invalid', $auth->verificationError(
+            '{}', '1800000000', '', 'secret', 1800000000, 300,
+        ));
+        $this->assertSame('timestamp_invalid', $auth->verificationError(
+            '{}', '', '', 'secret', 1800000000, 300,
+        ));
+    }
 }

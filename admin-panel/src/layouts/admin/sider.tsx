@@ -100,6 +100,7 @@ const menuSections: SidebarGroupConfig[] = [
     title: "Quản lý",
     items: [
       { key: "/customers", icon: <UsergroupAddOutlined />, label: "Khách hàng", permission: "customers.read" },
+      { key: "/vip-policies", icon: <SafetyCertificateOutlined />, label: "VIP & chính sách cọc", permission: "vip_policies.manage" },
       { key: "/orders", icon: <CreditCardOutlined />, label: "Đơn hàng", permission: "orders.read" },
       { key: "/product-lookups", icon: <FileSearchOutlined />, label: "Tra cứu sản phẩm", permission: "orders.read" },
       { key: "/cn-batches", icon: <InboxOutlined />, label: "Lô hàng vận chuyển", permission: "cn_batches.read" },

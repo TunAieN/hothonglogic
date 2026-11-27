@@ -11,6 +11,7 @@ class CnPackage extends Model
         'order_id',
         'order_tracking_id',
         'receiver_name',
+        'receiver_user_id',
         'tracking_number',
         'declared_value',
         'carrier',
@@ -58,6 +59,11 @@ class CnPackage extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function receiver()
+    {
+        return $this->belongsTo(User::class, 'receiver_user_id');
     }
 
     public function batchPackages()

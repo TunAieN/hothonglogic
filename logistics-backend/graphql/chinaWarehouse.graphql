@@ -16,6 +16,7 @@ type CnPackage {
   order_id: ID
   order_tracking_id: ID
   receiver_name: String
+  receiver_user_id: ID
   tracking_number: String
   declared_value: Float
   carrier: String
@@ -35,6 +36,7 @@ type CnPackage {
   warehouse: CnWarehouse! @belongsTo
   order: Order @belongsTo
   order_tracking: OrderTracking @belongsTo(relation: "orderTracking")
+  receiver: User @belongsTo
   current_batch_package: CnBatchPackage @hasOne(relation: "currentBatchPackage")
   batch_packages: [CnBatchPackage!]! @hasMany(relation: "batchPackages")
   batches: [CnBatch!]! @belongsToMany
@@ -50,14 +52,17 @@ type CnPackageItem {
 }
 
 input CreateCnPackageInput {
-    warehouse_id: ID
+    expected_tracking_id: ID
+    expected_order_id: ID
+    warehouse_id: ID!
     warehouse_code: String
-    warehouse_name: String!
+    warehouse_name: String
     receiver_name: String
-    tracking_number: String
+    receiver_user_id: ID!
+    tracking_number: String!
     declared_value: Float
     carrier: String
-    weight: Float
+    weight: Float!
     actual_length: Float
     actual_width: Float
     actual_height: Float
@@ -67,14 +72,16 @@ input CreateCnPackageInput {
     note: String
     status: String!
     package_condition: String
-    received_at: DateTime
+    received_at: DateTime!
 }
 
 input UpdateCnPackageInput {
+    reconciliation: CnPackageReconciliationInput
     warehouse_id: ID
     warehouse_code: String
     warehouse_name: String
     receiver_name: String
+    receiver_user_id: ID
     tracking_number: String
     declared_value: Float
     carrier: String
@@ -91,6 +98,171 @@ input UpdateCnPackageInput {
     received_at: DateTime
 }
 
+input CnPackageReconciliationInput {
+  original_tracking_number: String
+  original_note: String
+  verified_tracking_number: String
+  reason: String!
+  note: String
+}
+
+type CnPackageReconciliationOrder {
+  id: ID!
+  order_code: String!
+  customer_name: String
+  tracking_numbers: [String!]!
+  purchases: [CnExpectedInboundPurchaseOrder!]!
+}
+
+type CnTrackingPurchaseItem {
+  order_item_id: ID
+  name: String
+  variant: String!
+  quantity: Int!
+}
+
+type CnTrackingPurchaseOption {
+  id: ID!
+  code: String!
+  shop: String
+  tracking_numbers: [String!]!
+  items: [CnTrackingPurchaseItem!]!
+}
+
+type CnTrackingPurchaseVerification {
+  tracking_number: String!
+  tracking_status: String!
+  order_code: String!
+  purchase_ids: [ID!]!
+  purchases: [CnTrackingPurchaseOption!]!
+  inspected_items: [CnTrackingPurchaseItem!]!
+}
+
+input CnTrackingPurchaseVerificationInput {
+  package_id: ID!
+  tracking_id: ID!
+  purchase_ids: [ID!]!
+  expected_purchase_ids: [ID!]!
+  reason: String!
+  add_only: Boolean = false
+}
+
+type CnPackageInspectionQuantity {
+  order_item_id: ID!
+  checked_elsewhere: Int!
+  remaining: Int!
+}
+
+type CnPackageInspectionReview {
+  quantities: [CnPackageInspectionQuantity!]!
+  status: String!
+  ambiguous: Boolean!
+  purchase_ids: [ID!]!
+  candidates: [CnTrackingPurchaseOption!]!
+  linked_purchases: [CnTrackingPurchaseOption!]!
+}
+
+type CnTrackingPurchaseVerificationResult {
+  purchase_ids: [ID!]!
+}
+
+type CnWarehouseReceiverOption {
+  id: ID!
+  name: String!
+  email: String!
+  phone: String
+  department: String
+  status: String!
+  role: Role
+}
+
+type CnPackageTrackingValidation {
+  valid: Boolean!
+  message: String
+  code: String
+  matched: Boolean!
+  existing_package_id: ID
+  order_code: String
+  purchase_orders: [CnExpectedInboundPurchaseOrder!]
+}
+
+type CnReceivingOptions {
+  warehouses: [CnWarehouse!]!
+  receivers: [CnWarehouseReceiverOption!]!
+}
+
+input CnExpectedInboundFilterInput {
+  search: String
+  shop: String
+}
+
+type CnExpectedInboundCustomer {
+  id: ID!
+  code: String
+  name: String!
+}
+
+type CnExpectedInboundOrder {
+  id: ID!
+  order_code: String!
+  customer: CnExpectedInboundCustomer
+}
+
+type CnExpectedInboundPurchaseOrder {
+  id: ID!
+  external_order_code: String!
+  shop_name: String
+}
+
+type CnExpectedInboundProduct {
+  id: ID!
+  name: String!
+  image: String
+  sku: String
+  quantity: Int!
+}
+
+type CnExpectedInboundProductSummary {
+  allocated: Boolean!
+  sku_count: Int!
+  total_quantity: Int!
+}
+
+type CnExpectedInboundRow {
+  id: ID!
+  tracking_number: String!
+  display_status: String!
+  can_receive: Boolean!
+  order: CnExpectedInboundOrder
+  purchase_orders: [CnExpectedInboundPurchaseOrder!]!
+  products: [CnExpectedInboundProduct!]!
+  product_summary: CnExpectedInboundProductSummary!
+  warehouse: CnWarehouse
+}
+
+type CnExpectedInboundSummary {
+  tracking_count: Int!
+  order_count: Int!
+  customer_count: Int!
+}
+
+type CnExpectedInboundPaginatorInfo {
+  currentPage: Int!
+  lastPage: Int!
+  perPage: Int!
+  total: Int!
+  firstItem: Int
+  lastItem: Int
+  hasMorePages: Boolean!
+}
+
+type CnExpectedInboundConnection {
+  data: [CnExpectedInboundRow!]!
+  paginatorInfo: CnExpectedInboundPaginatorInfo!
+  summary: CnExpectedInboundSummary!
+  shops: [String!]!
+}
+
 # =========================
 # China Batches
 # =========================
@@ -100,6 +272,8 @@ type CnBatch {
   batch_code: String!
   warehouse_id: ID!
   destination_warehouse_name: String
+  destination_warehouse_id: ID
+  destination_warehouse: VnWarehouse @belongsTo(relation: "destinationWarehouse")
   total_packages: Int
   status: String!
   shipping_type: String!
@@ -147,10 +321,15 @@ type CnBatchPackage {
 input AddPackagesToCnBatchInput {
     cn_batch_id: ID
     cn_package_ids: [ID!]!
-    destination_warehouse_name: String
+    destination_warehouse_id: ID
     shipping_type: String
     expected_arrival_at: DateTime
     note: String
+}
+
+type CnBatchReceivingOptions {
+  preview_code: String!
+  destinations: [VnWarehouse!]!
 }
 
 input UpdateCnBatchInput {
@@ -174,9 +353,25 @@ input UpdateCnBatchPackageInput {
     actual_height: Float
 }
 
+type CnBatchDispatchPackageReview {
+    id: ID!
+    issues: [String!]!
+    warnings: [String!]!
+}
+
+type CnBatchDispatchReview {
+    version: String!
+    destination_ready: Boolean!
+    issues: [String!]!
+    packages: [CnBatchDispatchPackageReview!]!
+    destinations: [VnWarehouse!]!
+}
+
 input DispatchCnBatchInput {
     reviewed_package_ids: [ID!]!
-    destination_warehouse_name: String!
+    review_version: String!
+    review_confirmed: Boolean!
+    destination_warehouse_id: ID!
     shipping_type: String!
     packaging_type: String!
     transport_container_count: Int!

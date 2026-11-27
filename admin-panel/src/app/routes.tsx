@@ -111,6 +111,9 @@ const ExportSlipDetailPage = lazy(() =>
 const ProductLookupRequestsPage = lazy(() =>
   import("../pages/product-lookups").then((module) => ({ default: module.ProductLookupRequestsPage })),
 );
+const VipPoliciesPage = lazy(() =>
+  import("../pages/vip-policies").then((module) => ({ default: module.VipPoliciesPage })),
+);
 
 export const AppRoutes = () => (
   <Suspense fallback={<RouteLoadingFallback />}>
@@ -151,6 +154,7 @@ export const AppRoutes = () => (
           <Route path="edit/:id" element={allow("orders.update", <OrderEdit />)} />
         </Route>
         <Route path="/product-lookups" element={allow("orders.read", <ProductLookupRequestsPage />)} />
+        <Route path="/vip-policies" element={allow("vip_policies.manage", <VipPoliciesPage />)} />
 
         <Route path="/cn-batches" element={allow("cn_batches.read", <CnBatchesPage />)} />
         <Route path="/china-warehouse" element={allow("cn_packages.read", <ChinaWarehousePage />)} />

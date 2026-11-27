@@ -10,6 +10,8 @@ const isMenuActive = (item, pathname) => item.id === "overview"
   ? pathname === item.href
   : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
+const DEFAULT_OPEN_GROUPS = ["main", "purchase", "logistics", "finance"];
+
 export default function CustomerPortalLayout({ children, profile, unreadCount = 0, cartCount: providedCartCount, onLogout }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -21,8 +23,7 @@ export default function CustomerPortalLayout({ children, profile, unreadCount = 
   const customerMenu = getCustomerMenu(pathname);
   const menuGroups = getCustomerMenuGroups(pathname);
   const demoMode = isCustomerPortalDemoPath(pathname);
-  const activeGroupId = menuGroups.find((group) => group.items.some((item) => isMenuActive(item, pathname)))?.id;
-  const [openGroups, setOpenGroups] = useState(() => new Set(["main", activeGroupId].filter(Boolean)));
+  const [openGroups, setOpenGroups] = useState(() => new Set(DEFAULT_OPEN_GROUPS));
 
   useEffect(() => {
     const handleKeyDown = (event) => { if (event.key === "Escape") setDrawerOpen(false); };

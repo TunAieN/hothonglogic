@@ -5,6 +5,7 @@ export const CN_PACKAGE_FIELDS = {
     order_id
     order_tracking_id
     receiver_name
+    receiver_user_id
     tracking_number
     declared_value
     carrier
@@ -28,6 +29,7 @@ export const CN_PACKAGE_FIELDS = {
       address
       status
     }
+    receiver { id name email phone role { id key name description permissions } }
     order {
       id
       order_code
@@ -42,6 +44,7 @@ export const CN_PACKAGE_FIELDS = {
       items {
         id
         product_name
+        product_image
         price_cny
         quantity
         seller
@@ -110,6 +113,7 @@ export const CN_PACKAGE_FIELDS = {
     order_id
     order_tracking_id
     receiver_name
+    receiver_user_id
     tracking_number
     declared_value
     carrier
@@ -133,6 +137,7 @@ export const CN_PACKAGE_FIELDS = {
       address
       status
     }
+    receiver { id name email phone role { id key name description permissions } }
     order {
       id
       order_code
@@ -147,6 +152,7 @@ export const CN_PACKAGE_FIELDS = {
       items {
         id
         product_name
+        product_image
         price_cny
         quantity
         seller
@@ -215,6 +221,7 @@ export const CN_PACKAGE_FIELDS = {
     order_id
     order_tracking_id
     receiver_name
+    receiver_user_id
     tracking_number
     declared_value
     carrier
@@ -238,6 +245,7 @@ export const CN_PACKAGE_FIELDS = {
       address
       status
     }
+    receiver { id name email phone role { id key name description permissions } }
     order {
       id
       order_code
@@ -252,6 +260,7 @@ export const CN_PACKAGE_FIELDS = {
       items {
         id
         product_name
+        product_image
         price_cny
         quantity
         seller
@@ -316,6 +325,81 @@ export const CN_PACKAGE_FIELDS = {
   `,
 } as const;
 
+export const CN_RECEIVING_OPTIONS_QUERY = `
+  query CnReceivingOptions {
+    cnReceivingOptions {
+      warehouses { id code name address status }
+      receivers {
+        id name email phone department status
+        role { id key name description permissions }
+      }
+    }
+  }
+`;
+
+export const CN_PACKAGE_TRACKING_VALIDATION_QUERY = `
+  query CnPackageTrackingValidation($trackingNumber: String!, $ignorePackageId: ID) {
+    cnPackageTrackingValidation(
+      tracking_number: $trackingNumber
+      ignore_package_id: $ignorePackageId
+    ) {
+      valid
+      message
+      code
+      matched
+      existing_package_id
+      order_code
+      purchase_orders { id external_order_code shop_name }
+    }
+  }
+`;
+
+export const CN_PACKAGE_RECONCILIATION_ORDERS_QUERY = `
+  query CnPackageReconciliationOrders($search: String!) {
+    cnPackageReconciliationOrders(search: $search) {
+      id order_code customer_name tracking_numbers
+      purchases { id external_order_code shop_name }
+    }
+  }
+`;
+
+export const CN_EXPECTED_INBOUND_QUERY = `
+  query CnExpectedInboundTrackings(
+    $filter: CnExpectedInboundFilterInput
+    $first: Int!
+    $page: Int!
+  ) {
+    cnExpectedInboundTrackings(filter: $filter, first: $first, page: $page) {
+      data {
+        id
+        tracking_number
+        display_status
+        can_receive
+        order {
+          id
+          order_code
+          customer { id code name }
+        }
+        purchase_orders { id external_order_code shop_name }
+        products { id name image sku quantity }
+        product_summary { allocated sku_count total_quantity }
+        warehouse { id code name status }
+      }
+      paginatorInfo {
+        currentPage
+        lastPage
+        perPage
+        total
+        firstItem
+        lastItem
+        hasMorePages
+      }
+      summary { tracking_count order_count customer_count }
+      shops
+    }
+  }
+`;
+
 export const cnPackagesGraphql = {
   resource: "cnPackages",
   listQueryName: "cnPackages",
@@ -342,3 +426,9 @@ export const cnPackagesGraphql = {
     },
   },
 } as const;
+
+export const RECEIVE_CN_PACKAGE_MUTATION = `
+  mutation ReceiveCnPackage($input: CreateCnPackageInput!) {
+    createCnPackage(input: $input) { id }
+  }
+`;

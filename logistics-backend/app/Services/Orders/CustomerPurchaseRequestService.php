@@ -3,6 +3,8 @@
 namespace App\Services\Orders;
 
 use App\Models\Order;
+use App\Models\DeliveryRequest;
+use App\Services\Customers\CustomerAddressService;
 use App\Support\BusinessWriteGuard;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +15,10 @@ class CustomerPurchaseRequestService
 {
     private const MARKER_PATTERN = '/^\[VT-CUSTOMER-REQUEST:([0-9a-f-]{36}):([0-9a-f]{64})\](?:\R|$)/i';
 
-    public function __construct(private readonly OrderPricingService $pricing) {}
+    public function __construct(
+        private readonly OrderPricingService $pricing,
+        private readonly CustomerAddressService $addresses,
+    ) {}
 
     public function submit(int $customerId, int $customerAccountId, array $input): array
     {
@@ -31,6 +36,7 @@ class CustomerPurchaseRequestService
 
         try {
             $order = DB::transaction(function () use ($customerId, $customerAccountId, $input, $key, $fingerprint, $orderCode) {
+                $selectedAddress = $this->addresses->findOwnedForUpdate($customerId, (int) $input['customer_address_id']);
                 $order = Order::query()->create([
                     'order_code' => $orderCode,
                     'customer_id' => $customerId,
@@ -66,6 +72,29 @@ class CustomerPurchaseRequestService
                     ]);
                     $this->pricing->recalculateOrderItemAmounts($created);
                 }
+
+                $deliveryRequest = $order->deliveryRequests()->create([
+                    'customer_id' => $customerId,
+                    'delivery_method' => DeliveryRequest::METHOD_DELIVERY,
+                    'delivery_note' => $selectedAddress->delivery_note,
+                    'status' => DeliveryRequest::STATUS_DRAFT,
+                    'created_by' => null,
+                ]);
+                $deliveryRequest->address()->create([
+                    'source_customer_address_id' => $selectedAddress->id,
+                    'receiver_name' => $selectedAddress->receiver_name,
+                    'receiver_phone' => $selectedAddress->receiver_phone,
+                    'country_code' => $selectedAddress->country_code,
+                    'country_name' => $selectedAddress->country_name,
+                    'province_code' => $selectedAddress->province_code,
+                    'province_name' => $selectedAddress->province_name,
+                    'district_code' => $selectedAddress->district_code,
+                    'district_name' => $selectedAddress->district_name,
+                    'ward_code' => $selectedAddress->ward_code,
+                    'ward_name' => $selectedAddress->ward_name,
+                    'address_line' => $selectedAddress->address_line,
+                    'full_address' => $selectedAddress->full_address,
+                ]);
 
                 return $this->pricing->recalculateOrderTotals($order->fresh('items'));
             }, 3);
@@ -133,7 +162,7 @@ class CustomerPurchaseRequestService
             ];
         }, $input['items']);
 
-        return hash('sha256', json_encode(['note' => $input['note'] ?? null, 'items' => $items], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return hash('sha256', json_encode(['customer_address_id' => (int) $input['customer_address_id'], 'note' => $input['note'] ?? null, 'items' => $items], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     private function itemNote(array $item): ?string

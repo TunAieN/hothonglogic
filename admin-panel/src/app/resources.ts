@@ -24,6 +24,7 @@ export const resources = [
   { name: "revenueReport", list: "/revenue-report" },
   { name: "shippingRates", list: "/shipping-rates" },
   { name: "exchangeRates", list: "/exchange-rates" },
+  { name: "vipPolicies", list: "/vip-policies" },
   { name: "employees", list: "/employees", show: "/employees/:id" },
   { name: "shippingQueue", list: "/shipping/queue", create: "/shipping/create" },
   { name: "shippingTasks", list: "/shipping/tasks", show: "/shipping/tasks/:id" },

@@ -1,4 +1,4 @@
-import type { User } from "./common";
+import type { Role, User } from "./common";
 import type { Customer } from "./customer";
 
 export type OrderStatus =
@@ -148,6 +148,7 @@ export interface CnPackage {
   order_tracking_id?: string | null;
   order_id?: string | null;
   receiver_name?: string | null;
+  receiver_user_id?: string | null;
   tracking_number?: string | null;
   declared_value?: number | null;
   carrier?: string | null;
@@ -165,6 +166,7 @@ export interface CnPackage {
   received_at?: string | null;
   created_at?: string | null;
   warehouse: CnWarehouse;
+  receiver?: Pick<User, "id" | "name" | "email"> & { phone?: string | null; role?: Role | null };
   order?: Pick<OrderSummary, "id" | "order_code" | "status"> & {
     customer?: Pick<Customer, "id" | "name" | "phone" | "email" | "address">;
     items?: OrderItem[];
@@ -184,6 +186,7 @@ export interface OrderTracking {
   note?: string | null;
   status: string;
   tracking_items?: OrderTrackingItem[];
+  taobao_purchase_orders?: Array<{ id: string; external_order_code: string; shop_name?: string | null }>;
 }
 
 export interface OrderTrackingItem {
@@ -197,8 +200,9 @@ export interface OrderTrackingItem {
 export interface CnPackageCreateInput {
   warehouse_id?: string;
   warehouse_code?: string;
-  warehouse_name: string;
-  receiver_name: string;
+  warehouse_name?: string;
+  receiver_name?: string;
+  receiver_user_id: string;
   tracking_number: string;
   declared_value?: number | null;
   carrier?: string | null;
@@ -220,6 +224,7 @@ export interface CnPackageUpdateInput {
   warehouse_code?: string;
   warehouse_name?: string;
   receiver_name?: string;
+  receiver_user_id?: string;
   tracking_number?: string;
   declared_value?: number | null;
   carrier?: string | null;
@@ -248,6 +253,27 @@ export interface OrderDepositTransaction {
   status: string;
   note?: string | null;
   created_at?: string | null;
+  confirmation_source?: string | null;
+  provider?: string | null;
+  provider_transaction_id?: string | null;
+}
+
+export interface DepositPaymentAutomation {
+  enabled: boolean;
+  intent?: {
+    reference: string; amount_vnd: number; status: string; display_status: string;
+    expires_at?: string | null; created_at?: string | null; completed_at?: string | null;
+    qr_url?: string | null; bank_name?: string | null; bank_code?: string | null;
+    account_number?: string | null; account_holder?: string | null;
+  } | null;
+  latest_event?: {
+    provider_transaction_id: string; status: string; reconciliation_reason?: string | null;
+    amount_vnd?: number | null; occurred_at?: string | null; processed_at?: string | null;
+  } | null;
+  notifications: Array<{
+    id: string; type: string; channel: string; status: string; title: string; body: string;
+    sent_by?: string | null; sent_at?: string | null; read_at?: string | null; created_at?: string | null;
+  }>;
 }
 
 export interface OrderDepositVoucher {
@@ -279,12 +305,13 @@ export interface OrderDepositVoucher {
     paid_amount: number;
     issued_at?: string | null;
   } | null;
+  paymentAutomation?: DepositPaymentAutomation | null;
 }
 export interface OrderSummary {
   id: string;
   order_code: string;
   customer_id?: string;
-  customer: Pick<Customer, "id" | "name" | "email" | "phone" | "address" | "avatar">;
+  customer: Pick<Customer, "id" | "name" | "email" | "phone" | "address" | "avatar" | "vip_group" | "vipTier">;
   creator?: Pick<User, "id" | "name"> | null;
   accountManager?: Pick<User, "id" | "name"> | null;
   creation_source?: "legacy" | "admin_portal" | "customer_portal" | string;
@@ -305,6 +332,33 @@ export interface OrderSummary {
   deposit_requested_at?: string | null;
   deposit_paid_at?: string | null;
   depositVoucher?: OrderDepositVoucher | null;
+  depositPolicySnapshot?: {
+    id: string; vip_code?: string | null; vip_name?: string | null; qualified_spend_vnd: number;
+    vip_deposit_percent?: number | null; risk_code: string; risk_name: string; risk_reason: string;
+    risk_minimum_percent?: number | null; capital_minimum_percent?: number | null; base_amount_vnd: number;
+    recommended_percent: number; final_percent: number; deposit_waived: boolean; is_exception: boolean;
+    exception_reason?: string | null; assessed_by: string; approved_by?: string | null; assessed_at: string;
+    approved_at?: string | null; voucher_issued_at?: string | null;
+  } | null;
+  deliveryRequest?: {
+    id: string;
+    delivery_note?: string | null;
+    address?: {
+      source_customer_address_id?: string | null;
+      receiver_name: string;
+      receiver_phone: string;
+      country_code?: string | null;
+      country_name?: string | null;
+      province_code?: string | null;
+      province_name?: string | null;
+      district_code?: string | null;
+      district_name?: string | null;
+      ward_code?: string | null;
+      ward_name?: string | null;
+      address_line?: string | null;
+      full_address?: string | null;
+    } | null;
+  } | null;
   note?: string | null;
   created_at: string;
   items: OrderItem[];
@@ -331,6 +385,16 @@ export interface OrderUpdateInput {
   packages?: OrderPackageInput[];
   status?: OrderStatus | string;
   deposit_percent?: number;
+  risk_level?: string;
+  risk_reason?: string;
+  risk_evidence?: {
+    seller_checked: boolean;
+    product_checked: boolean;
+    returns_checked: boolean;
+    anomaly_checked: boolean;
+  };
+  waive_deposit?: boolean;
+  exception_reason?: string;
   note?: string | null;
 }
 
@@ -348,4 +412,5 @@ export interface OrderPackageInput {
   note?: string | null;
   package_items?: OrderPackageItemInput[];
   tracking_items?: OrderPackageItemInput[];
+  taobao_purchase_order_ids?: string[];
 }

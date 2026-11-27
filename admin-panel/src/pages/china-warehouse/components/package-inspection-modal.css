@@ -1,0 +1,134 @@
+.cn-inspection-modal .ant-modal-container,
+.cn-inspection-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 89vh;
+  max-height: 89dvh;
+}
+
+.cn-inspection-modal .ant-modal-header,
+.cn-inspection-modal .ant-modal-footer {
+  flex: none;
+}
+
+.cn-inspection-modal .ant-modal-header {
+  margin: 0;
+  padding: 12px 38px 12px 14px;
+  border-radius: 8px;
+  background: #102b50;
+}
+
+.cn-inspection-header {
+  display: grid;
+  gap: 5px;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.cn-inspection-modal .ant-modal-close {
+  color: #fff;
+}
+
+.cn-inspection-modal .ant-modal-body {
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 10px 4px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #b7c9df transparent;
+}
+
+.cn-inspection-modal .ant-modal-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cn-inspection-modal .ant-modal-body::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #b7c9df;
+}
+
+.cn-inspection-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.cn-inspection-modal section {
+  padding: 12px;
+  border: 1px solid #dbe7f5;
+  border-radius: 8px;
+}
+
+.cn-inspection-modal h3 {
+  margin: 0;
+  color: #1755ad;
+  font-size: 15px;
+}
+
+.cn-inspection-line,
+.cn-inspection-ellipsis {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cn-inspection-purchase-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.cn-inspection-product {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.cn-inspection-product .ant-image {
+  flex: none;
+}
+
+.cn-inspection-product .cn-inspection-line,
+.cn-inspection-ellipsis {
+  width: 100%;
+}
+
+.cn-inspection-thumbnail {
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.cn-inspection-mobile-counts {
+  display: block;
+  white-space: normal;
+  font-size: 11px;
+}
+
+.cn-inspection-mobile-meta {
+  font-size: 11px;
+}
+
+.cn-inspection-purchase {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: #eaf2ff;
+}
+
+.cn-inspection-verify-toggle {
+  justify-self: start;
+}
+
+@media (max-width: 575px) {
+  .cn-inspection-modal .ant-modal-body section {
+    padding: 8px;
+  }
+
+  .cn-inspection-modal .ant-table-cell {
+    padding-inline: 4px;
+  }
+}

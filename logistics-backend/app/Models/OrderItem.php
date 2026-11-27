@@ -48,4 +48,9 @@ class OrderItem extends Model
     {
         return $this->hasMany(OrderTrackingItem::class);
     }
+
+    public function taobaoPurchaseItems()
+    {
+        return $this->hasMany(TaobaoPurchaseOrderItem::class);
+    }
 }

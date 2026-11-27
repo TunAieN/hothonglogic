@@ -25,6 +25,7 @@ class CustomerPurchaseController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'idempotency_key' => ['required', 'uuid'], 'note' => ['nullable', 'string', 'max:2000'],
+            'customer_address_id' => ['required', 'integer', 'min:1'],
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.local_item_id' => ['required', 'string', 'max:100'],
             'items.*.product_url' => ['required', 'url:http,https', 'max:4000'],
@@ -423,6 +424,7 @@ class CustomerPurchaseController extends Controller
         return [
             'items', 'customer', 'submittedByCustomerAccount', 'accountManager',
             'orderTrackings.packages', 'cnPackages', 'invoices', 'depositVoucher.transactions',
+            'deliveryRequest.address',
         ];
     }
 
@@ -575,10 +577,37 @@ class CustomerPurchaseController extends Controller
                 'account_manager' => $manager ? ['id' => $manager->id,
                     'name' => Utf8ValueNormalizer::string($manager->name, 'users', (int) $manager->id, 'name')] : null,
                 'payment' => $this->paymentPayload($order),
+                'shipping_address' => $this->shippingAddressPayload($order),
             ];
         }
 
         return $payload;
+    }
+
+    private function shippingAddressPayload(Order $order): ?array
+    {
+        $request = $order->deliveryRequest;
+        $address = $request?->address;
+        if (! $address) {
+            return null;
+        }
+
+        return [
+            'source_customer_address_id' => $address->source_customer_address_id,
+            'receiver_name' => $address->receiver_name,
+            'receiver_phone' => $address->receiver_phone,
+            'country_code' => $address->country_code,
+            'country_name' => $address->country_name,
+            'province_code' => $address->province_code,
+            'province_name' => $address->province_name,
+            'district_code' => $address->district_code,
+            'district_name' => $address->district_name,
+            'ward_code' => $address->ward_code,
+            'ward_name' => $address->ward_name,
+            'address_line' => $address->address_line,
+            'full_address' => $address->full_address,
+            'delivery_note' => $request->delivery_note,
+        ];
     }
 
     private function historyPayload(Order $order): array

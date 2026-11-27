@@ -17,6 +17,9 @@ import {
   Input,
   List,
   message,
+  Modal,
+  Popover,
+  Result,
   Row,
   Select,
   Space,
@@ -28,9 +31,7 @@ import {
 } from "antd";
 import type { ImageProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { fetchDefaultPaymentAccount } from "../payment-vouchers/api";
 import { client, syncGraphqlAuthToken } from "../../providers/graphqlClient";
-import type { PaymentAccount } from "../payment-vouchers/types";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -47,17 +48,33 @@ import {
   TruckOutlined,
   UserOutlined,
   InboxOutlined,
+  AppstoreOutlined,
+  InfoCircleOutlined,
+  SaveOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { Link } from "react-router";
-import { Modal, Radio, InputNumber } from "antd";
+import { Link, useParams } from "react-router";
 import type { Order as IOrder, OrderItem as IOrderItem } from "../../shared/types";
+import {
+  OrderConfirmationModal,
+  type DepositPolicyPreview,
+  type RiskAssessmentEvidence,
+  type RiskDepositPolicy,
+} from "./components/OrderConfirmationModal";
+import { DepositPaymentTrackingModal } from "./components/DepositPaymentTrackingModal";
+import { OrderDetailWorkspace } from "./components/OrderDetailWorkspace";
+import {
+  TaobaoPurchaseConfirmationModal,
+  type TaobaoPurchase,
+  type TaobaoPurchaseProgress,
+} from "./components/TaobaoPurchaseConfirmationModal";
+import { getOrderPrimaryAction } from "./orderDetailState";
 import {
   formatCny,
   formatVnd,
   hasPositiveMoney,
-  resolveLegacyCnyTotal,
 } from "../../shared/utils/currency";
+import "./tracking-manager-modal.css";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -74,6 +91,7 @@ type TrackingDraft = {
   carrier?: string | null;
   dispatched_at?: string | null;
   note?: string | null;
+  taobao_purchase_order_ids?: string[];
 };
 
 const orderJourneySteps = [
@@ -120,31 +138,11 @@ const orderJourneySteps = [
 ] as const;
 // order modal
 
-const optionCardStyle: CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  padding: 16,
-  background: "#fff",
-};
-
-const bankInfoStyle: CSSProperties = {
-  border: "1px solid #f5d7a1",
-  background: "#fff7e8",
-  borderRadius: 12,
-  padding: 16,
-};
-
 const modalSummaryRowStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 16,
-};
-
-const summaryBlockStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 12,
 };
 
 const statusMetaMap: Record<string, StatusMeta> = {
@@ -188,10 +186,32 @@ const buildTrackingDrafts = (
     carrier: tracking.carrier ?? undefined,
     dispatched_at: tracking.dispatched_at ?? null,
     note: tracking.note ?? undefined,
+    taobao_purchase_order_ids: tracking.taobao_purchase_orders?.map((purchase) => purchase.id) ?? [],
   }));
 
 const getVariantLabel = (item: Pick<IOrderItem, "size" | "color">) =>
   [item.color, item.size].filter(Boolean).join(" / ") || "-";
+
+const TrackingProductPreview = ({ item }: { item: IOrderItem }) => (
+  <div className="tracking-product-preview">
+    <div className="tracking-product-preview__image">
+      {item.product_image ? (
+        <img src={item.product_image} alt="" />
+      ) : (
+        <ShoppingOutlined />
+      )}
+    </div>
+    <div className="tracking-product-preview__content">
+      <strong>{item.product_name || "Sản phẩm chưa có tên"}</strong>
+      {item.note ? <p>{item.note}</p> : null}
+      <dl>
+        <div><dt>Shop</dt><dd>{item.shop_name ?? item.seller ?? "-"}</dd></div>
+        <div><dt>Phân loại</dt><dd>{getVariantLabel(item)}</dd></div>
+        <div><dt>SKU</dt><dd>{item.id || "-"}</dd></div>
+      </dl>
+    </div>
+  </div>
+);
 
 const getTrackingShopSummary = () => "Xác nhận tại kho TQ";
 
@@ -405,39 +425,86 @@ const ProductThumb = ({ item }: { item: IOrderItem }) => {
 };
 
 export const OrderShow = () => {
-  const { query } = useShow<IOrder>();
-  const { data, isLoading } = query;
-  const { mutate: updateOrder } = useUpdate<IOrder>();
+  const { id } = useParams<{ id: string }>();
+  const { query } = useShow<IOrder>({ resource: "orders", id });
+  const { data, isLoading, isFetching, isError, error } = query;
+  const { mutate: updateOrder, mutateAsync: updateOrderAsync } = useUpdate<IOrder>();
   const [messageApi, contextHolder] = message.useMessage();
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isTrackingManagerOpen, setIsTrackingManagerOpen] = useState(false);
-  const [depositOpions, setDepositOptions] = useState<"deposit" | "no_deposit">(
-    "deposit",
-  );
+  const [isTaobaoPurchaseModalOpen, setIsTaobaoPurchaseModalOpen] = useState(false);
+  const [taobaoPurchaseLoading, setTaobaoPurchaseLoading] = useState(false);
+  const [taobaoPurchaseProgress, setTaobaoPurchaseProgress] = useState<TaobaoPurchaseProgress | null>(null);
+  const [waiveDeposit, setWaiveDeposit] = useState(false);
   const [depositPercentage, setDepositPercentage] = useState(70);
+  const [riskPolicies, setRiskPolicies] = useState<RiskDepositPolicy[]>([]);
+  const [riskPoliciesLoading, setRiskPoliciesLoading] = useState(false);
+  const [riskPoliciesError, setRiskPoliciesError] = useState<string | null>(null);
+  const [depositPolicyPreview, setDepositPolicyPreview] = useState<DepositPolicyPreview | null>(null);
+  const [depositPolicyPreviewLoading, setDepositPolicyPreviewLoading] = useState(false);
+  const [depositPolicyPreviewError, setDepositPolicyPreviewError] = useState<string | null>(null);
+  const [policyReloadKey, setPolicyReloadKey] = useState(0);
+  const [riskLevel, setRiskLevel] = useState("");
+  const [riskReason, setRiskReason] = useState("");
+  const [depositExceptionReason, setDepositExceptionReason] = useState("");
+  const [riskEvidence, setRiskEvidence] = useState<RiskAssessmentEvidence>({ seller_checked: false, product_checked: false, returns_checked: false, anomaly_checked: false });
   const [manualDepositAmount, setManualDepositAmount] = useState<number | null>(
     null,
   );
   const [manualDepositCode, setManualDepositCode] = useState("");
   const [manualDepositNote, setManualDepositNote] = useState("");
   const [trackingDrafts, setTrackingDrafts] = useState<TrackingDraft[]>([]);
-  const [defaultPaymentAccount, setDefaultPaymentAccount] =
-    useState<PaymentAccount | null>(null);
   const navigateScreens = useBreakpoint();
   const record = data?.data;
-  useEffect(() => {
-    if (!isDepositModalOpen) {
-      return;
-    }
 
-    void fetchDefaultPaymentAccount()
-      .then(setDefaultPaymentAccount)
-      .catch(() =>
-        message.error("Không tải được tài khoản nhận tiền mặc định."),
-      );
-  }, [isDepositModalOpen]);
+  useEffect(() => {
+    if (!isConfirmModalOpen) return;
+    let active = true;
+    setRiskPoliciesLoading(true);
+    setRiskPoliciesError(null);
+    syncGraphqlAuthToken();
+    void client.request<{ riskDepositPolicies: RiskDepositPolicy[] }>(`query RiskDepositPolicies {
+      riskDepositPolicies { id code name priority minimum_deposit_percent surcharge_percent requires_manager_approval is_active }
+    }`).then((result) => {
+      if (active) setRiskPolicies(result.riskDepositPolicies.filter((item) => item.is_active));
+    }).catch(() => {
+      if (active) {
+        setRiskPolicies([]);
+        setRiskPoliciesError("Không thể tải danh mục rủi ro đang có hiệu lực.");
+      }
+    }).finally(() => { if (active) setRiskPoliciesLoading(false); });
+    return () => { active = false; };
+  }, [isConfirmModalOpen, policyReloadKey]);
+
+  useEffect(() => {
+    if (!isConfirmModalOpen || !record?.id) return;
+    let active = true;
+    setDepositPolicyPreviewLoading(true);
+    setDepositPolicyPreviewError(null);
+    syncGraphqlAuthToken();
+    void client.request<{ orderDepositPolicyPreview: DepositPolicyPreview }>(`query OrderDepositPolicyPreview($order_id: ID!, $risk_level: String) {
+      orderDepositPolicyPreview(order_id: $order_id, risk_level: $risk_level) {
+        vip_code vip_name qualified_spend_vnd vip_policy_enabled vip_proposed_percent vip_effective_percent
+        risk_code risk_name risk_minimum_percent risk_surcharge_percent additive_percent risk_requires_manager_approval capital_minimum_percent
+        recommended_percent fallback_percent fallback_applied policy_formula policy_configuration_valid product_total_cny exchange_rate exchange_rate_locked
+        product_total_vnd deposit_amount_vnd can_calculate calculation_message can_approve_exception
+      }
+    }`, { order_id: record.id, risk_level: riskLevel || null }).then((result) => {
+      if (active) {
+        setDepositPolicyPreview(result.orderDepositPolicyPreview);
+        setDepositPercentage(Number(result.orderDepositPolicyPreview.recommended_percent));
+      }
+    }).catch(() => {
+      if (active) {
+        setDepositPolicyPreview(null);
+        setDepositPolicyPreviewError("Không thể lấy breakdown đặt cọc từ backend. Chưa thể xác nhận đơn.");
+      }
+    }).finally(() => { if (active) setDepositPolicyPreviewLoading(false); });
+    return () => { active = false; };
+  }, [isConfirmModalOpen, record?.id, riskLevel, policyReloadKey]);
+
   const cnPackages = useMemo(
     () => record?.cn_packages ?? [],
     [record?.cn_packages],
@@ -604,6 +671,7 @@ export const OrderShow = () => {
         return {
           key: item.id,
           image: item.product_image,
+          productLink: item.product_link,
           productName: item.product_name,
           sku: getProductSku(item, index),
           shop: item.shop_name ?? item.seller ?? "-",
@@ -885,88 +953,33 @@ export const OrderShow = () => {
   const isExchangeRateLocked = Boolean(
     record?.exchange_rate_locked_at || depositVoucher?.exchange_rate,
   );
-  const legacyCnyTotal = resolveLegacyCnyTotal(record);
-  const lockedExchangeRate = Number(
-    depositVoucher?.exchange_rate ?? record?.exchange_rate ?? 0,
-  );
-  const productTotalCny = hasDepositVoucher
-    ? Number(
-        depositVoucher?.base_amount_cny ??
-          record?.product_total_cny ??
-          legacyCnyTotal,
-      )
-    : Number(
-        record?.product_total_cny ??
-          (items.length > 0 ? itemsSubtotal : legacyCnyTotal),
-      );
-  const productTotalVnd = hasDepositVoucher
-    ? Number(depositVoucher?.base_amount_vnd ?? record?.product_total_vnd ?? 0)
-    : Number(record?.product_total_vnd ?? 0);
-  const estimateTotal = isExchangeRateLocked
-    ? productTotalVnd
-    : items.length > 0
-      ? itemsSubtotal
-      : legacyCnyTotal;
   // A snapshot alone is not a payable request. Legacy/interrupted records must
   // create or recover their actual deposit voucher first.
   const hasDepositRequest = hasDepositVoucher;
-  const lockedDepositPercent = Number(
-    depositVoucher?.deposit_percent ??
-      record?.deposit_percent ??
-      depositPercentage,
-  );
+  // Once a voucher exists, its immutable percentage/snapshot is authoritative.
+  // The editable preview state defaults to 70% and must never leak into the
+  // summary of an already-issued deposit request.
+  const displayedDepositPercentage = hasDepositVoucher
+    ? Number(
+        depositVoucher?.deposit_percent ??
+          record?.depositPolicySnapshot?.final_percent ??
+          record?.deposit_percent ??
+          0,
+      )
+    : Number(record?.deposit_percent ?? depositPercentage);
   const depositAmount = hasDepositVoucher
     ? Number(depositVoucher?.total_amount ?? 0)
     : hasDepositRequest
       ? Number(record?.deposit_amount_vnd ?? 0)
-      : 0;
-  const depositPaidAmount = hasDepositVoucher
-    ? Number(depositVoucher?.paid_amount ?? 0)
-    : hasDepositRequest
-      ? Number(record?.deposit_paid_amount_vnd ?? 0)
       : 0;
   const depositRemainingAmount = hasDepositVoucher
     ? Number(depositVoucher?.remaining_amount ?? depositAmount)
     : hasDepositRequest
       ? Number(record?.deposit_remaining_amount_vnd ?? depositAmount)
       : 0;
-  const estimateTotalDisplay = isExchangeRateLocked
-    ? formatVnd(estimateTotal)
-    : formatCny(estimateTotal);
   const depositDisplay = hasDepositRequest
     ? formatVnd(depositAmount)
     : "Chưa có yêu cầu đặt cọc";
-  const depositPaidDisplay = hasDepositRequest
-    ? formatVnd(depositPaidAmount)
-    : "-";
-  const depositRemainingDisplay = hasDepositRequest
-    ? formatVnd(depositRemainingAmount)
-    : "-";
-  const depositTransferContent =
-    depositVoucher?.transfer_content ??
-    record?.deposit_transfer_content ??
-    `COC ${record?.order_code ?? ""}`;
-  const depositBankName =
-    depositVoucher?.bank_name_snapshot ??
-    defaultPaymentAccount?.bank_name ??
-    "-";
-  const depositBankAccountNumber =
-    depositVoucher?.bank_account_number_snapshot ??
-    defaultPaymentAccount?.account_number ??
-    "-";
-  const depositBankAccountHolder =
-    depositVoucher?.bank_account_holder_snapshot ??
-    defaultPaymentAccount?.account_holder ??
-    "-";
-  const depositStatus = depositVoucher?.status ?? record?.deposit_status ?? "-";
-  const depositStatusLabelMap: Record<string, string> = {
-    waiting_payment: "Chờ thanh toán",
-    paid: "Đã thanh toán",
-    cancelled: "Đã hủy",
-  };
-  const depositStatusDisplay =
-    depositStatusLabelMap[depositStatus] ?? depositStatus;
-  const depositTransactions = depositVoucher?.transactions ?? [];
   const zeroPaymentDisplay = isExchangeRateLocked
     ? formatVnd(0)
     : "Chưa chốt tỷ giá";
@@ -989,19 +1002,9 @@ export const OrderShow = () => {
 
     setManualDepositAmount(depositRemainingAmount);
   }, [depositRemainingAmount, hasDepositRequest, isDepositModalOpen]);
-  const primaryActionLabel = canOpenConfirmModal
-    ? "Xác nhận đơn hàng"
-    : canOpenDepositModal
-      ? "Xác nhận tiền cọc"
-      : canStartPurchasing
-        ? "Bắt đầu đặt hàng"
-        : canConfirmPurchased
-          ? "Xác nhận đã đặt hàng"
-          : canManageTrackings
-            ? "Quản lý mã vận đơn"
-            : "Đơn hàng đã xử lý";
+  const primaryAction = getOrderPrimaryAction(normalizedOrderStatus);
 
-  const handleUpdateOrderStatus = (
+  const handleUpdateOrderStatus = async (
     nextStatus: string,
     onSuccessCallback?: () => void,
     extraValues: Record<string, unknown> = {},
@@ -1010,31 +1013,44 @@ export const OrderShow = () => {
 
     setIsUpdatingStatus(true);
 
-    updateOrder(
-      {
+    try {
+      await updateOrderAsync({
         resource: "orders",
         id: record.id,
         values: { status: nextStatus, ...extraValues },
-      },
-      {
-        onSuccess: async () => {
-          await query.refetch();
-          setIsUpdatingStatus(false);
-          onSuccessCallback?.();
-        },
-        onError: (error) => {
-          messageApi.error(
-            error instanceof Error
-              ? error.message
-              : "Cập nhật trạng thái đơn hàng thất bại.",
-          );
-          setIsUpdatingStatus(false);
-        },
-      },
-    );
+      });
+      await query.refetch();
+      onSuccessCallback?.();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "Cập nhật trạng thái đơn hàng thất bại.");
+      throw error;
+    } finally {
+      setIsUpdatingStatus(false);
+    }
   };
   const handleConfirmOrder = async () => {
-    if (depositOpions === "deposit") {
+    if (!riskLevel || !riskReason.trim()) {
+      messageApi.error("Vui lòng chọn mức rủi ro và nhập lý do đánh giá.");
+      return;
+    }
+    if (!depositPolicyPreview?.can_calculate) {
+      messageApi.error("Chưa đủ dữ liệu backend để tính số tiền đặt cọc.");
+      return;
+    }
+    const selectedRiskPolicy = riskPolicies.find((item) => item.code === riskLevel);
+    const needsException = waiveDeposit || selectedRiskPolicy?.requires_manager_approval;
+    if (needsException && !depositExceptionReason.trim()) {
+      messageApi.error("Ngoại lệ đặt cọc cần lý do phê duyệt của quản lý.");
+      return;
+    }
+    const policyValues = {
+      risk_level: riskLevel,
+      risk_reason: riskReason.trim(),
+      risk_evidence: riskEvidence,
+      waive_deposit: waiveDeposit,
+      exception_reason: depositExceptionReason.trim() || undefined,
+    };
+    if (!waiveDeposit) {
       if (!record?.id) return;
       setIsUpdatingStatus(true);
 
@@ -1045,35 +1061,10 @@ export const OrderShow = () => {
         await handleUpdateOrderStatus(
           "awaiting_deposit",
           undefined, // Không dùng callback nữa, dùng await bên dưới
-          { deposit_percent: depositPercentage },
+          { deposit_percent: depositPercentage, ...policyValues },
         );
 
-        // 2. Chờ tạo phiếu cọc xong hẳn
-        await client.request(
-          `mutation CreateDepositPaymentVoucher($order_id: ID!, $deposit_percent: Float) {
-          createDepositPaymentVoucher(order_id: $order_id, deposit_percent: $deposit_percent) {
-            id
-            voucher_code
-            voucher_type
-            status
-            currency
-            base_amount_cny
-            exchange_rate
-            base_amount_vnd
-            deposit_percent
-            total_amount
-            paid_amount
-            remaining_amount
-            bank_name_snapshot
-            bank_account_number_snapshot
-            bank_account_holder_snapshot
-            transfer_content
-          }
-        }`,
-          { order_id: record.id, deposit_percent: depositPercentage },
-        );
-
-        // 3. Refetch dữ liệu mới nhất & chuyển Modal
+        // Backend creates the snapshot and voucher atomically with the status update.
         await query.refetch();
         setIsConfirmModalOpen(false);
         setIsDepositModalOpen(true);
@@ -1091,53 +1082,10 @@ export const OrderShow = () => {
     }
 
     // Trường hợp không cần đặt cọc
-    handleUpdateOrderStatus("purchasing", () => {
+    await handleUpdateOrderStatus("purchasing", () => {
       setIsConfirmModalOpen(false);
       messageApi.success("Đơn hàng đã chuyển sang trạng thái đang đặt hàng.");
-    });
-  };
-
-  const handleCreateMissingDepositRequest = async () => {
-    if (!record?.id) return;
-    setIsUpdatingStatus(true);
-    try {
-      syncGraphqlAuthToken();
-      await client.request(
-        `mutation CreateDepositPaymentVoucher($order_id: ID!, $deposit_percent: Float) {
-          createDepositPaymentVoucher(order_id: $order_id, deposit_percent: $deposit_percent) {
-            id
-            voucher_code
-            voucher_type
-            status
-            currency
-            base_amount_cny
-            exchange_rate
-            base_amount_vnd
-            deposit_percent
-            total_amount
-            paid_amount
-            remaining_amount
-            bank_name_snapshot
-            bank_account_number_snapshot
-            bank_account_holder_snapshot
-            transfer_content
-          }
-        }`,
-        { order_id: record.id, deposit_percent: depositPercentage },
-      );
-      await query.refetch();
-      messageApi.success(
-        "Đã chốt tỷ giá và tạo yêu cầu đặt cọc.",
-      );
-    } catch (error) {
-      messageApi.error(
-        error instanceof Error
-          ? error.message
-          : "Không thể tạo yêu cầu đặt cọc.",
-      );
-    } finally {
-      setIsUpdatingStatus(false);
-    }
+    }, policyValues);
   };
 
   const handleConfirmDepositPaid = async () => {
@@ -1157,6 +1105,10 @@ export const OrderShow = () => {
       messageApi.error(
         "Vui lòng nhập mã giao dịch ngân hàng.",
       );
+      return;
+    }
+    if (manualDepositNote.trim().length < 10) {
+      messageApi.error("Vui lòng nhập căn cứ ngân hàng và lý do xác nhận tối thiểu 10 ký tự.");
       return;
     }
 
@@ -1194,6 +1146,29 @@ export const OrderShow = () => {
     }
   };
 
+  const handleSendDepositReminder = async () => {
+    if (!depositVoucher?.id) return;
+    setIsUpdatingStatus(true);
+    try {
+      syncGraphqlAuthToken();
+      await client.request(
+        `mutation SendDepositPaymentReminder($payment_voucher_id: ID!) {
+          sendDepositPaymentReminder(payment_voucher_id: $payment_voucher_id) { id type status sent_at }
+        }`,
+        { payment_voucher_id: depositVoucher.id },
+      );
+      await query.refetch();
+      messageApi.success("Đã gửi nhắc thanh toán cho khách hàng.");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "Không thể gửi nhắc thanh toán.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const isReceivedTracking = (id?: string) => Boolean(id && (record?.cn_packages ?? []).some((pkg) =>
+    String(pkg.order_tracking_id) === String(id) && Boolean(pkg.received_at)));
+
   const updateOrderTrackingPayload = async (
     values: {
       packages?: NonNullable<IOrder["order_trackings"]> | TrackingDraft[];
@@ -1222,6 +1197,7 @@ export const OrderShow = () => {
                   carrier: tracking.carrier,
                   dispatched_at: tracking.dispatched_at,
                   note: tracking.note,
+                  taobao_purchase_order_ids: tracking.taobao_purchase_orders?.map((purchase) => purchase.id) ?? [],
                 };
 
           return {
@@ -1231,6 +1207,9 @@ export const OrderShow = () => {
             dispatched_at: formatGraphqlDateTime(trackingDraft.dispatched_at),
             note: trackingDraft.note?.trim() || null,
             declared_value: 0,
+            ...(!isReceivedTracking(trackingDraft.id)
+              ? { taobao_purchase_order_ids: trackingDraft.taobao_purchase_order_ids ?? [] }
+              : {}),
           };
         })
       : undefined;
@@ -1287,7 +1266,7 @@ export const OrderShow = () => {
   const updateTrackingDraft = (
     trackingIndex: number,
     field: keyof Omit<TrackingDraft, "local_id" | "id">,
-    value: string | null | undefined,
+    value: string | string[] | null | undefined,
   ) => {
     setTrackingDrafts((current) =>
       current.map((tracking, index) =>
@@ -1296,9 +1275,84 @@ export const OrderShow = () => {
     );
   };
 
+  const loadTaobaoPurchaseProgress = async (silent = false) => {
+    if (!record?.id) return;
+    setTaobaoPurchaseLoading(true);
+    try {
+      syncGraphqlAuthToken();
+      const result = await client.request<{ taobaoPurchaseProgress: TaobaoPurchaseProgress }>(
+        `query TaobaoPurchaseProgress($order_id: ID!) {
+          taobaoPurchaseProgress(order_id: $order_id) {
+            order_id order_status ordered_quantity purchased_quantity remaining_quantity purchase_order_count is_complete
+            purchases { id external_order_code shop_id shop_name purchased_at note shop_exception_reason status
+              items { id order_item_id quantity order_item { id product_name quantity shop_id shop_name seller size color product_image } }
+              trackings { id tracking_number }
+            }
+          }
+        }`,
+        { order_id: record.id },
+      );
+      setTaobaoPurchaseProgress(result.taobaoPurchaseProgress);
+    } catch (error) {
+      setTaobaoPurchaseProgress(null);
+      if (!silent) messageApi.error(error instanceof Error ? error.message : "Không thể tải tiến độ mua Taobao.");
+    } finally {
+      setTaobaoPurchaseLoading(false);
+    }
+  };
+
   const openTrackingManager = () => {
     setTrackingDrafts(buildTrackingDrafts(orderTrackings));
     setIsTrackingManagerOpen(true);
+    void loadTaobaoPurchaseProgress();
+  };
+
+  const openTaobaoPurchaseModal = () => {
+    setIsTaobaoPurchaseModalOpen(true);
+    void loadTaobaoPurchaseProgress();
+  };
+
+  useEffect(() => {
+    if (!record?.id) return;
+    void loadTaobaoPurchaseProgress(true);
+    // The order id is the persistence boundary; modal actions explicitly reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record?.id]);
+
+  const submitTaobaoPurchases = async (purchases: TaobaoPurchase[], confirm: boolean) => {
+    if (!record?.id) return;
+    syncGraphqlAuthToken();
+    const field = confirm ? "confirmTaobaoPurchases" : "saveTaobaoPurchaseProgress";
+    const result = await client.request<Record<string, TaobaoPurchaseProgress>>(
+      `mutation SaveTaobaoPurchases($order_id: ID!, $input: TaobaoPurchaseProgressInput!) {
+        ${field}(order_id: $order_id, input: $input) {
+          order_id order_status ordered_quantity purchased_quantity remaining_quantity purchase_order_count is_complete
+          purchases { id external_order_code shop_id shop_name purchased_at note shop_exception_reason status
+            items { id order_item_id quantity order_item { id product_name quantity shop_id shop_name seller size color product_image } }
+            trackings { id tracking_number }
+          }
+        }
+      }`,
+      {
+        order_id: record.id,
+        input: {
+          purchases: purchases.map((purchase) => ({
+            id: purchase.id,
+            external_order_code: purchase.external_order_code.trim(),
+            shop_id: purchase.shop_id || null,
+            shop_name: purchase.shop_name || null,
+            purchased_at: purchase.purchased_at || null,
+            note: purchase.note?.trim() || null,
+            shop_exception_reason: purchase.shop_exception_reason?.trim() || null,
+            items: purchase.items.filter((line) => line.quantity > 0).map((line) => ({ order_item_id: line.order_item_id, quantity: line.quantity })),
+          })),
+        },
+      },
+    );
+    setTaobaoPurchaseProgress(result[field]);
+    messageApi.success(confirm ? "Đã xác nhận đặt đủ hàng và chuyển sang chờ mã vận đơn." : "Đã lưu tiến độ mua hàng; trạng thái đơn vẫn là Đang đặt hàng.");
+    await query.refetch();
+    if (confirm) setIsTaobaoPurchaseModalOpen(false);
   };
 
   const handleSaveAllTrackings = () => {
@@ -1334,6 +1388,12 @@ export const OrderShow = () => {
 
   const handlePrimaryAction = () => {
     if (canOpenConfirmModal) {
+      setRiskLevel("");
+      setRiskReason("");
+      setWaiveDeposit(false);
+      setDepositExceptionReason("");
+      setRiskEvidence({ seller_checked: false, product_checked: false, returns_checked: false, anomaly_checked: false });
+      setDepositPolicyPreview(null);
       setIsConfirmModalOpen(true);
       return;
     }
@@ -1351,11 +1411,7 @@ export const OrderShow = () => {
     }
 
     if (canConfirmPurchased) {
-      handleUpdateOrderStatus("awaiting_tracking", () => {
-        messageApi.success(
-          "Đơn hàng đã chuyển sang trạng thái chờ mã vận đơn.",
-        );
-      });
+      openTaobaoPurchaseModal();
       return;
     }
 
@@ -1363,10 +1419,64 @@ export const OrderShow = () => {
       openTrackingManager();
     }
   };
+
+  const errorStatusCode =
+    error && typeof error === "object" && "statusCode" in error
+      ? Number(error.statusCode)
+      : undefined;
+
+  if (!id || (!isLoading && errorStatusCode === 404)) {
+    return (
+      <Card variant="borderless" style={surfaceCardStyle}>
+        <Result
+          status="404"
+          title="Không tìm thấy đơn hàng"
+          subTitle={id ? `Không có đơn hàng với ID ${id}.` : "URL không có ID đơn hàng hợp lệ."}
+          extra={<Button href="/orders">Quay lại danh sách đơn hàng</Button>}
+        />
+      </Card>
+    );
+  }
+
+  if (isLoading || (!record && isFetching)) {
+    return (
+      <Card variant="borderless" style={surfaceCardStyle}>
+        <Result
+          status="info"
+          title="Đang tải thông tin đơn hàng"
+          subTitle={`Đang truy vấn dữ liệu cho đơn hàng ID ${id}.`}
+        />
+      </Card>
+    );
+  }
+
+  if (isError || !record) {
+    return (
+      <Card variant="borderless" style={surfaceCardStyle}>
+        <Result
+          status="error"
+          title="Không thể tải dữ liệu đơn hàng"
+          subTitle="GraphQL hoặc kết nối backend đang gặp lỗi. Không có trạng thái nghiệp vụ nào được suy luận từ dữ liệu rỗng."
+          extra={
+            <Space wrap>
+              <Button type="primary" icon={<ReloadOutlined />} onClick={() => void query.refetch()}>
+                Thử tải lại
+              </Button>
+              <Button href="/orders">Quay lại danh sách</Button>
+            </Space>
+          }
+        />
+      </Card>
+    );
+  }
+
+  const renderLegacyLayout = false;
+
   return (
     <>
       {contextHolder}
       <Show
+        breadcrumb={false}
         isLoading={isLoading}
         title={false}
         headerButtons={() => <></>}
@@ -1378,6 +1488,7 @@ export const OrderShow = () => {
           },
         }}
       >
+        {renderLegacyLayout ? (
         <div
           style={{
             minHeight: "100%",
@@ -1458,16 +1569,10 @@ export const OrderShow = () => {
                         icon={<CheckCircleOutlined />}
                         style={primaryButtonStyle}
                         loading={isUpdatingStatus}
-                        disabled={
-                          !canOpenConfirmModal &&
-                          !canOpenDepositModal &&
-                          !canStartPurchasing &&
-                          !canConfirmPurchased &&
-                          !canManageTrackings
-                        }
+                        disabled={!primaryAction.enabled}
                         onClick={handlePrimaryAction}
                       >
-                        {primaryActionLabel}
+                        {primaryAction.label}
                       </Button>
                       <Button
                         icon={<InboxOutlined />}
@@ -1913,7 +2018,7 @@ export const OrderShow = () => {
                         </div>
                         <div style={modalSummaryRowStyle}>
                           <Text style={mutedTextStyle}>
-                            Đặt cọc ({depositPercentage}%)
+                            Đặt cọc ({displayedDepositPercentage}%)
                           </Text>
                           <Text strong style={{ color: "#2563eb" }}>
                             {depositDisplay}
@@ -2043,645 +2148,302 @@ export const OrderShow = () => {
             </Row>
           </Space>
         </div>
+        ) : (
+          <OrderDetailWorkspace
+            order={record}
+            statusMeta={statusMeta}
+            currentStep={currentStepIndex}
+            journeySteps={orderJourneySteps}
+            primaryAction={primaryAction}
+            updating={isUpdatingStatus}
+            productRows={productSummaryRows}
+            trackingRows={trackingSummaryRows}
+            historyEntries={historyTimelineItems}
+            itemsSubtotal={itemsSubtotal}
+            depositPercent={displayedDepositPercentage}
+            depositAmount={depositAmount}
+            depositRemainingAmount={depositRemainingAmount}
+            hasDepositRequest={hasDepositRequest}
+            hasPaidDeposit={hasPaidDeposit}
+            sourceLabel={orderSourceLabel(record)}
+            creatorLabel={orderCreatorLabel(record)}
+            formatDateTime={formatDateTime}
+            onPrimaryAction={handlePrimaryAction}
+            onManageTracking={openTrackingManager}
+            onRefresh={() => { void query.refetch(); }}
+            onOpenDeposit={() => setIsDepositModalOpen(true)}
+            taobaoProgress={taobaoPurchaseProgress}
+            onOpenTaobaoPurchases={openTaobaoPurchaseModal}
+          />
+        )}
       </Show>
-      <Modal
+      <OrderConfirmationModal
         open={isConfirmModalOpen}
+        order={record}
+        loading={isUpdatingStatus}
+        policies={riskPolicies}
+        policiesLoading={riskPoliciesLoading}
+        policiesError={riskPoliciesError}
+        preview={depositPolicyPreview}
+        previewLoading={depositPolicyPreviewLoading}
+        previewError={depositPolicyPreviewError}
+        riskLevel={riskLevel}
+        riskReason={riskReason}
+        waiveDeposit={waiveDeposit}
+        exceptionReason={depositExceptionReason}
+        evidence={riskEvidence}
+        onRiskLevelChange={setRiskLevel}
+        onRiskReasonChange={setRiskReason}
+        onWaiveDepositChange={setWaiveDeposit}
+        onExceptionReasonChange={setDepositExceptionReason}
+        onEvidenceChange={(key, value) => setRiskEvidence((current) => ({ ...current, [key]: value }))}
+        onRetry={() => setPolicyReloadKey((value) => value + 1)}
         onCancel={() => setIsConfirmModalOpen(false)}
-        onOk={handleConfirmOrder}
-        confirmLoading={isUpdatingStatus}
-        title={`Xác nhận đơn hàng ${record?.order_code}`}
-        okText="Xác nhận"
-        cancelText="Hủy"
-      >
-        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
-          <Text>Đơn hàng hợp lệ, bạn muốn xử lý tiếp?</Text>
-
-          <Radio.Group
-            value={depositOpions}
-            onChange={(e) => setDepositOptions(e.target.value)}
-            style={{ width: "100%" }}
-          >
-            <Space orientation="vertical" size={12} style={{ width: "100%" }}>
-              <div
-                style={{
-                  ...optionCardStyle,
-                  borderColor:
-                    depositOpions === "deposit" ? "#1677ff" : "#e5e7eb",
-                }}
-              >
-                <Radio value="deposit">
-                  <Text strong>Cần đặt cọc</Text>
-                </Radio>
-
-                <div style={{ marginTop: 8, marginLeft: 24 }}>
-                  <Text type="secondary">
-                    Đơn hàng sẽ chuyển sang trạng thái "awaiting_deposit"
-                  </Text>
-
-                  {depositOpions === "deposit" ? (
-                    <Space
-                      orientation="vertical"
-                      size={12}
-                      style={{ width: "100%", marginTop: 12 }}
-                    >
-                      <Space>
-                        <Text>Tỷ lệ đặt cọc</Text>
-                        <InputNumber
-                          min={0}
-                          max={100}
-                          value={depositPercentage}
-                          onChange={(value) =>
-                            setDepositPercentage(Number(value ?? 0))
-                          }
-                        />
-                        <Text>%</Text>
-                      </Space>
-
-                      <Text>
-                        Số tiền cần đặt cọc:{" "}
-                        <Text strong style={{ color: "#dc2626" }}>
-                          {depositDisplay}
-                        </Text>
-                      </Text>
-                    </Space>
-                  ) : null}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  ...optionCardStyle,
-                  borderColor:
-                    depositOpions === "no_deposit" ? "#1677ff" : "#e5e7eb",
-                }}
-              >
-                <Radio value="no_deposit">
-                  <Text strong>Không cần đặt cọc</Text>
-                </Radio>
-
-                <div style={{ marginTop: 8, marginLeft: 24 }}>
-                  <Text type="secondary">
-                    Đơn hàng sẽ chuyển sang trạng thái "purchasing"
-                  </Text>
-                </div>
-              </div>
-            </Space>
-          </Radio.Group>
-        </Space>
-      </Modal>
-      <Modal
+        onConfirm={handleConfirmOrder}
+      />
+      <DepositPaymentTrackingModal
         open={isDepositModalOpen}
-        onCancel={() => setIsDepositModalOpen(false)}
-        footer={null}
-        title={`Đơn hàng: ${record?.order_code ?? ""}`}
-      >
-        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
-          <Tag
-            color={normalizedOrderStatus === "deposited" ? "green" : "purple"}
-          >
-            {normalizedOrderStatus === "deposited"
-              ? "Đã đặt cọc"
-              : "Chờ đặt cọc"}
-          </Tag>
-
-          <div style={summaryBlockStyle}>
-            <div style={modalSummaryRowStyle}>
-              <Text>Tổng tiền tạm tính</Text>
-              <Text strong>{estimateTotalDisplay}</Text>
-            </div>
-            {hasDepositRequest ? (
-              <>
-                <div style={modalSummaryRowStyle}>
-                  <Text>{"Tổng tiền hàng gốc"}</Text>
-                  <Text strong>{formatCny(productTotalCny)}</Text>
-                </div>
-                <div style={modalSummaryRowStyle}>
-                  <Text>{"Tỷ giá đã chốt"}</Text>
-                  <Text strong>
-                    {lockedExchangeRate > 0
-                      ? `1 CNY = ${formatVnd(lockedExchangeRate)}`
-                      : "-"}
-                  </Text>
-                </div>
-                <div style={modalSummaryRowStyle}>
-                  <Text>{"Tổng quy đổi"}</Text>
-                  <Text strong>{formatVnd(productTotalVnd)}</Text>
-                </div>
-              </>
-            ) : null}
-            <div style={modalSummaryRowStyle}>
-              <Text>Tỷ lệ đặt cọc</Text>
-              <Text strong>{lockedDepositPercent}%</Text>
-            </div>
-            <div style={modalSummaryRowStyle}>
-              <Text>Số tiền cần đặt cọc</Text>
-              <Text strong>{depositDisplay}</Text>
-            </div>
-            <div style={modalSummaryRowStyle}>
-              <Text>Đã thanh toán</Text>
-              <Text strong>{depositPaidDisplay}</Text>
-            </div>
-            <div style={modalSummaryRowStyle}>
-              <Text>Còn phải thanh toán</Text>
-              <Text strong style={{ color: "#dc2626" }}>
-                {depositRemainingDisplay}
-              </Text>
-            </div>
-          </div>
-
-          {!hasDepositRequest ? (
-            <Space direction="vertical" size={12} style={{ width: "100%" }}>
-              <Alert
-                type="warning"
-                showIcon
-                message="Chưa thể hướng dẫn thanh toán vì chưa có yêu cầu đặt cọc VND hợp lệ."
-              />
-              <Button
-                type="primary"
-                loading={isUpdatingStatus}
-                onClick={handleCreateMissingDepositRequest}
-              >
-                {"Tạo yêu cầu đặt cọc"}
-              </Button>
-            </Space>
-          ) : (
-            <div style={bankInfoStyle}>
-              <Text strong>{"Hướng dẫn thanh toán"}</Text>
-              <div>
-                <Text>
-                  {"Ngân hàng: "}
-                  {depositBankName}
-                </Text>
-              </div>
-              <div>
-                <Text>STK: {depositBankAccountNumber}</Text>
-              </div>
-              <div>
-                <Text>
-                  {"Chủ TK: "}
-                  {depositBankAccountHolder}
-                </Text>
-              </div>
-              <div>
-                <Text>
-                  {"Số tiền chuyển khoản: "}
-                  {depositRemainingDisplay}
-                </Text>
-              </div>
-              <div>
-                <Text>
-                  {"Nội dung: "}
-                  {depositTransferContent}
-                </Text>
-              </div>
-              <div>
-                <Text>
-                  {"Trạng thái phiếu: "}
-                  {depositStatusDisplay}
-                </Text>
-              </div>
-            </div>
-          )}
-
-          {depositTransactions.length > 0 ? (
-            <Table
-              size="small"
-              pagination={false}
-              rowKey="id"
-              dataSource={depositTransactions}
-              columns={[
-                {
-                  title: "Mã hệ thống",
-                  dataIndex: "transaction_code",
-                },
-                {
-                  title: "Số tiền",
-                  dataIndex: "amount",
-                  render: (value) => formatVnd(Number(value ?? 0)),
-                },
-                {
-                  title: "Mã ngân hàng",
-                  dataIndex: "bank_transaction_code",
-                  render: (value) => value || "-",
-                },
-                {
-                  title: "Thời gian nhận",
-                  dataIndex: "received_at",
-                  render: (value) => formatDateTime(value ?? undefined),
-                },
-                {
-                  title: "Trạng thái",
-                  dataIndex: "status",
-                  render: (value) =>
-                    value === "confirmed"
-                      ? "Đã xác nhận"
-                      : value,
-                },
-              ]}
-            />
-          ) : null}
-
-          {depositVoucher?.invoice ? (
-            <Alert
-              type="success"
-              showIcon
-              message="Hóa đơn đặt cọc đã được tạo"
-              description={(
-                <Space wrap>
-                  <Tag color="gold">Hóa đơn đặt cọc</Tag>
-                  <Link to={`/invoices/${depositVoucher.invoice.id}`}>
-                    {depositVoucher.invoice.invoice_code} — {formatVnd(Number(depositVoucher.invoice.total_amount ?? 0))}
-                  </Link>
-                </Space>
-              )}
-            />
-          ) : null}
-
-          <Space orientation="vertical" size={8} style={{ width: "100%" }}>
-            <InputNumber
-              min={0}
-              precision={0}
-              step={1000}
-              style={{ width: "100%" }}
-              placeholder="Số tiền đã thanh toán (VND)"
-              value={manualDepositAmount}
-              onChange={(value) => setManualDepositAmount(Number(value ?? 0))}
-              formatter={(value) =>
-                value ? `${Number(value).toLocaleString("vi-VN")} VND` : ""
-              }
-              parser={(value) =>
-                Number(value?.replace(/\./g, "").replace(/[^\d]/g, "") || 0)
-              }
-            />
-            <Input
-              placeholder="Mã giao dịch / Mã chuyển khoản"
-              value={manualDepositCode}
-              onChange={(event) => setManualDepositCode(event.target.value)}
-              disabled={!hasDepositRequest || depositRemainingAmount <= 0}
-            />
-            <Input.TextArea
-              placeholder="Ghi chú xác nhận thanh toán"
-              value={manualDepositNote}
-              onChange={(event) => setManualDepositNote(event.target.value)}
-              disabled={!hasDepositRequest || depositRemainingAmount <= 0}
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </Space>
-
-          <Space style={{ width: "100%", justifyContent: "space-between" }}>
-            <Button
-              type="primary"
-              loading={isUpdatingStatus}
-              disabled={
-                !hasDepositRequest ||
-                depositRemainingAmount <= 0 ||
-                normalizedOrderStatus === "deposited" ||
-                manualDepositAmount !== depositRemainingAmount ||
-                !manualDepositCode.trim()
-              }
-              onClick={handleConfirmDepositPaid}
-            >
-              Xác nhận đã thanh toán
-            </Button>
-            <Button>Gửi nhắc nhở</Button>
-          </Space>
-        </Space>
-      </Modal>
+        order={record}
+        loading={isUpdatingStatus}
+        manualAmount={manualDepositAmount}
+        manualCode={manualDepositCode}
+        manualReason={manualDepositNote}
+        onManualAmountChange={setManualDepositAmount}
+        onManualCodeChange={setManualDepositCode}
+        onManualReasonChange={setManualDepositNote}
+        onManualConfirm={handleConfirmDepositPaid}
+        onReminder={handleSendDepositReminder}
+        onRefresh={() => { void query.refetch(); }}
+        onClose={() => setIsDepositModalOpen(false)}
+      />
+      <TaobaoPurchaseConfirmationModal
+        open={isTaobaoPurchaseModalOpen}
+        order={record}
+        progress={taobaoPurchaseProgress}
+        loading={taobaoPurchaseLoading}
+        onClose={() => setIsTaobaoPurchaseModalOpen(false)}
+        onSubmit={submitTaobaoPurchases}
+      />
       <Modal
         open={isTrackingManagerOpen}
         onCancel={() => setIsTrackingManagerOpen(false)}
-        width={1240}
+        width={1180}
         destroyOnHidden={false}
-        title={`Quản lý mã vận đơn - Đơn hàng ${record?.order_code ?? ""}`}
+        centered
+        title={null}
+        className="tracking-manager-modal"
         footer={
-          <Space style={{ width: "100%", justifyContent: "space-between" }}>
-            <div>
-              {isTrackingEditable &&
-              normalizedOrderStatus === "awaiting_tracking" ? (
-                <Button
-                  type="primary"
-                  ghost
-                  disabled={declaredTrackingCount === 0}
-                  loading={isUpdatingStatus}
-                  onClick={handleMoveToWaitingCnWarehouse}
-                >
-                  Chuyển sang chờ kho TQ nhận hàng
-                </Button>
-              ) : null}
-            </div>
-            <Space>
-              <Button onClick={() => setIsTrackingManagerOpen(false)}>
-                Hủy
-              </Button>
+          <footer className="tracking-manager-modal__footer">
+            {isTrackingEditable && normalizedOrderStatus === "awaiting_tracking" ? (
               <Button
                 type="primary"
+                ghost
+                icon={<InboxOutlined />}
+                disabled={declaredTrackingCount === 0}
+                loading={isUpdatingStatus}
+                onClick={handleMoveToWaitingCnWarehouse}
+              >
+                Chuyển sang chờ kho TQ nhận hàng
+              </Button>
+            ) : <span />}
+            <div className="tracking-manager-modal__footer-actions">
+              <Button onClick={() => setIsTrackingManagerOpen(false)}>Hủy</Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
                 loading={isUpdatingStatus}
                 disabled={!isTrackingEditable}
                 onClick={handleSaveAllTrackings}
               >
                 Lưu tất cả
               </Button>
-            </Space>
-          </Space>
+            </div>
+          </footer>
         }
       >
-        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
-          <Card size="small">
-            <Row gutter={[16, 16]} align="middle">
-              <Col xs={24} md={7}>
-                <Space orientation="vertical" size={2}>
-                  <Text type="secondary">Mã đơn hàng</Text>
-                  <Text strong>{record?.order_code ?? "-"}</Text>
-                  <Text type="secondary">
-                    Khách hàng: {record?.customer?.name ?? "-"}
-                  </Text>
-                  <Text type="secondary">
-                    Ngày đặt: {formatDateOnly(record?.created_at)}
-                  </Text>
-                </Space>
-              </Col>
-              <Col xs={12} md={3}>
-                <Space
-                  orientation="vertical"
-                  size={0}
-                  style={{ width: "100%", textAlign: "center" }}
-                >
-                  <Text type="secondary">Tổng SKU</Text>
-                  <Title level={2} style={{ margin: 0 }}>
-                    {items.length}
-                  </Title>
-                </Space>
-              </Col>
-              <Col xs={12} md={4}>
-                <Space
-                  orientation="vertical"
-                  size={0}
-                  style={{ width: "100%", textAlign: "center" }}
-                >
-                  <Text type="secondary">Da khai bao tracking</Text>
-                  <Title level={2} style={{ margin: 0, color: "#16a34a" }}>
-                    {declaredTrackingCount}
-                  </Title>
-                </Space>
-              </Col>
-              <Col xs={12} md={4}>
-                <Space
-                  orientation="vertical"
-                  size={0}
-                  style={{ width: "100%", textAlign: "center" }}
-                >
-                  <Text type="secondary">Cho kho TQ xac nhan item</Text>
-                  <Title level={2} style={{ margin: 0, color: "#f97316" }}>
-                    {remainingSkuCount}
-                  </Title>
-                </Space>
-              </Col>
-              <Col xs={24} md={6}>
-                <Alert
-                  type="info"
-                  showIcon
-                  title="Luu y"
-                  description="Buoc nay chi khai bao ma van don thuoc don hang. Item ben trong se duoc kho Trung Quoc xac nhan sau."
-                />
-              </Col>
-            </Row>
-          </Card>
+        <header className="tracking-manager-modal__header">
+          <span className="tracking-manager-modal__header-icon"><TruckOutlined /></span>
+          <h2>Quản lý mã vận đơn - Đơn hàng {record?.order_code ?? "-"}</h2>
+        </header>
 
-          <Row gutter={[16, 16]} align="top">
-            <Col xs={24} xl={10}>
-              <Card title="1. San pham trong don" size="small">
+        <div className="tracking-manager-modal__body">
+          <section className="tracking-manager-modal__overview">
+            <div className="tracking-manager-modal__order">
+              <span className="tracking-manager-modal__order-icon"><FileTextOutlined /></span>
+              <div><small>Mã đơn hàng</small><strong title={record?.order_code ?? "-"}>{record?.order_code ?? "-"}</strong></div>
+              <p><UserOutlined /> Khách hàng: <b>{record?.customer?.name ?? "-"}</b></p>
+              <p><ClockCircleOutlined /> Ngày đặt: {formatDateOnly(record?.created_at)}</p>
+            </div>
+            <div className="tracking-manager-modal__metrics">
+              <div className="tracking-manager-modal__metric">
+                <span><AppstoreOutlined /></span><small>Tổng SKU</small><strong>{items.length}</strong>
+              </div>
+              <div className="tracking-manager-modal__metric tracking-manager-modal__metric--success">
+                <span><TruckOutlined /></span><small>Đã khai báo tracking</small><strong>{declaredTrackingCount}</strong>
+              </div>
+              <div className="tracking-manager-modal__metric tracking-manager-modal__metric--warning">
+                <span><InboxOutlined /></span><small>Chờ kho TQ xác nhận item</small><strong>{remainingSkuCount}</strong>
+              </div>
+            </div>
+            <aside className="tracking-manager-modal__notice">
+              <span><InfoCircleOutlined /></span>
+              <div><strong>Lưu ý</strong><p>Bước này chỉ khai báo mã vận đơn thuộc đơn hàng. Item bên trong sẽ được kho Trung Quốc xác nhận sau.</p></div>
+            </aside>
+          </section>
+
+          <div className="tracking-manager-modal__columns">
+            <section className="tracking-manager-modal__panel">
+              <header className="tracking-manager-modal__panel-header">
+                <h3><AppstoreOutlined />1. Sản phẩm trong đơn ({items.length})</h3>
+              </header>
+              <div className="tracking-manager-modal__panel-body">
                 {items.length === 0 ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="Đơn hàng chưa có sản phẩm."
-                  />
+                  <div className="tracking-manager-modal__empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đơn hàng chưa có sản phẩm." /></div>
                 ) : (
-                  <Space
-                    orientation="vertical"
-                    size={12}
-                    style={{ width: "100%" }}
-                  >
-                    <Alert
-                      type="info"
-                      showIcon
-                      message="Danh sach san pham cua don duoc giu de kho TQ doi chieu sau khi nhan hang."
-                    />
-                    <Table
-                      size="small"
-                      pagination={false}
-                      rowKey="key"
-                      scroll={{ x: 720 }}
-                      dataSource={items.map((item, index) => ({
-                        key: item.id,
-                        index: index + 1,
-                        productName: item.product_name,
-                        shop: item.shop_name ?? item.seller ?? "-",
-                        variant: getVariantLabel(item),
-                        quantity: item.quantity,
-                      }))}
-                      columns={[
-                        {
-                          title: "#",
-                          dataIndex: "index",
-                          width: 48,
-                          align: "center" as const,
-                        },
-                        {
-                          title: "San pham",
-                          dataIndex: "productName",
-                          key: "productName",
-                        },
-                        {
-                          title: "Shop",
-                          dataIndex: "shop",
-                          key: "shop",
-                          width: 160,
-                        },
-                        {
-                          title: "Phan loai",
-                          dataIndex: "variant",
-                          key: "variant",
-                          width: 140,
-                        },
-                        {
-                          title: "SL dat",
-                          dataIndex: "quantity",
-                          key: "quantity",
-                          width: 80,
-                          align: "center" as const,
-                        },
-                      ]}
-                    />
-                  </Space>
+                  <>
+                    <Alert type="info" showIcon message="Danh sách sản phẩm của đơn được gửi về kho Trung Quốc để đối chiếu sau khi nhận hàng." />
+                    <div className="tracking-products-scroll">
+                      <Table
+                        className="tracking-products-table"
+                        size="small"
+                        pagination={false}
+                        rowKey="key"
+                        tableLayout="fixed"
+                        dataSource={items.map((item, index) => ({
+                          key: item.id,
+                          index: index + 1,
+                          item,
+                          shop: item.shop_name ?? item.seller ?? "-",
+                          variant: getVariantLabel(item),
+                          quantity: item.quantity,
+                        }))}
+                        columns={[
+                          { title: "#", dataIndex: "index", width: 36, align: "center" as const },
+                          {
+                            title: "Sản phẩm",
+                            dataIndex: "item",
+                            key: "product",
+                            render: (item: IOrderItem) => (
+                              <div className="tracking-product-cell">
+                                <Popover
+                                  overlayClassName="tracking-product-popover"
+                                  content={<TrackingProductPreview item={item} />}
+                                  trigger={["hover", "focus", "click"]}
+                                  placement="bottomLeft"
+                                  mouseEnterDelay={0.15}
+                                >
+                                  <button type="button" className="tracking-product-cell__trigger" aria-label={`Xem chi tiết ${item.product_name}`}>
+                                    <span className="tracking-product-cell__image">
+                                      {item.product_image ? <img src={item.product_image} alt="" /> : <ShoppingOutlined />}
+                                    </span>
+                                    <span className="tracking-product-cell__name" title={item.product_name}>{item.product_name || "Sản phẩm chưa có tên"}</span>
+                                  </button>
+                                </Popover>
+                              </div>
+                            ),
+                          },
+                          { title: "Shop", dataIndex: "shop", key: "shop", width: 100, render: (value: string) => <span className="tracking-table-ellipsis" title={value}>{value}</span> },
+                          { title: "Phân loại", dataIndex: "variant", key: "variant", width: 82, render: (value: string) => <span className="tracking-table-ellipsis" title={value}>{value}</span> },
+                          { title: "SL", dataIndex: "quantity", key: "quantity", width: 45, align: "center" as const },
+                        ]}
+                      />
+                    </div>
+                  </>
                 )}
-              </Card>
-            </Col>
+              </div>
+            </section>
 
-            <Col xs={24} xl={14}>
-              <Card
-                title="2. Danh sách mã vận đơn"
-                size="small"
-                extra={
-                  <Button
-                    type="dashed"
-                    onClick={addTrackingDraft}
-                    disabled={!isTrackingEditable}
-                  >
-                    + Thêm mã vận đơn khác
-                  </Button>
-                }
-              >
+            <section className="tracking-manager-modal__panel">
+              <header className="tracking-manager-modal__panel-header">
+                <h3><TruckOutlined />2. Danh sách mã vận đơn</h3>
+                <Button type="primary" onClick={addTrackingDraft} disabled={!isTrackingEditable}>+ Thêm mã vận đơn khác</Button>
+              </header>
+              <div className="tracking-manager-modal__panel-body">
                 {trackingDrafts.length === 0 ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="Chưa có mã vận đơn nào. Hãy thêm block mã vận đơn đầu tiên."
-                  />
+                  <div className="tracking-manager-modal__empty">
+                    <div>
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={<><strong>Chưa có mã vận đơn nào</strong><span>Hãy thêm mã vận đơn đầu tiên để quản lý vận chuyển.</span></>}
+                      />
+                      <Button type="primary" onClick={addTrackingDraft} disabled={!isTrackingEditable}>+ Thêm mã vận đơn</Button>
+                    </div>
+                  </div>
                 ) : (
-                  <Space
-                    orientation="vertical"
-                    size={16}
-                    style={{ width: "100%" }}
-                  >
+                  <div className="tracking-manager-modal__list">
                     {trackingDrafts.map((tracking, trackingIndex) => (
                       <Card
+                        className="tracking-manager-modal__tracking-card"
                         key={tracking.local_id}
                         size="small"
                         title={`Mã vận đơn #${trackingIndex + 1}`}
-                        extra={
-                          <Button
-                            danger
-                            type="text"
-                            disabled={!isTrackingEditable}
-                            onClick={() => removeTrackingDraft(trackingIndex)}
-                          >
-                            Xóa mã này
-                          </Button>
-                        }
+                        extra={<Button danger type="text" disabled={!isTrackingEditable || isReceivedTracking(tracking.id)} onClick={() => removeTrackingDraft(trackingIndex)}>Xóa mã này</Button>}
                       >
-                        <Space
-                          orientation="vertical"
-                          size={16}
-                          style={{ width: "100%" }}
-                        >
-                          <Row gutter={[12, 12]}>
-                            <Col xs={24} md={10}>
-                              <Text>Mã vận đơn *</Text>
-                              <Input
-                                value={tracking.tracking_number}
-                                disabled={!isTrackingEditable}
-                                onChange={(event) =>
-                                  updateTrackingDraft(
-                                    trackingIndex,
-                                    "tracking_number",
-                                    event.target.value.toUpperCase(),
-                                  )
-                                }
-                                placeholder="VD: YD123456789CN"
-                              />
-                            </Col>
-                            <Col xs={24} md={7}>
-                              <Text>Đơn vị vận chuyển *</Text>
-                              <Select
-                                value={tracking.carrier ?? undefined}
-                                disabled={!isTrackingEditable}
-                                options={carrierOptions}
-                                onChange={(value) =>
-                                  updateTrackingDraft(
-                                    trackingIndex,
-                                    "carrier",
-                                    value,
-                                  )
-                                }
-                                placeholder="Chọn đơn vị"
-                              />
-                            </Col>
-                            <Col xs={24} md={7}>
-                              <Text>Shop / người bán</Text>
-                              <Input
-                                value={getTrackingShopSummary()}
-                                disabled
-                              />
-                            </Col>
-                            <Col xs={24} md={7}>
-                              <Text>Ngày phát hàng</Text>
-                              <DatePicker
-                                style={{ width: "100%" }}
-                                value={
-                                  tracking.dispatched_at
-                                    ? dayjs(tracking.dispatched_at)
-                                    : null
-                                }
-                                disabled={!isTrackingEditable}
-                                format="DD/MM/YYYY"
-                                onChange={(value) =>
-                                  updateTrackingDraft(
-                                    trackingIndex,
-                                    "dispatched_at",
-                                    value
-                                      ? value
-                                          .startOf("day")
-                                          .format("YYYY-MM-DD HH:mm:ss")
-                                      : null,
-                                  )
-                                }
-                              />
-                            </Col>
-                            <Col xs={24} md={17}>
-                              <Text>Ghi chú</Text>
-                              <Input.TextArea
-                                rows={2}
-                                value={tracking.note ?? ""}
-                                disabled={!isTrackingEditable}
-                                onChange={(event) =>
-                                  updateTrackingDraft(
-                                    trackingIndex,
-                                    "note",
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="Ví dụ: Shop đóng gói cẩn thận"
-                              />
-                            </Col>
-                          </Row>
-
-                          <Space
-                            orientation="vertical"
-                            size={10}
-                            style={{ width: "100%" }}
-                          >
-                            <Alert
-                              type="info"
-                              showIcon
-                              message="Item trong tracking này chưa được xác định ở bước khai báo. Kho Trung Quốc sẽ xác nhận sau khi nhận hàng thực tế."
+                        <Row gutter={[10, 10]}>
+                          <Col xs={24} md={10}>
+                            <Text>Mã vận đơn *</Text>
+                            <Input value={tracking.tracking_number} disabled={!isTrackingEditable || isReceivedTracking(tracking.id)} onChange={(event) => updateTrackingDraft(trackingIndex, "tracking_number", event.target.value.toUpperCase())} placeholder="VD: YD123456789CN" />
+                          </Col>
+                          <Col xs={24} md={7}>
+                            <Text>Đơn vị vận chuyển *</Text>
+                            <Select style={{ width: "100%" }} value={tracking.carrier ?? undefined} disabled={!isTrackingEditable} options={carrierOptions} onChange={(value) => updateTrackingDraft(trackingIndex, "carrier", value)} placeholder="Chọn đơn vị" />
+                          </Col>
+                          <Col xs={24} md={7}>
+                            <Text>Shop / người bán</Text>
+                            <Input value={getTrackingShopSummary()} disabled />
+                          </Col>
+                          <Col xs={24} md={7}>
+                            <Text>Ngày phát hàng</Text>
+                            <DatePicker style={{ width: "100%" }} value={tracking.dispatched_at ? dayjs(tracking.dispatched_at) : null} disabled={!isTrackingEditable} format="DD/MM/YYYY" onChange={(value) => updateTrackingDraft(trackingIndex, "dispatched_at", value ? value.startOf("day").format("YYYY-MM-DD HH:mm:ss") : null)} />
+                          </Col>
+                          <Col xs={24} md={17}>
+                            <Text>Ghi chú</Text>
+                            <Input.TextArea rows={2} value={tracking.note ?? ""} disabled={!isTrackingEditable} onChange={(event) => updateTrackingDraft(trackingIndex, "note", event.target.value)} placeholder="Ví dụ: Shop đóng gói cẩn thận" />
+                          </Col>
+                          <Col xs={24}>
+                            <Text>Các đơn mua Taobao liên quan (không bắt buộc)</Text>
+                            <Select
+                              mode="multiple"
+                              allowClear
+                              style={{ width: "100%" }}
+                              value={tracking.taobao_purchase_order_ids ?? []}
+                              disabled={!isTrackingEditable || isReceivedTracking(tracking.id)}
+                              options={(taobaoPurchaseProgress?.purchases ?? []).map((purchase) => ({
+                                value: String(purchase.id),
+                                label: `${purchase.external_order_code}${purchase.shop_name ? ` · ${purchase.shop_name}` : ""}`,
+                              }))}
+                              onChange={(value) => updateTrackingDraft(trackingIndex, "taobao_purchase_order_ids", value)}
+                              placeholder="Chọn một hoặc nhiều đơn mua đã xác minh"
                             />
-                          </Space>
-                        </Space>
+                            {!tracking.taobao_purchase_order_ids?.length &&
+                              <Text type="secondary">Chưa xác định đơn mua Taobao — có thể đối chiếu sau.</Text>}
+                            {isReceivedTracking(tracking.id) &&
+                              <div><Text type="secondary">Đã tiếp nhận vào kho. Xác minh nguồn mua tại Kho Trung Quốc.</Text></div>}
+                          </Col>
+                        </Row>
+                        <div className="tracking-manager-modal__tracking-hint"><InfoCircleOutlined /> Item trong tracking này chưa được xác định ở bước khai báo. Kho Trung Quốc sẽ xác nhận sau khi nhận hàng thực tế.</div>
                       </Card>
                     ))}
-                  </Space>
+                  </div>
                 )}
-              </Card>
-            </Col>
-          </Row>
+              </div>
+            </section>
+          </div>
 
           {isTrackingEditable ? (
-            <Alert
-              type="info"
-              showIcon
-              title="Buoc xac nhan item duoc thuc hien tai kho TQ"
-              description="Tai day chi luu danh sach tracking cua don. Sau khi hang ve kho Trung Quoc, nhan vien se doi chieu va xac nhan item trong tung tracking."
-            />
+            <section className="tracking-manager-modal__warehouse-note">
+              <span><InfoCircleOutlined /></span>
+              <div><strong>Bước xác nhận item được thực hiện tại kho Trung Quốc</strong><p>Tại đây chỉ lưu danh sách tracking của đơn. Sau khi hàng về kho Trung Quốc, nhân viên sẽ đối chiếu và xác nhận item trong từng tracking.</p></div>
+            </section>
           ) : null}
 
           {isTrackingReadonly ? (
-            <Alert
-              type="info"
-              showIcon
-              title="Đơn hàng đang ở chế độ chỉ xem"
-              description="Đơn hàng đã ở trạng thái không còn cho phép chỉnh sửa mã vận đơn."
-            />
+            <section className="tracking-manager-modal__warehouse-note">
+              <span><InfoCircleOutlined /></span>
+              <div><strong>Đơn hàng đang ở chế độ chỉ xem</strong><p>Đơn hàng đã ở trạng thái không còn cho phép chỉnh sửa mã vận đơn.</p></div>
+            </section>
           ) : null}
-        </Space>
+        </div>
       </Modal>
     </>
   );

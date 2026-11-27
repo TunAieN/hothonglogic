@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\CustomerAccount;
+use App\Services\Customers\CustomerVipService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
@@ -54,12 +56,14 @@ class CustomerAuthController extends Controller
 
         try {
             $account = DB::transaction(function () use ($data, $email, $phone, $request, $emailVerificationRequired) {
+                $vip = app(CustomerVipService::class)->attributesForNewCustomer();
                 $customer = Customer::create([
                     'code' => $this->newCustomerCode(),
                     'name' => trim($data['name']),
                     'phone' => $phone,
                     'email' => $email,
                     'status' => 'active',
+                    ...$vip,
                 ]);
                 $account = CustomerAccount::create([
                     'customer_id' => $customer->id,
@@ -266,6 +270,12 @@ class CustomerAuthController extends Controller
 
     private function accountPayload(CustomerAccount $account): array
     {
+        $account->loadMissing('customer.vipTier');
+        $tier = $account->customer->vipTier;
+        $nextTier = $tier && Schema::hasTable('vip_tiers')
+            ? \App\Models\VipTier::query()->where('is_active', true)->where('priority', '>', $tier->priority)->orderBy('priority')->first()
+            : null;
+
         return [
             'id' => $account->id, 'customer_id' => $account->customer_id,
             'customer_code' => $account->customer->code, 'name' => $account->customer->name,
@@ -273,6 +283,13 @@ class CustomerAuthController extends Controller
             'email_verified' => (bool) $account->email_verified_at,
             'email_verification_required' => $this->emailVerificationRequired(),
             'created_at' => $account->created_at?->toISOString(),
+            'vip' => [
+                'code' => $tier?->code, 'name' => $tier?->name ?? $account->customer->vip_group,
+                'qualified_spend_vnd' => (int) ($account->customer->vip_qualified_spend_vnd ?? 0),
+                'base_deposit_percent' => $tier?->deposit_policy_enabled ? (float) $tier->base_deposit_percent : null,
+                'deposit_policy_enabled' => (bool) ($tier?->deposit_policy_enabled ?? false),
+                'next_tier_name' => $nextTier?->name, 'next_tier_minimum_spend_vnd' => $nextTier?->minimum_spend_vnd,
+            ],
         ];
     }
 

@@ -70,6 +70,11 @@ final class SepayAccountRegistry
 
     private function normalize(string $value): string
     {
-        return strtoupper(preg_replace('/\s+/', '', trim($value)) ?? '');
+        $normalized = strtoupper(preg_replace('/\s+/', '', trim($value)) ?? '');
+
+        // SePay sends "MBBank" in webhook payloads while the local payment
+        // account and VietQR bank code use "MB". Compare the canonical code so
+        // a verified MB account is not incorrectly sent to reconciliation.
+        return $normalized === 'MBBANK' ? 'MB' : $normalized;
     }
 }

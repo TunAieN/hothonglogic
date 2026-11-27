@@ -401,7 +401,10 @@ const getOneByResource = async <TResource extends ResourceName>(
   const data = response[config.detailQueryName];
 
   if (!data) {
-    throw new Error(`Resource "${resource}" with id "${String(id)}" was not found.`);
+    throw Object.assign(
+      new Error(`Resource "${resource}" with id "${String(id)}" was not found.`),
+      { statusCode: 404 },
+    );
   }
 
   return { data };

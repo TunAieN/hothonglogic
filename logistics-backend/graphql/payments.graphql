@@ -63,6 +63,53 @@ type PaymentVoucher {
   deliveryRequest: DeliveryRequest @hasOne
   transactions: [PaymentTransaction!]! @hasMany
   invoice: Invoice @hasOne
+  paymentAutomation: DepositPaymentAutomation!
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@automation")
+}
+
+type DepositPaymentAutomation {
+  enabled: Boolean!
+  intent: DepositPaymentIntent
+  latest_event: DepositWebhookEvent
+  notifications: [CustomerNotification!]!
+}
+
+type DepositPaymentIntent {
+  reference: String!
+  amount_vnd: Float!
+  status: String!
+  display_status: String!
+  expires_at: DateTime
+  created_at: DateTime
+  completed_at: DateTime
+  qr_url: String
+  bank_name: String
+  bank_code: String
+  account_number: String
+  account_holder: String
+}
+
+type DepositWebhookEvent {
+  provider_transaction_id: String!
+  status: String!
+  reconciliation_reason: String
+  amount_vnd: Float
+  occurred_at: DateTime
+  processed_at: DateTime
+}
+
+type CustomerNotification {
+  id: ID!
+  type: String!
+  channel: String!
+  status: String!
+  title: String!
+  body: String!
+  action_url: String
+  sent_by: ID
+  sent_at: DateTime
+  read_at: DateTime
+  created_at: DateTime!
 }
 
 type PaymentVoucherItem {
@@ -97,6 +144,8 @@ type DeliveryAddress {
   source_customer_address_id: ID
   receiver_name: String!
   receiver_phone: String!
+  country_code: String
+  country_name: String
   province_code: String
   province_name: String
   district_code: String
@@ -164,6 +213,9 @@ type PaymentTransaction {
   bank_transaction_code: String
   received_at: DateTime!
   confirmed_by: ID
+  confirmation_source: String
+  provider: String
+  provider_transaction_id: String
   status: String!
   note: String
   proof_image_path: String

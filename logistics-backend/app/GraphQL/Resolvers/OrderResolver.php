@@ -3,11 +3,14 @@
 namespace App\GraphQL\Resolvers;
 
 use App\Models\CnPackage;
+use App\Models\AuditLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderTracking;
 use App\Models\OrderTrackingItem;
+use App\Models\TaobaoPurchaseOrder;
 use App\Services\Orders\OrderPricingService;
+use App\Services\Orders\OrderDepositPolicyService;
 use App\Services\Payments\PaymentVoucherService;
 use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +25,7 @@ class OrderResolver
     public function __construct(
         private readonly OrderPricingService $pricingService,
         private readonly PaymentVoucherService $paymentVoucherService,
+        private readonly OrderDepositPolicyService $depositPolicyService,
     ) {}
 
     public function list($_, array $args): Builder
@@ -125,7 +129,7 @@ class OrderResolver
         BusinessWriteGuard::assertEnabled(__METHOD__);
 
         return DB::transaction(function () use ($args) {
-            $order = Order::findOrFail($args['id']);
+            $order = Order::query()->lockForUpdate()->findOrFail($args['id']);
             $input = $args['input'];
 
             $nextItems = null;
@@ -149,12 +153,22 @@ class OrderResolver
             $currentStatus = (string) $order->status;
             $nextStatus = $input['status'] ?? $order->status;
 
+            if ($currentStatus === 'purchasing' && in_array($nextStatus, ['awaiting_tracking', 'waiting_cn_warehouse'], true) && Schema::hasTable('taobao_purchase_orders')) {
+                throw new HttpException(422, 'Hãy dùng luồng Xác nhận đã đặt hàng Taobao để kiểm tra đủ số lượng trước khi chuyển trạng thái.');
+            }
+
             if ($nextStatus === 'deposited' && (int) ($order->deposit_remaining_amount_vnd ?? 0) > 0) {
                 throw new HttpException(422, 'Chua the xac nhan da dat coc khi so tien coc chua thanh toan du.');
             }
 
             if ($nextStatus === 'awaiting_deposit' && ($currentStatus !== 'awaiting_deposit' || (int) ($order->deposit_amount_vnd ?? 0) <= 0)) {
-                $order = $this->createDepositRequest($order, $input['deposit_percent'] ?? null);
+                $order = $this->createDepositRequest($order, $input);
+            } elseif ($currentStatus === 'pending' && $nextStatus === 'purchasing') {
+                $lockedOrder = $order->exchange_rate_locked_at ? $order->fresh('items') : $this->pricingService->lockExchangeRateForOrder($order);
+                if (Schema::hasTable('order_deposit_policy_snapshots')) {
+                    $this->depositPolicyService->assess($lockedOrder, [...$input, 'waive_deposit' => true]);
+                }
+                $order = $lockedOrder;
             }
 
             $order->update([
@@ -172,6 +186,7 @@ class OrderResolver
                     $input['deposit_percent'] ?? $order->deposit_percent,
                     false,
                 );
+                $this->depositPolicyService->markVoucherIssued($order);
             }
 
             if ($nextItems !== null) {
@@ -336,19 +351,20 @@ class OrderResolver
         return strtolower((string) $order->status) === 'pending';
     }
 
-    private function createDepositRequest(Order $order, mixed $depositPercent): Order
+    private function createDepositRequest(Order $order, array $input): Order
     {
-        $percent = round((float) ($depositPercent ?? 70), 2);
-        if ($percent <= 0 || $percent > 100) {
-            throw new HttpException(422, 'Ty le dat coc phai lon hon 0 va khong vuot qua 100%.');
-        }
-
         $lockedOrder = $order->exchange_rate_locked_at ? $order->fresh('items') : $this->pricingService->lockExchangeRateForOrder($order);
         $baseAmountVnd = (int) ($lockedOrder->product_total_vnd ?? 0);
         if ($baseAmountVnd <= 0 || ! $lockedOrder->exchange_rate_locked_at) {
             throw new HttpException(422, 'Chua the tao yeu cau dat coc vi chua xac dinh duoc so tien VND.');
         }
 
+        $percent = Schema::hasTable('order_deposit_policy_snapshots')
+            ? (float) $this->depositPolicyService->assess($lockedOrder, $input)->final_percent
+            : round((float) ($input['deposit_percent'] ?? 70), 2);
+        if ($percent <= 0 || $percent > 100) {
+            throw new HttpException(422, 'Tỷ lệ đặt cọc phải lớn hơn 0 và không vượt quá 100%.');
+        }
         $depositAmount = (int) round($baseAmountVnd * $percent / 100);
         if ($depositAmount <= 0) {
             throw new HttpException(422, 'So tien dat coc phai lon hon 0.');
@@ -365,6 +381,15 @@ class OrderResolver
         ])->save();
 
         return $lockedOrder->fresh('items');
+    }
+
+    public function depositPolicyPreview($_, array $args): array
+    {
+        $order = Order::query()
+            ->with(['items', 'customer.vipTier'])
+            ->findOrFail($args['order_id']);
+
+        return $this->depositPolicyService->preview($order, $args['risk_level'] ?? null);
     }
 
     private function parseDateTime(mixed $value): ?Carbon
@@ -401,7 +426,11 @@ class OrderResolver
         $nonStatusFields = array_values(array_diff(array_keys($input), ['status']));
         $nextStatus = strtolower(trim((string) $input['status']));
 
-        if ($nonStatusFields !== [] && ! ($nextStatus === 'awaiting_deposit' && $nonStatusFields === ['deposit_percent'])) {
+        $confirmationFields = ['deposit_percent', 'risk_level', 'risk_reason', 'risk_evidence', 'waive_deposit', 'exception_reason'];
+        if ($nonStatusFields !== [] && ! in_array($nextStatus, ['awaiting_deposit', 'purchasing'], true)) {
+            return false;
+        }
+        if (array_diff($nonStatusFields, $confirmationFields) !== []) {
             return false;
         }
 
@@ -496,7 +525,8 @@ class OrderResolver
     {
         $orderItems = $order->items()->get()->keyBy(fn (OrderItem $item) => (string) $item->id);
         $existingTrackingsCollection = $order->orderTrackings()
-            ->with(['trackingItems', 'packages'])
+            ->with(['trackingItems', 'packages' => fn ($packages) => $packages->lockForUpdate()])
+            ->lockForUpdate()
             ->get();
         $existingTrackings = $existingTrackingsCollection
             ->keyBy(fn (OrderTracking $tracking) => (string) $tracking->id);
@@ -505,13 +535,26 @@ class OrderResolver
             ->map(fn (array $trackingInput) => $this->normalizeTrackingPayload($trackingInput, $orderItems));
 
         $this->assertTrackingNumbersUniqueWithinOrder($trackingPayloads);
-        $this->assertTrackingQuantitiesWithinOrderLimits($trackingPayloads, $orderItems);
+        if ($trackingPayloads->contains('has_tracking_items', true)) {
+            $effectiveAllocations = $trackingPayloads->map(function (array $payload) use ($existingTrackings, $orderItems) {
+                $tracking = $existingTrackings->get($payload['id']);
+                $hasWarehouseReceipt = $tracking?->packages->contains(fn (CnPackage $package) => $package->received_at !== null) ?? false;
+                if ($tracking && (! $payload['has_tracking_items'] || $hasWarehouseReceipt)) {
+                    $payload['package_items'] = $tracking->trackingItems->map(fn (OrderTrackingItem $item) => [
+                        'order_item' => $orderItems->get((string) $item->order_item_id),
+                        'quantity' => (int) $item->quantity,
+                    ])->filter(fn (array $item) => $item['order_item'] !== null);
+                }
+
+                return $payload;
+            });
+            $this->assertTrackingQuantitiesWithinOrderLimits($effectiveAllocations, $orderItems);
+        }
 
         $keepTrackingIds = [];
 
         foreach ($trackingPayloads as $payload) {
             $selectedItems = $payload['package_items'];
-            $declaredValue = $this->calculateDeclaredValueFromSelections($selectedItems);
             $tracking = null;
 
             if ($payload['id'] !== null) {
@@ -521,6 +564,32 @@ class OrderResolver
             if ($payload['id'] !== null && ! $tracking) {
                 throw new HttpException(422, 'Tracking does not belong to this order.');
             }
+
+            $keepWarehouseEvidence = $tracking?->packages->contains(fn (CnPackage $package) => $package->received_at !== null) ?? false;
+            if ($keepWarehouseEvidence) {
+                if (strtoupper(trim($tracking->tracking_number)) !== $payload['tracking_number']) {
+                    throw new HttpException(422, 'Không thể đổi mã vận đơn đã được kho tiếp nhận.');
+                }
+                if ($payload['taobao_purchase_order_ids'] !== null) {
+                    $before = $tracking->taobaoPurchaseOrders()->pluck('taobao_purchase_orders.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+                    $requested = collect($payload['taobao_purchase_order_ids'])->unique()->sort()->values()->all();
+                    if ($before !== $requested) {
+                        throw new HttpException(422, 'Dùng thao tác Xác minh đơn Taobao tại Kho Trung Quốc cho vận đơn đã tiếp nhận.');
+                    }
+                }
+                $keepTrackingIds[] = (string) $tracking->id;
+                $tracking->update([
+                    'carrier' => $payload['carrier'] ?? $tracking->carrier,
+                    'dispatched_at' => $payload['dispatched_at'],
+                    'note' => $payload['note'],
+                ]);
+                continue;
+            }
+
+            $replaceTrackingItems = ! $tracking || $payload['has_tracking_items'];
+            $declaredValue = $replaceTrackingItems
+                ? $this->calculateDeclaredValueFromSelections($selectedItems)
+                : $tracking->declared_value;
 
             $duplicateTracking = OrderTracking::query()
                 ->where('tracking_number', $payload['tracking_number'])
@@ -556,17 +625,38 @@ class OrderResolver
 
             $keepTrackingIds[] = (string) $tracking->id;
 
-            $tracking->trackingItems()->delete();
-
-            foreach ($selectedItems as $selection) {
-                OrderTrackingItem::query()->create([
-                    'order_tracking_id' => $tracking->id,
-                    'order_item_id' => $selection['order_item']->id,
-                    'quantity' => $selection['quantity'],
-                ]);
+            if ($replaceTrackingItems) {
+                $tracking->trackingItems()->delete();
+                foreach ($selectedItems as $selection) {
+                    OrderTrackingItem::query()->create([
+                        'order_tracking_id' => $tracking->id,
+                        'order_item_id' => $selection['order_item']->id,
+                        'quantity' => $selection['quantity'],
+                    ]);
+                }
             }
 
             $this->reconcilePackagesWithTracking($tracking);
+
+            if ($payload['taobao_purchase_order_ids'] !== null) {
+                $purchaseIds = collect($payload['taobao_purchase_order_ids'])->unique()->values();
+                $validCount = TaobaoPurchaseOrder::query()->where('order_id', $order->id)->whereIn('id', $purchaseIds)->count();
+                if ($validCount !== $purchaseIds->count()) {
+                    throw new HttpException(422, 'Đơn mua Taobao liên kết vận đơn không thuộc đơn VietTrung này.');
+                }
+                $beforePurchaseIds = $tracking->taobaoPurchaseOrders()->pluck('taobao_purchase_orders.id')->map(fn ($id) => (string) $id)->sort()->values()->all();
+                $tracking->taobaoPurchaseOrders()->syncWithPivotValues($purchaseIds->all(), ['linked_by' => Auth::id()]);
+                $afterPurchaseIds = $purchaseIds->map(fn ($id) => (string) $id)->sort()->values()->all();
+                if ($beforePurchaseIds !== $afterPurchaseIds) {
+                    AuditLog::create([
+                        'user_id' => Auth::id(), 'action' => 'taobao_purchase_tracking_links_updated',
+                        'entity_type' => OrderTracking::class, 'entity_id' => (string) $tracking->id,
+                        'before_data' => ['taobao_purchase_order_ids' => $beforePurchaseIds],
+                        'after_data' => ['taobao_purchase_order_ids' => $afterPurchaseIds],
+                        'ip' => request()?->ip(), 'user_agent' => request()?->userAgent(), 'created_at' => now(),
+                    ]);
+                }
+            }
         }
 
         $trackingsToDelete = $order->orderTrackings()
@@ -574,6 +664,12 @@ class OrderResolver
             ->get();
 
         foreach ($trackingsToDelete as $tracking) {
+            if ($tracking->packages()->whereNotNull('received_at')->lockForUpdate()->first(['id'])) {
+                throw new HttpException(422, sprintf('Không thể xóa mã vận đơn "%s" đã được kho tiếp nhận.', $tracking->tracking_number));
+            }
+            if (Schema::hasTable('taobao_purchase_order_trackings') && $tracking->taobaoPurchaseOrders()->exists()) {
+                throw new HttpException(422, sprintf('Không thể xóa mã vận đơn "%s" vì đã liên kết với đơn mua Taobao.', $tracking->tracking_number));
+            }
             CnPackage::query()
                 ->where('order_tracking_id', $tracking->id)
                 ->update([
@@ -623,6 +719,12 @@ class OrderResolver
             'dispatched_at' => $this->normalizeOptionalString($trackingInput['dispatched_at'] ?? null),
             'note' => $this->normalizeOptionalString($trackingInput['note'] ?? null),
             'package_items' => $selectedItems,
+            'has_tracking_items' => isset($trackingInput['tracking_items']) || isset($trackingInput['package_items']),
+            // Omitted means preserve legacy links. An explicit array replaces only
+            // the purchase links of this tracking; it never invokes purchase sync.
+            'taobao_purchase_order_ids' => array_key_exists('taobao_purchase_order_ids', $trackingInput)
+                ? array_map('intval', $trackingInput['taobao_purchase_order_ids'] ?? [])
+                : null,
         ];
     }
 
@@ -717,6 +819,7 @@ class OrderResolver
             'orderTrackings.trackingItems.orderItem',
             'orderTrackings.packages',
             'depositVoucher.transactions',
+            'deliveryRequest.address',
         ];
     }
 

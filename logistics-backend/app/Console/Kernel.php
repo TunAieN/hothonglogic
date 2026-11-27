@@ -13,7 +13,10 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         if (config('sepay.enabled') && config('business.writes_enabled') && config('business.financial_writes_enabled')) {
-            $schedule->command('sepay:retry-events --limit=100')->everyMinute()->withoutOverlapping();
+            $schedule->command('sepay:expire-intents --limit=500')->everyMinute()->withoutOverlapping();
+            if (config('sepay.webhook_enabled')) {
+                $schedule->command('sepay:retry-events --limit=100')->everyMinute()->withoutOverlapping();
+            }
         }
     }
 

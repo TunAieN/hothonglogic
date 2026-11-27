@@ -33,6 +33,9 @@ export const ORDER_FIELDS = {
       id
       name
       email
+      vip_group
+      vip_qualified_spend_vnd
+      vipTier { id code name base_deposit_percent credit_limit_vnd deposit_policy_enabled }
     }
   `,
   detail: `
@@ -84,6 +87,9 @@ export const ORDER_FIELDS = {
         bank_transaction_code
         received_at
         confirmed_by
+        confirmation_source
+        provider
+        provider_transaction_id
         status
         note
         created_at
@@ -97,6 +103,17 @@ export const ORDER_FIELDS = {
         paid_amount
         issued_at
       }
+      paymentAutomation {
+        enabled
+        intent { reference amount_vnd status display_status expires_at created_at completed_at qr_url bank_name bank_code account_number account_holder }
+        latest_event { provider_transaction_id status reconciliation_reason amount_vnd occurred_at processed_at }
+        notifications { id type channel status title body sent_by sent_at read_at created_at }
+      }
+    }
+    depositPolicySnapshot {
+      id vip_code vip_name qualified_spend_vnd vip_deposit_percent risk_code risk_name risk_reason
+      risk_minimum_percent capital_minimum_percent base_amount_vnd recommended_percent final_percent
+      deposit_waived is_exception exception_reason assessed_by approved_by assessed_at approved_at voucher_issued_at
     }
     note
     created_at
@@ -115,6 +132,14 @@ export const ORDER_FIELDS = {
       phone
       email
       address
+      vip_group
+      vip_qualified_spend_vnd
+      vipTier { id code name base_deposit_percent credit_limit_vnd deposit_policy_enabled }
+    }
+    deliveryRequest {
+      id
+      delivery_note
+      address { source_customer_address_id receiver_name receiver_phone country_code country_name province_code province_name district_code district_name ward_code ward_name address_line full_address }
     }
     order_trackings {
       id
@@ -124,6 +149,7 @@ export const ORDER_FIELDS = {
       dispatched_at
       note
       status
+      taobao_purchase_orders { id external_order_code shop_name }
       tracking_items {
         id
         order_item_id
@@ -280,6 +306,9 @@ export const ORDER_FIELDS = {
         bank_transaction_code
         received_at
         confirmed_by
+        confirmation_source
+        provider
+        provider_transaction_id
         status
         note
         created_at
@@ -293,6 +322,17 @@ export const ORDER_FIELDS = {
         paid_amount
         issued_at
       }
+      paymentAutomation {
+        enabled
+        intent { reference amount_vnd status display_status expires_at created_at completed_at qr_url bank_name bank_code account_number account_holder }
+        latest_event { provider_transaction_id status reconciliation_reason amount_vnd occurred_at processed_at }
+        notifications { id type channel status title body sent_by sent_at read_at created_at }
+      }
+    }
+    depositPolicySnapshot {
+      id vip_code vip_name qualified_spend_vnd vip_deposit_percent risk_code risk_name risk_reason
+      risk_minimum_percent capital_minimum_percent base_amount_vnd recommended_percent final_percent
+      deposit_waived is_exception exception_reason assessed_by approved_by assessed_at approved_at voucher_issued_at
     }
     note
     created_at
@@ -311,6 +351,14 @@ export const ORDER_FIELDS = {
       phone
       email
       address
+      vip_group
+      vip_qualified_spend_vnd
+      vipTier { id code name base_deposit_percent credit_limit_vnd deposit_policy_enabled }
+    }
+    deliveryRequest {
+      id
+      delivery_note
+      address { source_customer_address_id receiver_name receiver_phone country_code country_name province_code province_name district_code district_name ward_code ward_name address_line full_address }
     }
     cn_packages {
       id

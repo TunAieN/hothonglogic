@@ -7,11 +7,14 @@ use App\Models\Customer;
 use App\Models\ExchangeRate;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\OrderDepositPolicySnapshot;
 use App\Models\OrderItem;
 use App\Models\PaymentAccount;
 use App\Models\PaymentVoucher;
+use App\Models\RiskDepositPolicy;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\VipTier;
 use App\Services\Orders\OrderPricingService;
 use App\Services\Payments\PaymentVoucherService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -64,7 +67,7 @@ class OrderCurrencyWorkflowTest extends TestCase
         $this->assertNull($order->exchange_rate);
         $this->assertNull($order->exchange_rate_locked_at);
         $this->assertSame('CNY', $order->currency);
-        $this->assertSame('0.00', (string) $order->items[0]->subtotal_cny);
+        $this->assertSame('49.26', (string) $order->items[0]->subtotal_cny);
         $this->assertSame(0, (int) $order->items[0]->subtotal_vnd);
     }
 
@@ -132,13 +135,14 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_deposit_request_locks_rate_and_calculates_70_percent_snapshot(): void
     {
+        Auth::login($this->createUser(['orders.update']));
         $this->createPaymentAccount();
         $this->createExchangeRate('3600');
         $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
 
         $updated = app(OrderResolver::class)->update(null, [
             'id' => $order->id,
-            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70],
+            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70, 'risk_level' => 'low', 'risk_reason' => 'Đơn Taobao thông thường'],
         ]);
 
         $this->assertSame('awaiting_deposit', $updated->status);
@@ -154,6 +158,80 @@ class OrderCurrencyWorkflowTest extends TestCase
         $this->assertNotNull($updated->depositVoucher);
         $this->assertSame('deposit', $updated->depositVoucher->voucher_type);
         $this->assertSame(126000, (int) $updated->depositVoucher->total_amount);
+    }
+
+    public function test_enabled_bronze_low_policy_uses_sixty_five_percent_for_preview_snapshot_order_and_voucher(): void
+    {
+        Auth::login($this->createUser(['orders.update']));
+        $this->createPaymentAccount();
+        $this->createExchangeRate('3600');
+
+        $tier = VipTier::query()->where('code', 'bronze')->firstOrFail();
+        $tier->forceFill([
+            'base_deposit_percent' => 60,
+            'credit_limit_vnd' => null,
+            'deposit_policy_enabled' => true,
+            'is_active' => true,
+        ])->save();
+
+        $risk = RiskDepositPolicy::query()->where('code', 'low')->firstOrFail();
+        $risk->forceFill([
+            'minimum_deposit_percent' => null,
+            'surcharge_percent' => 5,
+            'requires_manager_approval' => false,
+            'is_active' => true,
+        ])->save();
+
+        $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
+        $order->customer()->update(['vip_tier_id' => $tier->id]);
+
+        /** @var OrderResolver $resolver */
+        $resolver = app(OrderResolver::class);
+        $preview = $resolver->depositPolicyPreview(null, [
+            'order_id' => $order->id,
+            'risk_level' => 'low',
+        ]);
+
+        $this->assertTrue($preview['vip_policy_enabled']);
+        $this->assertSame(60.0, $preview['vip_effective_percent']);
+        $this->assertSame(5.0, $preview['risk_surcharge_percent']);
+        $this->assertSame(65.0, $preview['additive_percent']);
+        $this->assertSame(65.0, $preview['recommended_percent']);
+        $this->assertFalse($preview['fallback_applied']);
+        $this->assertSame('vip_plus_risk_surcharge_with_floors', $preview['policy_formula']);
+
+        $updated = $resolver->update(null, [
+            'id' => $order->id,
+            'input' => [
+                'status' => 'awaiting_deposit',
+                'deposit_percent' => 65,
+                'risk_level' => 'low',
+                'risk_reason' => 'Đã kiểm tra shop, sản phẩm và dấu hiệu bất thường.',
+                'risk_evidence' => [
+                    'seller_checked' => true,
+                    'product_checked' => true,
+                    'returns_checked' => false,
+                    'anomaly_checked' => true,
+                ],
+            ],
+        ]);
+
+        $snapshot = OrderDepositPolicySnapshot::query()->where('order_id', $order->id)->firstOrFail();
+        $voucher = $updated->depositVoucher;
+
+        $this->assertSame('65.00', (string) $updated->deposit_percent);
+        $this->assertSame(117000, (int) $updated->deposit_amount_vnd);
+        $this->assertSame('60.00', (string) $snapshot->vip_deposit_percent);
+        $this->assertSame('5.00', (string) $snapshot->risk_surcharge_percent);
+        $this->assertSame('65.00', (string) $snapshot->additive_percent);
+        $this->assertSame('65.00', (string) $snapshot->recommended_percent);
+        $this->assertSame('65.00', (string) $snapshot->final_percent);
+        $this->assertSame('vip_plus_risk_surcharge_with_floors', $snapshot->policy_formula);
+        $this->assertSame('manual', $snapshot->risk_selection_source);
+        $this->assertNotNull($snapshot->voucher_issued_at);
+        $this->assertNotNull($voucher);
+        $this->assertSame('65.00', (string) $voucher->deposit_percent);
+        $this->assertSame(117000, (int) $voucher->total_amount);
     }
 
     public function test_create_deposit_voucher_locks_rate_and_snapshots_amounts(): void
@@ -257,24 +335,26 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_deposit_request_without_active_rate_fails(): void
     {
+        Auth::login($this->createUser(['orders.update']));
         ExchangeRate::query()->update(['is_active' => false]);
         $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
 
         $this->expectException(HttpException::class);
         app(OrderResolver::class)->update(null, [
             'id' => $order->id,
-            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70],
+            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70, 'risk_level' => 'low', 'risk_reason' => 'Đơn Taobao thông thường'],
         ]);
     }
 
     public function test_deposit_snapshot_does_not_change_when_active_rate_changes(): void
     {
+        Auth::login($this->createUser(['orders.update']));
         $this->createPaymentAccount();
         $firstRate = $this->createExchangeRate('3600');
         $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
         $updated = app(OrderResolver::class)->update(null, [
             'id' => $order->id,
-            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70],
+            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70, 'risk_level' => 'low', 'risk_reason' => 'Đơn Taobao thông thường'],
         ]);
 
         $firstRate->update(['is_active' => false, 'effective_to' => now()]);
@@ -406,11 +486,12 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_cannot_mark_deposited_by_status_update_when_deposit_is_not_fully_paid(): void
     {
+        Auth::login($this->createUser(['orders.update']));
         $this->createPaymentAccount();
         $this->createExchangeRate('3600');
         $order = app(OrderResolver::class)->update(null, [
             'id' => $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending')->id,
-            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70],
+            'input' => ['status' => 'awaiting_deposit', 'deposit_percent' => 70, 'risk_level' => 'low', 'risk_reason' => 'Đơn Taobao thông thường'],
         ]);
 
         $this->expectException(HttpException::class);
@@ -422,12 +503,13 @@ class OrderCurrencyWorkflowTest extends TestCase
 
     public function test_no_deposit_transition_to_purchasing_locks_exchange_rate(): void
     {
+        Auth::login($this->createUser(['orders.update', 'deposit_exceptions.approve']));
         $this->createExchangeRate('3600');
         $order = $this->createOrderWithItems([['price_cny' => '50.00', 'quantity' => 1]], 'pending');
 
         $updated = app(OrderResolver::class)->update(null, [
             'id' => $order->id,
-            'input' => ['status' => 'purchasing'],
+            'input' => ['status' => 'purchasing', 'risk_level' => 'low', 'risk_reason' => 'Đơn rõ thông tin', 'waive_deposit' => true, 'exception_reason' => 'Quản lý phê duyệt miễn cọc'],
         ]);
 
         $this->assertSame('purchasing', $updated->status);

@@ -35,4 +35,10 @@ class OrderTracking extends Model
     {
         return $this->hasMany(CnPackage::class, 'order_tracking_id');
     }
+
+    public function taobaoPurchaseOrders()
+    {
+        return $this->belongsToMany(TaobaoPurchaseOrder::class, 'taobao_purchase_order_trackings')
+            ->withPivot('linked_by')->withTimestamps();
+    }
 }

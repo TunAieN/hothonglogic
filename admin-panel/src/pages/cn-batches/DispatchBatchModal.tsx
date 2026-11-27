@@ -1,39 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Col,
-  DatePicker,
-  Descriptions,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Steps,
-  Table,
-  Tag,
-  Typography,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
-import type { Dayjs } from "dayjs";
-import dayjs from "dayjs";
-import { CheckOutlined, EyeOutlined } from "@ant-design/icons";
+import { useRef, useState } from "react";
+import { Alert, Button, Checkbox, Col, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Row, Select, Space, Spin, Steps, Typography } from "antd";
+import { SendOutlined } from "@ant-design/icons";
+import dayjs, { type Dayjs } from "dayjs";
 import type { CnPackage } from "../../shared/types";
-import { formatWeight } from "./helpers";
-import type { BatchViewModel } from "./types";
+import { BatchFacts, BatchHeading, BatchPackageItems, BatchPackagesTable, BatchReviewAlerts } from "./BatchWorkspaceParts";
+import type { BatchDispatchReview, BatchViewModel } from "./types";
+import { useBatchWorkspace } from "./useBatchWorkspace";
+import "./batch-workspace.css";
 
-const { Text, Title } = Typography;
+type Shipping = "fast" | "normal";
+type Packaging = "bag" | "carton" | "cardboard" | "wood";
 
 export type DispatchBatchInput = {
   reviewed_package_ids: string[];
-  destination_warehouse_name: string;
-  shipping_type: "fast" | "normal";
-  packaging_type: "bag" | "carton" | "cardboard" | "wood";
+  review_version: string;
+  review_confirmed: boolean;
+  destination_warehouse_id: string;
+  shipping_type: Shipping;
+  packaging_type: Packaging;
   transport_container_count: number;
   actual_batch_weight: number;
   package_material_weight: number;
@@ -41,482 +25,209 @@ export type DispatchBatchInput = {
   actual_width: number;
   actual_height: number;
   carrier_name: string;
-  transport_code?: string | null;
-  route_name?: string | null;
-  vehicle_plate?: string | null;
-  driver_name?: string | null;
-  driver_phone?: string | null;
-  freight_cost?: number | null;
+  transport_code?: string;
+  route_name?: string;
+  vehicle_plate?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  freight_cost?: number;
   departed_at: string;
   expected_arrival_at: string;
-  dispatch_note?: string | null;
+  dispatch_note?: string;
 };
 
-type DispatchFormValues = {
-  confirmedPackages: boolean;
-  confirmedNoIssues: boolean;
-  destinationWarehouseName: string;
-  shippingType: "fast" | "normal";
-  packagingType: "bag" | "carton" | "cardboard" | "wood";
-  transportContainerCount: number;
-  actualBatchWeight: number;
-  packageMaterialWeight: number;
-  actualLength: number;
-  actualWidth: number;
-  actualHeight: number;
-  carrierName: string;
-  transportCode?: string;
-  routeName?: string;
-  vehiclePlate?: string;
-  driverName?: string;
-  driverPhone?: string;
-  freightCost?: number;
-  departedAt: Dayjs;
-  expectedArrivalAt: Dayjs;
-  dispatchNote?: string;
+type Values = Pick<DispatchBatchInput, "destination_warehouse_id" | "shipping_type" | "packaging_type" | "transport_container_count"
+  | "actual_batch_weight" | "package_material_weight" | "actual_length" | "actual_width" | "actual_height" | "carrier_name"
+  | "transport_code" | "route_name" | "vehicle_plate" | "driver_name" | "driver_phone" | "freight_cost" | "dispatch_note"> & {
+  departedAt: Dayjs; expectedArrivalAt: Dayjs; reviewedList: boolean; reviewedIssues: boolean; reviewedRoute: boolean;
 };
 
-type Props = {
-  batch: BatchViewModel | null;
-  loading?: boolean;
-  onCancel: () => void;
-  onSubmit: (input: DispatchBatchInput) => Promise<void>;
-};
+type Props = { batch: BatchViewModel; loading?: boolean; onCancel: () => void; onSubmit: (input: DispatchBatchInput) => Promise<void> };
+const toUtc = (value: Dayjs) => value.toISOString().slice(0, 19).replace("T", " ");
+const packaging = [{ value: "bag", label: "Bao tải" }, { value: "carton", label: "Thùng carton" },
+  { value: "cardboard", label: "Nẹp bìa" }, { value: "wood", label: "Đóng gỗ" }];
+const shipping = [{ value: "normal", label: "Thường" }, { value: "fast", label: "Nhanh" }];
+const packingNumbers = [
+  { name: "transport_container_count", label: "Số bao/thùng vận chuyển", integer: true, min: 1 },
+  { name: "actual_batch_weight", label: "Khối lượng lô thực tế (kg)", min: 0.01 },
+  { name: "package_material_weight", label: "Khối lượng vật liệu đóng gói (kg)", min: 0 },
+  { name: "actual_length", label: "Chiều dài (cm)", min: 0.01 },
+  { name: "actual_width", label: "Chiều rộng (cm)", min: 0.01 },
+  { name: "actual_height", label: "Chiều cao (cm)", min: 0.01 },
+] as const;
+const transportText = [
+  { name: "carrier_name", label: "Đơn vị vận chuyển", required: true },
+  { name: "transport_code", label: "Mã chuyến/mã vận chuyển" },
+  { name: "route_name", label: "Tuyến/cửa khẩu" },
+  { name: "vehicle_plate", label: "Biển số xe" },
+  { name: "driver_name", label: "Tài xế/người nhận bàn giao" },
+  { name: "driver_phone", label: "Số điện thoại" },
+] as const;
+const checks = [
+  { name: "reviewedList", label: "Tôi đã kiểm tra danh sách kiện và mã vận đơn trong lô." },
+  { name: "reviewedIssues", label: "Không còn kiện có ngoại lệ chưa xử lý." },
+  { name: "reviewedRoute", label: "Thông tin kho nhận và vận chuyển đã chính xác." },
+] as const;
 
-const stepFields: Array<Array<keyof DispatchFormValues>> = [
-  ["confirmedPackages", "confirmedNoIssues"],
-  [
-    "packagingType",
-    "transportContainerCount",
-    "actualBatchWeight",
-    "packageMaterialWeight",
-    "actualLength",
-    "actualWidth",
-    "actualHeight",
-  ],
-  ["destinationWarehouseName", "shippingType", "carrierName", "departedAt", "expectedArrivalAt"],
-  [],
-];
+export function DispatchBatchModal({ batch: summary, loading, onCancel, onSubmit }: Props) {
+  const workspace = useBatchWorkspace(summary.id);
+  if (workspace.batch && workspace.review) return <DispatchBatchWizard batch={workspace.batch} review={workspace.review}
+    loading={loading} onCancel={onCancel} onSubmit={onSubmit} onReload={workspace.reload} />;
+  return <Modal open centered width="min(94vw, 1120px)" rootClassName="cn-batch-workspace" onCancel={onCancel}
+    title={<BatchHeading title={`Xuất kho Trung Quốc — ${summary.batchCode}`} code={summary.batchCode} dispatch />}
+    footer={<Button onClick={onCancel}>Đóng</Button>}>
+    {workspace.loading && <div className="cn-workspace-loading"><Spin /></div>}
+    {workspace.error && <Alert showIcon type="error" message="Không thể tải dữ liệu rà soát lô."
+      action={<Button onClick={workspace.reload} size="small">Tải lại</Button>} />}
+  </Modal>;
+}
 
-const packageIssues = (pkg: CnPackage) => {
-  const issues: string[] = [];
+function DispatchBatchWizard({ batch, review, loading, onCancel, onSubmit, onReload }: Props & {
+  review: BatchDispatchReview; onReload: () => void;
+}) {
+  const [form] = Form.useForm<Values>();
+  const [step, setStep] = useState(0);
+  const [inspected, setInspected] = useState<CnPackage>();
+  const [reviewed, setReviewed] = useState<string[]>([]);
+  const [error, setError] = useState<string>();
+  const lock = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const destinationId = Form.useWatch("destination_warehouse_id", form);
+  const carrier = Form.useWatch("carrier_name", form);
+  const checkedList = Form.useWatch("reviewedList", form);
+  const checkedIssues = Form.useWatch("reviewedIssues", form);
+  const checkedRoute = Form.useWatch("reviewedRoute", form);
+  const destination = review.destinations.find(({ id }) => id === destinationId);
+  const installedDestination = review.destinations.find(({ id }) => id === batch.receivingWarehouseId);
+  const blocked = review.issues.length > 0 || review.packages.some(({ issues }) => issues.length > 0);
+  const reviewedAll = batch.packages.length > 0 && batch.packages.every(({ id }) => reviewed.includes(id));
+  const canContinue = !blocked && reviewedAll && destination && checkedList && checkedIssues && checkedRoute;
+  const inspectedReview = review.packages.find(({ id }) => id === inspected?.id);
+  const close = () => { if (!lock.current && !loading) onCancel(); };
+  const working = saving || Boolean(loading);
 
-  if (!pkg.tracking_number?.trim()) issues.push("Thiếu mã vận đơn");
-  if (Number(pkg.weight ?? 0) <= 0) issues.push("Thiếu cân nặng");
-  if (pkg.status !== "matched") issues.push("Chưa khớp đơn hàng");
-  if (!(pkg.package_items?.length ?? 0)) issues.push("Chưa xác nhận item");
-
-  return issues;
-};
-
-export const DispatchBatchModal = ({ batch, loading, onCancel, onSubmit }: Props) => {
-  const [form] = Form.useForm<DispatchFormValues>();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [itemDetailPackage, setItemDetailPackage] = useState<CnPackage | null>(null);
-  const [reviewedPackageIds, setReviewedPackageIds] = useState<string[]>([]);
-  const watchedDestination = Form.useWatch("destinationWarehouseName", form);
-  const watchedCarrierName = Form.useWatch("carrierName", form);
-
-  const invalidPackages = useMemo(
-    () => batch?.packages.filter((pkg) => packageIssues(pkg).length > 0) ?? [],
-    [batch],
-  );
-
-  useEffect(() => {
-    if (!batch) return;
-
-    form.setFieldsValue({
-      confirmedPackages: false,
-      confirmedNoIssues: false,
-      destinationWarehouseName: batch.receivingWarehouseName,
-      shippingType: batch.shippingType,
-      packagingType: "bag",
-      transportContainerCount: 1,
-      actualBatchWeight: batch.totalWeight,
-      packageMaterialWeight: 0,
-      carrierName: "",
-      departedAt: dayjs(),
-      expectedArrivalAt: dayjs().add(batch.shippingType === "fast" ? 3 : 7, "day"),
-    });
-  }, [batch, form]);
-
-  const columns: ColumnsType<CnPackage> = [
-    { title: "Mã vận đơn", dataIndex: "tracking_number", key: "tracking_number", width: 170 },
-    {
-      title: "Đơn hàng",
-      key: "order",
-      width: 150,
-      render: (_, pkg) => pkg.order?.order_code ?? "Chưa liên kết",
-    },
-    {
-      title: "Item đã xác nhận",
-      key: "items",
-      width: 140,
-      render: (_, pkg) => {
-        const quantity = (pkg.package_items ?? []).reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
-        return `${pkg.package_items?.length ?? 0} dòng / ${quantity} SP`;
-      },
-    },
-    {
-      title: "Kiểm tra item",
-      key: "item_review",
-      width: 150,
-      render: (_, pkg) => {
-        const reviewed = reviewedPackageIds.includes(String(pkg.id));
-        const hasItems = (pkg.package_items?.length ?? 0) > 0;
-
-        return (
-          <Button
-            type={reviewed ? "default" : "link"}
-            size="small"
-            icon={reviewed ? <CheckOutlined /> : <EyeOutlined />}
-            disabled={!hasItems}
-            onClick={() => setItemDetailPackage(pkg)}
-          >
-            {reviewed ? "Đã kiểm" : hasItems ? "Kiểm tra" : "Chưa có item"}
-          </Button>
-        );
-      },
-    },
-    {
-      title: "Cân nặng",
-      dataIndex: "weight",
-      key: "weight",
-      width: 110,
-      render: (value) => formatWeight(value),
-    },
-    {
-      title: "Kết quả kiểm tra",
-      key: "readiness",
-      render: (_, pkg) => {
-        const issues = packageIssues(pkg);
-        return issues.length ? (
-          <Space wrap size={[4, 4]}>{issues.map((issue) => <Tag color="error" key={issue}>{issue}</Tag>)}</Space>
-        ) : <Tag color="success">Sẵn sàng</Tag>;
-      },
-    },
-  ];
-
-  const allPackagesReviewed = Boolean(
-    batch?.packages.length && batch.packages.every((pkg) => reviewedPackageIds.includes(String(pkg.id))),
-  );
-
-  const confirmPackageItemReview = () => {
-    if (!itemDetailPackage) return;
-
-    setReviewedPackageIds((current) =>
-      current.includes(String(itemDetailPackage.id))
-        ? current
-        : [...current, String(itemDetailPackage.id)],
-    );
-    setItemDetailPackage(null);
-  };
-
-  const itemColumns: ColumnsType<NonNullable<CnPackage["package_items"]>[number]> = [
-    {
-      title: "STT",
-      key: "index",
-      width: 60,
-      render: (_, __, index) => index + 1,
-    },
-    {
-      title: "Sản phẩm",
-      key: "product_name",
-      render: (_, item) => item.order_item?.product_name ?? `Item #${item.order_item_id}`,
-    },
-    {
-      title: "Phân loại",
-      key: "variant",
-      width: 200,
-      render: (_, item) => {
-        const variant = [item.order_item?.color, item.order_item?.size].filter(Boolean).join(" / ");
-        return variant || "Không có phân loại";
-      },
-    },
-    {
-      title: "Số lượng trong kiện",
-      dataIndex: "quantity",
-      key: "quantity",
-      width: 160,
-      align: "center",
-    },
-    {
-      title: "Trạng thái",
-      key: "status",
-      width: 180,
-      render: () => <Tag color="success">Đã xác nhận tại kho TQ</Tag>,
-    },
-  ];
-
-  const handleNext = async () => {
+  const next = async () => {
+    if (step === 0 && !canContinue) return;
+    setError(undefined);
     try {
-      await form.validateFields(stepFields[currentStep]);
-      setCurrentStep((step) => Math.min(step + 1, 3));
-    } catch {
-      // Ant Design renders the field-level validation messages.
-    }
-  };
-
-  const handleSubmit = async () => {
-    const values = await form.validateFields();
-
-    if (values.expectedArrivalAt.isSame(values.departedAt) || values.expectedArrivalAt.isBefore(values.departedAt)) {
-      form.setFields([{ name: "expectedArrivalAt", errors: ["Ngày đến dự kiến phải sau thời gian xuất kho."] }]);
-      setCurrentStep(2);
-      return;
-    }
-
-    await onSubmit({
-      reviewed_package_ids: reviewedPackageIds,
-      destination_warehouse_name: values.destinationWarehouseName.trim(),
-      shipping_type: values.shippingType,
-      packaging_type: values.packagingType,
-      transport_container_count: values.transportContainerCount,
-      actual_batch_weight: values.actualBatchWeight,
-      package_material_weight: values.packageMaterialWeight ?? 0,
-      actual_length: values.actualLength,
-      actual_width: values.actualWidth,
-      actual_height: values.actualHeight,
-      carrier_name: values.carrierName.trim(),
-      transport_code: values.transportCode?.trim() || null,
-      route_name: values.routeName?.trim() || null,
-      vehicle_plate: values.vehiclePlate?.trim() || null,
-      driver_name: values.driverName?.trim() || null,
-      driver_phone: values.driverPhone?.trim() || null,
-      freight_cost: values.freightCost ?? null,
-      departed_at: values.departedAt.format("YYYY-MM-DD HH:mm:ss"),
-      expected_arrival_at: values.expectedArrivalAt.format("YYYY-MM-DD HH:mm:ss"),
-      dispatch_note: values.dispatchNote?.trim() || null,
-    });
-  };
-
-  const positiveRule = (label: string) => ({
-    validator: (_: unknown, value?: number) =>
-      Number(value ?? 0) > 0 ? Promise.resolve() : Promise.reject(new Error(`${label} phải lớn hơn 0.`)),
-  });
-
-  return (
-    <Modal
-      title={batch ? `Xuất kho Trung Quốc — ${batch.batchCode}` : "Xuất kho Trung Quốc"}
-      open={Boolean(batch)}
-      onCancel={onCancel}
-      afterClose={() => {
-        setCurrentStep(0);
-        setItemDetailPackage(null);
-        setReviewedPackageIds([]);
-      }}
-      width={1050}
-      destroyOnClose
-      maskClosable={false}
-      footer={
-        <Space>
-          <Button onClick={onCancel}>Hủy</Button>
-          {currentStep > 0 ? <Button onClick={() => setCurrentStep((step) => step - 1)}>Quay lại</Button> : null}
-          {currentStep < 3 ? (
-            <Button
-              type="primary"
-              disabled={currentStep === 0 && (invalidPackages.length > 0 || !allPackagesReviewed)}
-              onClick={() => void handleNext()}
-            >
-              Tiếp tục
-            </Button>
-          ) : (
-            <Button type="primary" danger loading={loading} onClick={() => void handleSubmit()}>
-              Xác nhận bàn giao và xuất kho
-            </Button>
-          )}
-        </Space>
+      if (step === 1) await form.validateFields(["packaging_type", ...packingNumbers.map(({ name }) => name)]);
+      if (step === 2) {
+        const values = await form.validateFields(["shipping_type", "carrier_name", "departedAt", "expectedArrivalAt"]);
+        if (!values.expectedArrivalAt.isAfter(values.departedAt)) {
+          form.setFields([{ name: "expectedArrivalAt", errors: ["Ngày đến dự kiến phải sau thời gian xuất kho."] }]);
+          return;
+        }
       }
-    >
-      {batch ? (
-        <Form<DispatchFormValues> form={form} layout="vertical">
-          <Steps
-            current={currentStep}
-            size="small"
-            items={[
-              { title: "Kiểm tra lô" },
-              { title: "Đóng gói" },
-              { title: "Vận chuyển" },
-              { title: "Bàn giao" },
-            ]}
-            style={{ marginBottom: 24 }}
-          />
+      setStep((value) => Math.min(value + 1, 3));
+    } catch {
+      setError("Vui lòng kiểm tra các trường của bước này.");
+    }
+  };
 
-          <div style={{ display: currentStep === 0 ? "block" : "none" }}>
-            <Descriptions bordered size="small" column={4} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Kho xuất">{batch.originWarehouseName}</Descriptions.Item>
-              <Descriptions.Item label="Kho nhận">{batch.receivingWarehouseName}</Descriptions.Item>
-              <Descriptions.Item label="Số kiện">{batch.totalPackages}</Descriptions.Item>
-              <Descriptions.Item label="Tổng cân nặng">{formatWeight(batch.totalWeight)}</Descriptions.Item>
-            </Descriptions>
-            {invalidPackages.length ? (
-              <Alert
-                type="error"
-                showIcon
-                message={`${invalidPackages.length} kiện chưa đủ điều kiện xuất kho`}
-                description="Hãy quay lại kho Trung Quốc để bổ sung mã vận đơn, cân nặng, đối soát đơn hàng và chi tiết item."
-                style={{ marginBottom: 16 }}
-              />
-            ) : (
-              <Alert type="success" showIcon message="Tất cả kiện và item đã đủ điều kiện xuất kho." style={{ marginBottom: 16 }} />
-            )}
-            <Alert
-              type={allPackagesReviewed ? "success" : "warning"}
-              showIcon
-              message={`Đã kiểm item ${reviewedPackageIds.length}/${batch.packages.length} mã vận đơn`}
-              description={
-                allPackagesReviewed
-                  ? "Đã mở và xác nhận item của tất cả mã vận đơn."
-                  : "Mở nút Kiểm tra trên từng mã vận đơn và xác nhận danh sách item trước khi tiếp tục."
-              }
-              style={{ marginBottom: 16 }}
-            />
-            <Table rowKey="id" columns={columns} dataSource={batch.packages} pagination={false} size="small" scroll={{ x: 980 }} />
-            <Space direction="vertical" style={{ marginTop: 16 }}>
-              <Form.Item name="confirmedPackages" valuePropName="checked" noStyle rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error("Cần xác nhận danh sách kiện.")) }]}>
-                <Checkbox disabled={invalidPackages.length > 0}>Tôi đã kiểm tra đủ mã vận đơn và số kiện trong lô.</Checkbox>
-              </Form.Item>
-              <Form.Item name="confirmedNoIssues" valuePropName="checked" noStyle rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error("Cần xác nhận tình trạng kiện.")) }]}>
-                <Checkbox disabled={invalidPackages.length > 0}>Không còn kiện đang chờ xử lý sai lệch hoặc hư hỏng.</Checkbox>
-              </Form.Item>
-            </Space>
-          </div>
+  const submit = async () => {
+    if (lock.current || working || !canContinue) return;
+    lock.current = true;
+    setSaving(true);
+    setError(undefined);
+    try {
+      const { departedAt, expectedArrivalAt, reviewedList, reviewedIssues, reviewedRoute, ...values } = await form.validateFields();
+      if (!reviewedList || !reviewedIssues || !reviewedRoute) return;
+      await onSubmit({ ...values, carrier_name: values.carrier_name.trim(), package_material_weight: values.package_material_weight ?? 0, review_confirmed: true,
+        reviewed_package_ids: reviewed, review_version: review.version, departed_at: toUtc(departedAt), expected_arrival_at: toUtc(expectedArrivalAt) });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Vui lòng kiểm tra dữ liệu trước khi xác nhận xuất.");
+    } finally {
+      lock.current = false;
+      setSaving(false);
+    }
+  };
 
-          <div style={{ display: currentStep === 1 ? "block" : "none" }}>
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <div>
-                <Title level={5} style={{ margin: "0 0 6px" }}>Thông tin đóng lô</Title>
-                <Text type="secondary">Nhập số liệu sau khi đã gom và đóng gói hoàn chỉnh.</Text>
-              </div>
-
-              <Alert
-                type="info"
-                showIcon
-                message={`Lô có ${batch.totalPackages} kiện — tổng cân nặng kiện ${formatWeight(batch.totalWeight)}`}
-              />
-
-              <Card size="small" title="Đóng gói và cân nặng" styles={{ body: { paddingBottom: 0 } }}>
-                <Row gutter={[20, 0]}>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Hình thức đóng gói" name="packagingType" rules={[{ required: true }]}>
-                      <Select options={[{ label: "Bao tải", value: "bag" }, { label: "Thùng carton", value: "carton" }, { label: "Nẹp bìa", value: "cardboard" }, { label: "Đóng gỗ", value: "wood" }]} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Số bao/thùng vận chuyển" name="transportContainerCount" rules={[positiveRule("Số bao/thùng")] }>
-                      <InputNumber min={1} precision={0} placeholder="Nhập số bao hoặc thùng" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Khối lượng lô thực tế (kg)" name="actualBatchWeight" rules={[positiveRule("Khối lượng lô")] }>
-                      <InputNumber min={0} precision={2} placeholder="Nhập khối lượng lô" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Khối lượng vật liệu đóng gói (kg)" name="packageMaterialWeight" rules={[{ type: "number", min: 0 }]}>
-                      <InputNumber min={0} precision={2} placeholder="Nhập khối lượng bao, thùng hoặc gỗ" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </Card>
-
-              <Card size="small" title="Kích thước lô sau đóng gói" styles={{ body: { paddingBottom: 0 } }}>
-                <Row gutter={[20, 0]}>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Chiều dài (cm)" name="actualLength" rules={[positiveRule("Chiều dài")] }>
-                      <InputNumber min={0} precision={2} placeholder="Chiều dài" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Chiều rộng (cm)" name="actualWidth" rules={[positiveRule("Chiều rộng")] }>
-                      <InputNumber min={0} precision={2} placeholder="Chiều rộng" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="Chiều cao (cm)" name="actualHeight" rules={[positiveRule("Chiều cao")] }>
-                      <InputNumber min={0} precision={2} placeholder="Chiều cao" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </Card>
-            </Space>
-          </div>
-
-          <div style={{ display: currentStep === 2 ? "block" : "none" }}>
-            <Title level={5}>Thông tin đơn vị và hành trình vận chuyển</Title>
-            <Row gutter={[16, 0]}>
-              <Col xs={24} md={8}><Form.Item label="Kho nhận tại Việt Nam" name="destinationWarehouseName" rules={[{ required: true, message: "Vui lòng nhập kho nhận." }]}><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Loại vận chuyển" name="shippingType" rules={[{ required: true }]}><Select options={[{ label: "Nhanh", value: "fast" }, { label: "Thường", value: "normal" }]} /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Đơn vị vận chuyển" name="carrierName" rules={[{ required: true, message: "Vui lòng nhập đơn vị vận chuyển." }]}><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Mã chuyến/mã vận chuyển" name="transportCode"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Tuyến/cửa khẩu" name="routeName"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Biển số xe" name="vehiclePlate"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Tài xế/người nhận bàn giao" name="driverName"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Số điện thoại" name="driverPhone"><Input /></Form.Item></Col>
-              <Col xs={24} md={8}><Form.Item label="Chi phí vận chuyển (RMB)" name="freightCost"><InputNumber min={0} precision={2} placeholder="Nhập chi phí" style={{ width: "100%" }} /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item label="Thời gian xuất kho" name="departedAt" rules={[{ required: true }]}><DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item label="Ngày đến dự kiến" name="expectedArrivalAt" rules={[{ required: true }]}><DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} /></Form.Item></Col>
-            </Row>
-          </div>
-
-          <div style={{ display: currentStep === 3 ? "block" : "none" }}>
-            <Alert
-              type="warning"
-              showIcon
-              message="Sau khi bàn giao, danh sách kiện sẽ bị khóa và lô chuyển sang Đang vận chuyển."
-              description="Hệ thống sẽ lưu snapshot toàn bộ mã vận đơn và item để kho Việt Nam đối chiếu khi nhận hàng."
-              style={{ marginBottom: 16 }}
-            />
-            <Descriptions bordered column={2} size="small" style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Mã lô">{batch.batchCode}</Descriptions.Item>
-              <Descriptions.Item label="Số kiện/item">{batch.totalPackages} kiện / {batch.packages.reduce((sum, pkg) => sum + (pkg.package_items?.reduce((qty, item) => qty + item.quantity, 0) ?? 0), 0)} sản phẩm</Descriptions.Item>
-              <Descriptions.Item label="Kho xuất">{batch.originWarehouseName}</Descriptions.Item>
-              <Descriptions.Item label="Kho nhận">{watchedDestination}</Descriptions.Item>
-              <Descriptions.Item label="Đơn vị vận chuyển">{watchedCarrierName}</Descriptions.Item>
-            </Descriptions>
-            <Form.Item label="Ghi chú bàn giao" name="dispatchNote"><Input.TextArea rows={4} placeholder="Ghi chú tình trạng lô, chứng từ hoặc yêu cầu vận chuyển..." /></Form.Item>
-            <Text type="secondary">Người thao tác và thời gian bàn giao được hệ thống ghi tự động.</Text>
-          </div>
-        </Form>
-      ) : null}
-
-      <Modal
-        title={itemDetailPackage ? `Kiểm tra item — ${itemDetailPackage.tracking_number}` : "Kiểm tra item"}
-        open={Boolean(itemDetailPackage)}
-        onCancel={() => setItemDetailPackage(null)}
-        width={820}
-        destroyOnClose
-        footer={[
-          <Button key="cancel" onClick={() => setItemDetailPackage(null)}>Đóng</Button>,
-          <Button key="confirm" type="primary" icon={<CheckOutlined />} onClick={confirmPackageItemReview}>
-            Xác nhận đã kiểm item
-          </Button>,
-        ]}
-      >
-        {itemDetailPackage ? (
-          <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            <Descriptions bordered size="small" column={3}>
-              <Descriptions.Item label="Mã vận đơn">{itemDetailPackage.tracking_number}</Descriptions.Item>
-              <Descriptions.Item label="Mã đơn hàng">{itemDetailPackage.order?.order_code ?? "Chưa liên kết"}</Descriptions.Item>
-              <Descriptions.Item label="Khách hàng">{itemDetailPackage.order?.customer?.name ?? "Chưa xác định"}</Descriptions.Item>
-            </Descriptions>
-            <Table
-              rowKey="id"
-              columns={itemColumns}
-              dataSource={itemDetailPackage.package_items ?? []}
-              pagination={false}
-              bordered
-              size="small"
-              scroll={{ x: 720 }}
-            />
-            <Alert
-              type="info"
-              showIcon
-              message="Đối chiếu tên sản phẩm, màu/size và số lượng trước khi xác nhận."
-            />
-          </Space>
-        ) : null}
-      </Modal>
-    </Modal>
-  );
-};
+  return <Modal open centered maskClosable={false} width="min(94vw, 1120px)" rootClassName="cn-batch-workspace"
+    title={<BatchHeading title={`Xuất kho Trung Quốc — ${batch.batchCode}`} code={batch.batchCode} dispatch />} onCancel={close}
+    footer={<div className="cn-workspace-footer">
+      <Button disabled={working} onClick={close}>Hủy</Button>
+      <Space wrap>{step > 0 && <Button disabled={working} onClick={() => { setError(undefined); setStep(step - 1); }}>Quay lại</Button>}
+        {step < 3 ? <Button type="primary" icon={<SendOutlined />} disabled={step === 0 && !canContinue} onClick={() => void next()}>Tiếp tục</Button>
+          : <Button type="primary" icon={<SendOutlined />} loading={working} onClick={() => void submit()}>Xác nhận bàn giao và xuất kho</Button>}
+      </Space>
+    </div>}>
+    <Form<Values> form={form} name="cnDispatch" layout="vertical" disabled={working} className="cn-workspace-step-fields"
+      initialValues={{ destination_warehouse_id: installedDestination?.id, shipping_type: batch.shippingType, packaging_type: batch.packagingType ?? "bag",
+        transport_container_count: batch.transportContainerCount ?? 1, actual_batch_weight: batch.actualBatchWeight,
+        package_material_weight: batch.packageMaterialWeight ?? 0, departedAt: dayjs(),
+        expectedArrivalAt: dayjs().add(batch.shippingType === "fast" ? 3 : 7, "day") }}>
+      <div className="cn-workspace-stack" style={{ marginBottom: 14 }}>
+        <Steps current={step} size="small" items={["Kiểm tra lô", "Đóng gói", "Vận chuyển", "Bàn giao"].map((title) => ({ title }))} />
+        <BatchFacts batch={batch} />
+        {error && <Alert showIcon type="error" message={error} action={<Button size="small" disabled={working} onClick={onReload}>Tải lại lô</Button>} />}
+      </div>
+      <div className={step === 0 ? "cn-workspace-stack" : undefined} hidden={step !== 0}>
+        <Typography.Title level={4}>Kiểm tra trước khi xuất kho</Typography.Title>
+        <BatchReviewAlerts review={review} />
+        <Alert type={reviewedAll ? "info" : "warning"} showIcon message={<>
+          <strong>Đã xác nhận rà soát lô: {reviewed.length}/{batch.packages.length} kiện.</strong>{" "}
+          {!reviewedAll && <span>Mở chi tiết từng kiện để rà soát kết quả kiểm item đã lưu.</span>}
+        </>} />
+        <BatchPackagesTable packages={batch.packages} review={review} onView={setInspected} reviewed={reviewed} />
+        {inspected && <BatchPackageItems pkg={inspected} warnings={inspectedReview?.warnings ?? []} onClose={() => setInspected(undefined)}
+          onReview={inspectedReview?.issues.length === 0 ? () => {
+            setReviewed((ids) => ids.includes(inspected.id) ? ids : [...ids, inspected.id]);
+            setInspected(undefined);
+          } : undefined} />}
+        <Form.Item label="Kho nhận Việt Nam" name="destination_warehouse_id" rules={[{ required: true, message: "Vui lòng chọn kho nhận." }]}
+          extra={!installedDestination ? "Chọn kho đang hoạt động để dùng khi xác nhận xuất." : undefined}>
+          <Select showSearch optionFilterProp="label" placeholder="Chọn kho nhận đang hoạt động" notFoundContent="Không có kho nhận đang hoạt động"
+            onChange={() => form.setFieldValue("reviewedRoute", false)}
+            options={review.destinations.map(({ id, code, name }) => ({ value: id, label: `${code} — ${name}` }))} />
+        </Form.Item>
+        <div className="cn-workspace-checks">
+          {checks.map(({ name, label }) => <Form.Item key={name} name={name} valuePropName="checked">
+            <Checkbox disabled={blocked}>{label}</Checkbox>
+          </Form.Item>)}
+        </div>
+        <Alert type="info" showIcon message="Tiếp tục để nhập số liệu đóng gói. Lô vẫn ở trạng thái chờ xuất." />
+      </div>
+      <section className={step === 1 ? "cn-workspace-panel cn-workspace-stack" : undefined} hidden={step !== 1}>
+        <Typography.Title level={4}>Đóng gói và cân nặng</Typography.Title>
+        <Row gutter={16}>
+          <Col xs={24} sm={12}><Form.Item label="Hình thức đóng gói" name="packaging_type" rules={[{ required: true }]}>
+            <Select options={packaging} />
+          </Form.Item></Col>
+          {packingNumbers.map(({ name, label, min, ...field }) => <Col key={name} xs={24} sm={12}>
+            <Form.Item name={name} label={label} rules={[{ required: min > 0, type: "number", min }]}>
+              <InputNumber min={min === 0 ? 0 : undefined} precision={"integer" in field ? 0 : 2} style={{ width: "100%" }} />
+            </Form.Item>
+          </Col>)}
+        </Row>
+      </section>
+      <section className={step === 2 ? "cn-workspace-panel cn-workspace-stack" : undefined} hidden={step !== 2}>
+        <Typography.Title level={4}>Thông tin vận chuyển</Typography.Title>
+        <Row gutter={16}>
+          <Col xs={24} md={8}><Form.Item label="Kho nhận tại Việt Nam"><Input value={destination?.name} readOnly /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item label="Hình thức vận chuyển" name="shipping_type" rules={[{ required: true }]}><Select options={shipping} /></Form.Item></Col>
+          {transportText.map(({ name, label, ...field }) => <Col key={name} xs={24} md={8}>
+            <Form.Item name={name} label={label} rules={"required" in field ? [{ required: true, whitespace: true }] : undefined}><Input /></Form.Item>
+          </Col>)}
+          <Col xs={24} md={8}><Form.Item label="Chi phí vận chuyển (RMB)" name="freight_cost"><InputNumber min={0} style={{ width: "100%" }} /></Form.Item></Col>
+          <Col xs={24} md={12}><Form.Item label="Thời gian xuất kho" name="departedAt" rules={[{ required: true }]}>
+            <DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} />
+          </Form.Item></Col>
+          <Col xs={24} md={12}><Form.Item label="Ngày đến dự kiến" name="expectedArrivalAt" rules={[{ required: true }]}>
+            <DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} />
+          </Form.Item></Col>
+        </Row>
+      </section>
+      <section className={step === 3 ? "cn-workspace-panel cn-workspace-stack" : undefined} hidden={step !== 3}>
+        <Typography.Title level={4}>Xác nhận bàn giao</Typography.Title>
+        <Alert type="warning" showIcon message="Xác nhận bàn giao sẽ khóa danh sách kiện và chuyển lô sang Đang vận chuyển." />
+        <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small">
+          <Descriptions.Item label="Mã lô">{batch.batchCode}</Descriptions.Item>
+          <Descriptions.Item label="Đã rà soát">{reviewed.length}/{batch.packages.length} kiện</Descriptions.Item>
+          <Descriptions.Item label="Kho nhận">{destination?.name}</Descriptions.Item>
+          <Descriptions.Item label="Đơn vị vận chuyển">{carrier}</Descriptions.Item>
+        </Descriptions>
+        <Form.Item label="Ghi chú bàn giao" name="dispatch_note"><Input.TextArea rows={3} /></Form.Item>
+      </section>
+    </Form>
+  </Modal>;
+}

@@ -1,9 +1,8 @@
 import { Tag, Typography } from "antd";
 import dayjs from "dayjs";
+import { parseCnReceivedAt, serializeCnReceivedAt } from "./receivedAt";
 import type {
-  BatchModalFormValues,
   ChinaWarehouseApiRecord,
-  ChinaWarehouseBatchRecord,
   ChinaWarehouseCreateInput,
   ChinaWarehousePackage,
   ChinaWarehouseUpdateInput,
@@ -22,10 +21,7 @@ export const getStatusTag = (status: PackageMatchStatus) => {
 };
 
 export const isPackageEligibleForBatch = (record: ChinaWarehousePackage) =>
-  !record.batchId &&
-  !record.batchCode &&
-  record.isImportedToVietnam !== true &&
-  record.confirmedItemCount > 0;
+  getPackageSelectionReason(record) === "";
 
 export const canSelectPackage = (record: ChinaWarehousePackage) =>
   isPackageEligibleForBatch(record);
@@ -54,86 +50,25 @@ export const canDeletePackage = (record: ChinaWarehousePackage) => {
 export const calculateSelectedTotalWeight = (selectedRows: ChinaWarehousePackage[]) =>
   selectedRows.reduce((total, item) => total + item.weight, 0);
 
-export const getNextBatchCode = (
-  warehouseCode: string,
-  date: Date,
-  existingBatches: string[],
-) => {
-  const dateCode = dayjs(date).format("DDMMYYYY");
-  const prefix = `${warehouseCode}${dateCode}`;
-  const todaysSequence =
-    existingBatches.reduce((maxSequence, batch) => {
-      if (!batch.startsWith(prefix)) {
-        return maxSequence;
-      }
-
-      const sequence = Number(batch.slice(prefix.length));
-
-      if (!Number.isFinite(sequence)) {
-        return maxSequence;
-      }
-
-      return Math.max(maxSequence, sequence);
-    }, 0) + 1;
-
-  return `${prefix}${todaysSequence}`;
-};
 
 export const formatWeight = (weight: number) => `${weight.toFixed(weight % 1 === 0 ? 0 : 2)} kg`;
 
 export const mapRecordToFormValues = (record: ChinaWarehousePackage): PackageFormValues => ({
   trackingCode: record.trackingCode,
-  receiverName: record.receiverName,
-  warehouseName: record.warehouseName,
+  receiverUserId: record.receiverUserId ?? (record.receiverName ? `legacy:${record.id}` : undefined),
+  warehouseId: record.warehouseId,
   weight: record.weight,
   actualLength: record.actualLength,
   actualWidth: record.actualWidth,
   actualHeight: record.actualHeight,
   packageCondition: record.packageCondition ?? "normal",
-  receivedDate: dayjs(record.receivedDate),
+  receivedDate: record.receivedAt ? parseCnReceivedAt(record.receivedAt) : dayjs(record.receivedDate),
   status: record.status,
   note: record.note,
 });
 
-export const getWarehouseCode = (warehouseName: string) => {
-  const normalized = warehouseName.toLowerCase();
-
-  if (normalized.includes("quang chau a")) {
-    return "QCA";
-  }
-
-  if (normalized.includes("tham quyen b")) {
-    return "SZB";
-  }
-
-  if (normalized.includes("tham quyen")) {
-    return "SZ";
-  }
-
-  return "QC";
-};
-
-export const getWarehouseDisplayName = (warehouseName?: string, warehouseCode?: string) => {
-  const normalizedName = warehouseName?.toLowerCase() ?? "";
-  const normalizedCode = warehouseCode?.toUpperCase() ?? "";
-
-  if (normalizedCode === "QCA" || normalizedName.includes("quang chau a")) {
-    return "Kho Quang Chau A";
-  }
-
-  if (normalizedCode === "SZB" || normalizedName.includes("tham quyen b")) {
-    return "Kho Tham Quyen B";
-  }
-
-  if (normalizedCode === "SZ" || normalizedName.includes("tham quyen")) {
-    return "Kho Tham Quyen";
-  }
-
-  return "Kho Quang Chau";
-};
-
 export const getPackageSelectionReason = (record: ChinaWarehousePackage) => {
-  if (record.batchCode) {
+  if (record.batchId || record.batchCode) {
     return "Kiện đã nằm trong lô hàng.";
   }
 
@@ -141,50 +76,22 @@ export const getPackageSelectionReason = (record: ChinaWarehousePackage) => {
     return "Kiện đã nhập kho Việt Nam.";
   }
 
-  if (record.confirmedItemCount <= 0) {
-    return "Can xac nhan item trong kien truoc khi them vao lo.";
+  if (!record.receivedAt) {
+    return "Kiện chưa được tiếp nhận tại kho Trung Quốc.";
+  }
+  if (record.status !== "matched" || !record.originalTrackingNumber?.trim()) {
+    return "Kiện chưa khớp tracking hợp lệ.";
+  }
+  if (record.weight <= 0) {
+    return "Kiện chưa có khối lượng thực tế.";
+  }
+  if (!record.packageItems.some(({ quantity }) => quantity > 0)) {
+    return "Cần xác nhận sản phẩm trong kiện trước khi thêm vào lô.";
   }
 
   return "";
 };
 
-export const getAvailableBatchOptions = (
-  batches: ChinaWarehouseBatchRecord[],
-  warehouseId?: string,
-) =>
-  batches.filter(
-    (batch) =>
-      batch.warehouse_id === warehouseId &&
-      !["exporting", "arrived_vn", "completed", "cancelled"].includes(batch.status),
-  );
-
-export const getBatchDisplayName = (batch: ChinaWarehouseBatchRecord) => {
-  const statusMap: Record<ChinaWarehouseBatchRecord["status"], string> = {
-    pending: "Cho xuat kho",
-    exporting: "Đang vận chuyển",
-    arrived_vn: "Da ve kho Viet Nam",
-    completed: "Hoan tat",
-    cancelled: "Da huy",
-  };
-
-  return `${batch.batch_code} - ${statusMap[batch.status]}`;
-};
-
-export const mapBatchFormValuesToInput = (
-  values: BatchModalFormValues,
-  packageIds: string[],
-) => ({
-  cn_batch_id: values.batchMode === "existing" ? values.cnBatchId : null,
-  cn_package_ids: packageIds,
-  destination_warehouse_name:
-    values.batchMode === "create" ? values.destinationWarehouseName?.trim() || null : null,
-  shipping_type: values.batchMode === "create" ? values.shippingType ?? "normal" : null,
-  expected_arrival_at:
-    values.batchMode === "create" && values.expectedArrivalAt
-      ? values.expectedArrivalAt.format("YYYY-MM-DD HH:mm:ss")
-      : null,
-  note: values.batchMode === "create" ? values.note?.trim() || null : null,
-});
 
 export const renderBatchTag = (batchCode?: string) =>
   batchCode ? <Tag color="blue">{batchCode}</Tag> : <Text type="secondary">Chưa vào lô</Text>;
@@ -193,13 +100,16 @@ export const mapApiRecordToPackage = (record: ChinaWarehouseApiRecord): ChinaWar
   id: record.id,
   warehouseId: record.warehouse_id,
   warehouseCode: record.warehouse?.code,
-  warehouseName: getWarehouseDisplayName(record.warehouse?.name, record.warehouse?.code),
+  warehouseName: record.warehouse?.name?.trim() || "Kho không xác định",
   orderId: record.order_id ?? undefined,
   orderTrackingId: record.order_tracking_id ?? undefined,
   receiverName: record.receiver_name?.trim() || record.order?.customer?.name || "Chưa có người nhận",
+  receiverUserId: record.receiver_user_id ?? record.receiver?.id ?? undefined,
   trackingCode: record.tracking_number?.trim() || "Chưa có mã vận đơn",
+  originalTrackingNumber: record.tracking_number,
+  receivedAt: record.received_at ?? undefined,
   receivedDate: record.received_at
-    ? dayjs(record.received_at).format("YYYY-MM-DD")
+    ? parseCnReceivedAt(record.received_at).format("YYYY-MM-DD")
     : dayjs(record.created_at ?? undefined).format("YYYY-MM-DD"),
   weight: typeof record.weight === "number" ? record.weight : 0,
   actualLength: typeof record.actual_length === "number" ? record.actual_length : undefined,
@@ -227,9 +137,8 @@ export const mapApiRecordToPackage = (record: ChinaWarehouseApiRecord): ChinaWar
 export const mapFormValuesToCreateInput = (
   values: PackageFormValues,
 ): ChinaWarehouseCreateInput => ({
-  warehouse_code: getWarehouseCode(values.warehouseName),
-  warehouse_name: values.warehouseName,
-  receiver_name: values.receiverName.trim(),
+  warehouse_id: values.warehouseId,
+  receiver_user_id: values.receiverUserId!,
   tracking_number: values.trackingCode.trim().toUpperCase(),
   weight: Number(values.weight),
   actual_length: values.actualLength ?? null,
@@ -239,17 +148,17 @@ export const mapFormValuesToCreateInput = (
   package_condition: values.packageCondition?.trim() || "normal",
   status: values.status,
   received_at: values.receivedDate
-    ? values.receivedDate.format("YYYY-MM-DD HH:mm:ss")
+    ? serializeCnReceivedAt(values.receivedDate)
     : null,
 });
 
 export const mapFormValuesToUpdateInput = (
   values: PackageFormValues,
 ): ChinaWarehouseUpdateInput => ({
-  warehouse_code: getWarehouseCode(values.warehouseName),
-  warehouse_name: values.warehouseName,
-  receiver_name: values.receiverName.trim(),
-  tracking_number: values.trackingCode.trim().toUpperCase(),
+  warehouse_id: values.warehouseId,
+  ...(!values.receiverUserId?.startsWith("legacy:") && values.receiverUserId
+    ? { receiver_user_id: values.receiverUserId }
+    : {}),
   weight: Number(values.weight),
   actual_length: values.actualLength ?? null,
   actual_width: values.actualWidth ?? null,
@@ -258,6 +167,6 @@ export const mapFormValuesToUpdateInput = (
   package_condition: values.packageCondition?.trim() || "normal",
   status: values.status,
   received_at: values.receivedDate
-    ? values.receivedDate.format("YYYY-MM-DD HH:mm:ss")
+    ? serializeCnReceivedAt(values.receivedDate)
     : null,
 });

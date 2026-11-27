@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { formatCny, formatVnd, resolveLegacyCnyTotal, toNumber } from "../../shared/utils/currency";
 import { Show } from "@refinedev/antd";
-import { useShow } from "@refinedev/core";
+import { useGetIdentity, useShow } from "@refinedev/core";
 import {
     Avatar,
     Breadcrumb,
@@ -10,6 +10,10 @@ import {
     Card,
     Dropdown,
     Empty,
+    Input,
+    Modal,
+    Select,
+    message,
     Space,
     Table,
     Tabs,
@@ -38,6 +42,9 @@ import {
 } from "@ant-design/icons";
 import type { Customer as ICustomer, CustomerStatus, OrderSummary } from "../../shared/types";
 import { CustomerFormModal } from "./components/CustomerFormModal";
+import { client, syncGraphqlAuthToken } from "../../providers/graphqlClient";
+import { hasPermission } from "../../shared/auth/permissions";
+import type { User } from "../../shared/types";
 import "./customer-show.css";
 
 const { Text, Title } = Typography;
@@ -577,15 +584,18 @@ const CustomerInfoCard = ({ customer, summary }: { customer: ICustomer; summary:
 
     return (
         <Card className="customer-side-card" title={<span className="customer-card-title"><IdcardOutlined />Thông tin khách hàng</span>}>
-            <SimpleRow label="Loại khách hàng" value={customer.vip_group ? <Tag color="purple">{customer.vip_group}</Tag> : EMPTY_VALUE} />
-            <SimpleRow label="Xếp hạng" value={EMPTY_VALUE} />
-            <SimpleRow label="Hạn mức công nợ" value={EMPTY_VALUE} />
+            <SimpleRow label="Hạng VIP" value={customer.vipTier?.name || customer.vip_group ? <Tag color="purple">{customer.vipTier?.name ?? customer.vip_group}</Tag> : EMPTY_VALUE} />
+            <SimpleRow label="Chi tiêu VIP hợp lệ" value={formatVnd(Number(customer.vip_qualified_spend_vnd ?? 0))} />
+            <SimpleRow label="Tiến độ hạng tiếp theo" value={customer.next_vip_tier_name ? `${customer.vip_progress_percent ?? 0}% đến ${customer.next_vip_tier_name}` : "Hạng cao nhất"} />
+            <SimpleRow label="Cọc cơ bản" value={customer.vipTier?.deposit_policy_enabled && customer.vipTier.base_deposit_percent != null ? `${customer.vipTier.base_deposit_percent}%` : "Chưa kích hoạt"} />
+            <SimpleRow label="Hạn mức ứng vốn" value={customer.vipTier?.credit_limit_vnd != null ? formatVnd(customer.vipTier.credit_limit_vnd) : EMPTY_VALUE} />
             <SimpleRow label="Hạn mức còn lại" value={EMPTY_VALUE} />
             <SimpleRow label="Số dư tài khoản" value={EMPTY_VALUE} />
             <SimpleRow label="Điểm tích lũy" value={EMPTY_VALUE} />
             <SimpleRow label="Trạng thái" value={<Tag color={statusMeta.color}>{statusMeta.label}</Tag>} />
             <div className="customer-divider" />
             <SimpleRow label="Công nợ hiện tại" value={formatVnd(summary.totalDebt)} accent={summary.totalDebt > 0 ? "danger" : "success"} />
+            {customer.vipHistories?.slice(0, 3).map((entry) => <SimpleRow key={entry.id} label={entry.change_type === "manual" ? "Điều chỉnh thủ công" : "Tự động nâng hạng"} value={`${entry.toTier?.name ?? "—"}: ${entry.reason}`} />)}
         </Card>
     );
 };
@@ -617,10 +627,34 @@ const QuickStatsCard = ({ summary }: { summary: CustomerSummary }) => (
 export const CustomerShow = () => {
     const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
     const { query } = useShow<ICustomer>({ resource: "customers" });
+    const { data: identity } = useGetIdentity<User>();
+    const canManageVip = hasPermission(identity, "customer_vip.manage");
+    const [vipModalOpen, setVipModalOpen] = useState(false);
+    const [vipTiers, setVipTiers] = useState<Array<{ id: string; name: string }>>([]);
+    const [selectedVipTier, setSelectedVipTier] = useState<string>();
+    const [vipReason, setVipReason] = useState("");
+    const [vipSaving, setVipSaving] = useState(false);
+    const [messageApi, contextHolder] = message.useMessage();
     const { data, isLoading, isError } = query;
     const customer = data?.data;
     const orders = useMemo(() => mapOrders(customer?.orders), [customer?.orders]);
     const summary = useMemo(() => buildSummary(customer), [customer]);
+    useEffect(() => {
+        if (!vipModalOpen) return;
+        syncGraphqlAuthToken();
+        void client.request<{ vipTiers: Array<{ id: string; name: string; is_active: boolean }> }>(`query VipTierOptions { vipTiers { id name is_active } }`)
+            .then((result) => setVipTiers(result.vipTiers.filter((tier) => tier.is_active)))
+            .catch(() => messageApi.error("Không thể tải danh sách hạng VIP."));
+    }, [messageApi, vipModalOpen]);
+    const submitVipAdjustment = async () => {
+        if (!customer || !selectedVipTier || !vipReason.trim()) { messageApi.error("Chọn hạng và nhập lý do điều chỉnh."); return; }
+        setVipSaving(true); syncGraphqlAuthToken();
+        try {
+            await client.request(`mutation AdjustVip($customer_id: ID!, $vip_tier_id: ID!, $reason: String!) { adjustCustomerVip(customer_id: $customer_id, vip_tier_id: $vip_tier_id, reason: $reason) { id vip_group } }`, { customer_id: customer.id, vip_tier_id: selectedVipTier, reason: vipReason.trim() });
+            await query.refetch(); setVipModalOpen(false); setVipReason(""); messageApi.success("Đã điều chỉnh VIP và lưu lịch sử.");
+        } catch (error) { messageApi.error(error instanceof Error ? error.message : "Không thể điều chỉnh VIP."); }
+        finally { setVipSaving(false); }
+    };
 
     if (!isLoading && (isError || !customer)) {
         return (
@@ -634,6 +668,7 @@ export const CustomerShow = () => {
 
     return (
         <Show breadcrumb={false} headerButtons={() => null} isLoading={isLoading} title={false}>
+            {contextHolder}
             {customer ? (
                 <div className="customer-detail-page">
                     <div className="customer-detail-header">
@@ -651,6 +686,7 @@ export const CustomerShow = () => {
                             <Button icon={<EditOutlined />} onClick={() => setEditingCustomerId(customer.id)}>
                                 Chỉnh sửa
                             </Button>
+                            {canManageVip ? <Button onClick={() => setVipModalOpen(true)}>Điều chỉnh VIP</Button> : null}
                             <Button
                                 disabled={!customer.email}
                                 href={customer.email ? `mailto:${customer.email}` : undefined}
@@ -706,11 +742,11 @@ export const CustomerShow = () => {
                                     value={EMPTY_VALUE}
                                 />
                                 <MetricCard
-                                    helper="Tổng đơn đã chốt tỷ giá"
+                                    helper="Chỉ tính đơn Taobao hoàn tất hợp lệ"
                                     icon={<DollarOutlined />}
-                                    label="Tổng chi tiêu"
+                                    label="Chi tiêu VIP hợp lệ"
                                     tone="purple"
-                                    value={formatVnd(summary.totalSpent)}
+                                    value={formatVnd(Number(customer.vip_qualified_spend_vnd ?? 0))}
                                 />
                             </div>
 
@@ -743,6 +779,12 @@ export const CustomerShow = () => {
                 }}
                 open={Boolean(editingCustomerId)}
             />
+            <Modal open={vipModalOpen} onCancel={() => setVipModalOpen(false)} onOk={() => void submitVipAdjustment()} confirmLoading={vipSaving} title="Điều chỉnh hạng VIP" okText="Lưu điều chỉnh">
+                <Space direction="vertical" style={{ width: "100%" }}>
+                    <Select style={{ width: "100%" }} placeholder="Chọn hạng VIP" value={selectedVipTier} onChange={setSelectedVipTier} options={vipTiers.map((tier) => ({ value: tier.id, label: tier.name }))} />
+                    <Input.TextArea rows={4} value={vipReason} onChange={(event) => setVipReason(event.target.value)} placeholder="Lý do bắt buộc để kiểm toán" />
+                </Space>
+            </Modal>
         </Show>
     );
 };

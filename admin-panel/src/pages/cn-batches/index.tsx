@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Key } from "react";
-import { useDelete, useList, useUpdate } from "@refinedev/core";
+import { useDelete, useGetIdentity, useList, useUpdate } from "@refinedev/core";
 import {
   Alert,
   Button,
   Card,
   Col,
   DatePicker,
-  Descriptions,
   Empty,
   Form,
   Grid,
@@ -40,7 +39,8 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { client, getGraphqlAuthHeaders, syncGraphqlAuthToken } from "../../providers/graphqlClient";
-import type { CnPackage } from "../../shared/types";
+import type { User } from "../../shared/types";
+import { hasPermission } from "../../shared/auth/permissions";
 import {
   calculateBatchTotals,
   calculatePackageVolume,
@@ -61,6 +61,7 @@ import { PageHeader, StatCard, StatsGrid } from "../../shared/components/admin-p
 import { DispatchBatchModal } from "./DispatchBatchModal";
 import type { DispatchBatchInput } from "./DispatchBatchModal";
 import { EditBatchModal } from "./EditBatchModal";
+import { BatchDetailModal } from "./BatchDetailModal";
 
 const { Text } = Typography;
 const CnBatchStatsSkeleton = () => (
@@ -158,25 +159,6 @@ const filterBatches = (batches: BatchViewModel[], filters: BatchFilters) =>
     return true;
   });
 
-const getPackageMatchTag = (pkg: CnPackage) =>
-  pkg.status === "matched" ? <AlertBanner color="green" label="Khớp" /> : <AlertBanner color="orange" label="Chưa khớp" />;
-
-const AlertBanner = ({ color, label }: { color: string; label: string }) => (
-  <span
-    style={{
-      display: "inline-flex",
-      padding: "2px 10px",
-      borderRadius: 999,
-      background: color === "green" ? "#f6ffed" : "#fff7e6",
-      border: `1px solid ${color === "green" ? "#b7eb8f" : "#ffd591"}`,
-      color: color === "green" ? "#389e0d" : "#d46b08",
-      fontSize: 12,
-      lineHeight: "20px",
-    }}
-  >
-    {label}
-  </span>
-);
 
 const exportBatchesToCsv = (rows: BatchViewModel[]) => {
   const headers = [
@@ -232,6 +214,9 @@ const emptyPackageRow = (): BatchPackageRow => ({
 
 export const CnBatchesPage = () => {
   const screens = Grid.useBreakpoint();
+  const { data: identity } = useGetIdentity<User>();
+  const canDispatch = hasPermission(identity, "cn_batches.dispatch");
+  const canUpdateBatch = hasPermission(identity, "cn_batches.update");
   const [filterForm] = Form.useForm<BatchFilters>();
   const [editForm] = Form.useForm<BatchEditFormValues>();
   const watchedEditingPackages = Form.useWatch("packages", editForm);
@@ -449,22 +434,36 @@ export const CnBatchesPage = () => {
   };
 
   const handleDispatchBatch = async (input: DispatchBatchInput) => {
-    if (!dispatchingBatch) return;
-
+    if (!dispatchingBatch || !canDispatch) throw new Error("Bạn không có quyền xuất lô.");
+    setSubmittingDispatch(true);
     try {
-      setSubmittingDispatch(true);
       syncGraphqlAuthToken();
-      await client.request(
-        DISPATCH_CN_BATCH_MUTATION,
-        { id: dispatchingBatch.id, input },
-        getGraphqlAuthHeaders(),
-      );
-      await batchListQuery.refetch();
+      const result = await client.request<{ dispatchCnBatch: { id: string; status: BatchViewModel["status"] } }>({
+        document: DISPATCH_CN_BATCH_MUTATION, variables: { id: dispatchingBatch.id, input },
+        requestHeaders: getGraphqlAuthHeaders(), signal: AbortSignal.timeout(25_000),
+      });
+      if (!result.dispatchCnBatch?.id || result.dispatchCnBatch.status !== "exporting") {
+        throw new Error("Dispatch response did not confirm the new status.");
+      }
       setDispatchingBatch(null);
-      message.success("Đã bàn giao lô và chuyển sang trạng thái đang vận chuyển.");
+      setDetailBatch({ ...dispatchingBatch, status: result.dispatchCnBatch.status });
+      message.success("Đã bàn giao lô và chuyển sang Đang vận chuyển.");
+      void batchListQuery.refetch({ throwOnError: true }).catch(() => {
+        message.warning("Đã xuất lô. Chưa tải lại được danh sách lô.");
+      });
     } catch (error) {
-      console.error(error);
-      message.error(error instanceof Error ? error.message : "Không thể xuất kho lô hàng.");
+      const response = (error as { response?: { status?: number; errors?: { message?: string; extensions?: { code?: string } }[] } })?.response;
+      const detail = response?.errors?.[0];
+      if (detail?.extensions?.code === "CN_PACKAGE_INVALID_INPUT" || detail?.extensions?.code === "CN_BATCH_FORBIDDEN") {
+        throw new Error(detail.message || "Dữ liệu lô chưa đủ điều kiện xuất.");
+      }
+      if (response?.status === 403 || detail?.message === "Bạn không có quyền thực hiện thao tác này.") {
+        throw new Error("Bạn không có quyền xuất lô.");
+      }
+      if (response?.status === 401 || detail?.message === "Unauthenticated.") {
+        throw new Error("Phiên đăng nhập đã hết hạn.");
+      }
+      throw new Error("Chưa xác nhận được kết quả xuất kho. Hãy tải lại lô để kiểm tra trạng thái trước khi gửi lại.");
     } finally {
       setSubmittingDispatch(false);
     }
@@ -554,16 +553,16 @@ export const CnBatchesPage = () => {
         return (
           <Space size="small">
             <Tooltip title="Xem chi tiết">
-              <Button type="text" icon={<EyeOutlined />} onClick={() => setDetailBatch(record)} />
+              <Button type="text" aria-label="Xem chi tiết lô" icon={<EyeOutlined />} onClick={() => setDetailBatch(record)} />
             </Tooltip>
 
-            {record.status === "pending" ? (
+            {canDispatch && record.status === "pending" ? (
               <Tooltip title="Kiểm tra và xuất kho Trung Quốc">
-                <Button type="text" icon={<SendOutlined />} onClick={() => setDispatchingBatch(record)} />
+                <Button type="text" aria-label="Xuất kho Trung Quốc" icon={<SendOutlined />} onClick={() => setDispatchingBatch(record)} />
               </Tooltip>
             ) : null}
 
-            {editState.allowed ? (
+            {canUpdateBatch && (editState.allowed ? (
               <Tooltip title="Sửa lô hàng">
                 <Button type="text" icon={<EditOutlined />} onClick={() => openEditModal(record)} />
               </Tooltip>
@@ -573,9 +572,9 @@ export const CnBatchesPage = () => {
                   <Button type="text" icon={<EditOutlined />} disabled />
                 </span>
               </Tooltip>
-            )}
+            ))}
 
-            {deleteState.allowed ? (
+            {canUpdateBatch && (deleteState.allowed ? (
               <Popconfirm
                 title="Xóa lô hàng?"
                 description="Lô hàng sẽ bị xóa vĩnh viễn. Hành động này không thể hoàn tác."
@@ -594,36 +593,10 @@ export const CnBatchesPage = () => {
                   <Button danger type="text" icon={<DeleteOutlined />} disabled />
                 </span>
               </Tooltip>
-            )}
+            ))}
           </Space>
         );
       },
-    },
-  ];
-
-  const detailColumns: ColumnsType<CnPackage> = [
-    {
-      title: "Mã vận đơn",
-      dataIndex: "tracking_number",
-      key: "tracking_number",
-      render: (value?: string) => value ?? "Chưa có",
-    },
-    {
-      title: "Người nhận",
-      dataIndex: "receiver_name",
-      key: "receiver_name",
-      render: (value?: string) => value ?? "Chưa có",
-    },
-    {
-      title: "Cân nặng",
-      dataIndex: "weight",
-      key: "weight",
-      render: (value?: number | null) => formatWeight(value),
-    },
-    {
-      title: "Khớp / chưa khớp",
-      key: "match_status",
-      render: (_, record) => getPackageMatchTag(record),
     },
   ];
 
@@ -763,83 +736,11 @@ export const CnBatchesPage = () => {
         )}
       </Card>
 
-      <Modal
-        title="Chi tiết lô hàng"
-        open={Boolean(detailBatch)}
-        onCancel={() => setDetailBatch(null)}
-        footer={null}
-        width={screens.lg ? 900 : "92vw"}
-      >
-        {detailBatch ? (
-          <Space direction="vertical" size="large" style={{ width: "100%" }}>
-            <Descriptions column={2} bordered size="small">
-              <Descriptions.Item label="Mã lô hàng">
-                <Text strong copyable={{ text: detailBatch.batchCode }}>
-                  {detailBatch.batchCode}
-                </Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Trạng thái">{getBatchStatusTag(detailBatch.status)}</Descriptions.Item>
-              <Descriptions.Item label="Kho xuất">{detailBatch.originWarehouseName}</Descriptions.Item>
-              <Descriptions.Item label="Kho nhận">{detailBatch.receivingWarehouseName}</Descriptions.Item>
-              <Descriptions.Item label="Ngày gom lô">
-                {detailBatch.createdAt ? dayjs(detailBatch.createdAt).format("DD/MM/YYYY HH:mm") : "Chưa có"}
-              </Descriptions.Item>
-              <Descriptions.Item label="Hình thức vận chuyển">
-                {getShippingTypeTag(detailBatch.shippingType)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Tổng số kiện">{detailBatch.totalPackages}</Descriptions.Item>
-              <Descriptions.Item label="Tổng cân nặng">{formatWeight(detailBatch.totalWeight)}</Descriptions.Item>
-              <Descriptions.Item label="Tổng thể tích">{formatVolume(detailBatch.totalVolume)}</Descriptions.Item>
-              {detailBatch.handedOverAt ? (
-                <>
-                  <Descriptions.Item label="Bàn giao lúc">
-                    {dayjs(detailBatch.handedOverAt).format("DD/MM/YYYY HH:mm")}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Đơn vị vận chuyển">
-                    {detailBatch.carrierName || "Chưa có"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Mã chuyến">
-                    {detailBatch.transportCode || "Chưa có"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Số bao/thùng">
-                    {detailBatch.transportContainerCount ?? "Chưa có"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="KL lô lúc xuất">
-                    {formatWeight(detailBatch.actualBatchWeight)}
-                  </Descriptions.Item>
-                </>
-              ) : null}
-              <Descriptions.Item label="Ghi chú" span={2}>
-                {detailBatch.note || "Không có ghi chú"}
-              </Descriptions.Item>
-              {detailBatch.dispatchNote ? (
-                <Descriptions.Item label="Ghi chú bàn giao" span={2}>
-                  {detailBatch.dispatchNote}
-                </Descriptions.Item>
-              ) : null}
-            </Descriptions>
-
-            {detailBatch.status === "pending" ? (
-              <Button type="primary" icon={<SendOutlined />} onClick={() => {
-                setDetailBatch(null);
-                setDispatchingBatch(detailBatch);
-              }}>
-                Kiểm tra và xuất kho Trung Quốc
-              </Button>
-            ) : null}
-
-            <Card size="small" title="Danh sách kiện trong lô">
-              <Table<CnPackage>
-                rowKey="id"
-                columns={detailColumns}
-                dataSource={detailBatch.packages}
-                scroll={{ x: 640 }}
-                pagination={false}
-              />
-            </Card>
-          </Space>
-        ) : null}
-      </Modal>
+      {detailBatch && <BatchDetailModal key={detailBatch.id} summary={detailBatch} canDispatch={canDispatch}
+        onCancel={() => setDetailBatch(null)} onDispatch={(batch) => {
+          setDetailBatch(null);
+          setDispatchingBatch(batch);
+        }} />}
 
       <Modal
         title="Sửa thông tin lô hàng vận chuyển"
@@ -1120,12 +1021,9 @@ export const CnBatchesPage = () => {
         </Space>
       </Modal>
 
-      <DispatchBatchModal
-        batch={dispatchingBatch}
-        loading={submittingDispatch}
-        onCancel={() => setDispatchingBatch(null)}
-        onSubmit={handleDispatchBatch}
-      />
+      {dispatchingBatch && canDispatch && <DispatchBatchModal key={dispatchingBatch.id}
+        batch={dispatchingBatch} loading={submittingDispatch} onCancel={() => setDispatchingBatch(null)}
+        onSubmit={handleDispatchBatch} />}
     </Space>
   );
 };

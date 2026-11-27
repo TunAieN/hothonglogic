@@ -3,22 +3,29 @@
 namespace App\GraphQL\Resolvers;
 
 use App\Models\Customer;
+use App\Models\VipTier;
+use App\Services\Auth\PermissionService;
 use App\Services\Customers\CustomerInputService;
+use App\Services\Customers\CustomerVipService;
 use App\Support\BusinessWriteGuard;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CustomerResolver
 {
     public function __construct(
-        private readonly CustomerInputService $customerInputService
+        private readonly CustomerInputService $customerInputService,
+        private readonly CustomerVipService $vipService,
+        private readonly PermissionService $permissions,
     ) {}
 
     public function list($_, array $args): Builder
     {
         $filter = $args['filter'] ?? [];
 
-        return Customer::query()
-            ->select([
+        $query = Customer::query()->select([
                 'id',
                 'code',
                 'name',
@@ -32,8 +39,12 @@ class CustomerResolver
                 'note',
                 'status',
                 'created_at',
-            ])
-            ->withCount('orders')
+            ]);
+        if (Schema::hasColumn('customers', 'vip_tier_id')) {
+            $query->addSelect(['vip_tier_id', 'vip_qualified_spend_vnd'])->with('vipTier');
+        }
+
+        return $query->withCount('orders')
             ->when($this->filled($filter, 'search'), function (Builder $query) use ($filter) {
                 $search = trim((string) $filter['search']);
 
@@ -78,8 +89,12 @@ class CustomerResolver
 
     public function show($_, array $args): Customer
     {
-        return Customer::query()
-            ->withCount('orders')
+        $query = Customer::query()->withCount('orders');
+        if (Schema::hasTable('vip_tiers') && Schema::hasTable('customer_vip_histories')) {
+            $query->with(['vipTier', 'vipHistories.fromTier', 'vipHistories.toTier']);
+        }
+
+        return $query
             ->findOrFail($args['id']);
     }
 
@@ -91,11 +106,9 @@ class CustomerResolver
         $code = $this->customerInputService->generateCustomerCode();
         $this->customerInputService->validateGeneratedCode($code);
 
-        $customer = Customer::create([
-            ...$validated,
-            'code' => $code,
-            'status' => 'active',
-        ]);
+        $customer = DB::transaction(fn () => Customer::create([
+            ...$validated, ...$this->vipService->attributesForNewCustomer(), 'code' => $code, 'status' => 'active',
+        ]), 3);
 
         return $customer->loadCount('orders');
     }
@@ -110,6 +123,16 @@ class CustomerResolver
         $customer->update($validated);
 
         return $customer->fresh()->loadCount('orders');
+    }
+
+    public function adjustVip($_, array $args): Customer
+    {
+        BusinessWriteGuard::assertEnabled(__METHOD__);
+        $this->permissions->authorize(Auth::user(), 'customer_vip.manage');
+        $customer = Customer::query()->findOrFail($args['customer_id']);
+        $tier = VipTier::query()->where('is_active', true)->findOrFail($args['vip_tier_id']);
+
+        return $this->vipService->adjustTier($customer, $tier, (string) $args['reason']);
     }
 
     public function delete($_, array $args): Customer

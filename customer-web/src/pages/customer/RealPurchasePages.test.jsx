@@ -13,6 +13,7 @@ vi.mock('../../api/customerPortal.js', async () => {
     ...actual,
     getCustomerOrder: vi.fn(),
     getCustomerOrders: vi.fn(),
+    getCustomerAddresses: vi.fn(),
     submitCustomerPurchaseRequest: vi.fn(),
   }
 })
@@ -38,6 +39,12 @@ const routes = {
   support: '/tai-khoan/ho-tro',
 }
 
+const defaultAddress = { id: 51, label: 'Nhà riêng', receiver_name: 'Nguyễn Hải Yến', receiver_phone: '0987654321', full_address: '1 Nguyễn Huệ, Bến Nghé, Quận 1, TP. Hồ Chí Minh', is_default: true }
+const submitWithAddress = async (user, button) => {
+  await user.click(button)
+  await user.click(await screen.findByRole('button', { name: /Xác nhận địa chỉ và gửi yêu cầu/ }))
+}
+
 const detailOrder = {
   id: 91, order_code: 'REQ-6CFAE6E28AC2E7737BA0', status: 'pending', creation_source: 'customer_portal',
   created_at: '2026-11-19T01:11:00Z', updated_at: '2026-11-19T01:11:00Z', submitted_at: '2026-11-19T01:11:00Z',
@@ -58,6 +65,7 @@ describe('real customer purchase pages', () => {
     localStorage.clear()
     extensionApi.detectCustomerExtension.mockResolvedValue({ connected: false, reason: 'not_connected' })
     extensionApi.extractProductWithExtension.mockResolvedValue({ status: 'extension_unavailable' })
+    portalApi.getCustomerAddresses.mockResolvedValue({ addresses: [defaultAddress] })
   })
 
   it('shows the exact supported Customer Web origin when running on the wrong local port', async () => {
@@ -234,7 +242,7 @@ describe('real customer purchase pages', () => {
     const user = userEvent.setup()
     render(<RealCartAndDraftsPage routes={routes} customerId={12} />)
 
-    await user.click(screen.getByRole('button', { name: /Gửi 1 sản phẩm mua hộ/ }))
+    await submitWithAddress(user, screen.getByRole('button', { name: /Gửi 1 sản phẩm mua hộ/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Không thể tạo yêu cầu.')
     expect(screen.getByText('Sản phẩm chưa gửi')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('viettrung:customer-cart:v1:12')).items).toHaveLength(1)
@@ -248,7 +256,7 @@ describe('real customer purchase pages', () => {
     render(<RealCartAndDraftsPage routes={routes} customerId={12} />)
     await user.click(screen.getByRole('checkbox', { name: 'Chọn Sản phẩm bỏ chọn' }))
     expect(screen.getByText('11,98 CNY')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Gửi 1 sản phẩm mua hộ/ }))
+    await submitWithAddress(user, screen.getByRole('button', { name: /Gửi 1 sản phẩm mua hộ/ }))
     await screen.findByText('Mạng lỗi.')
     expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledWith(expect.objectContaining({ items: [expect.objectContaining({ title: 'Sản phẩm chọn' })] }))
     expect(JSON.parse(localStorage.getItem('viettrung:customer-cart:v1:12')).items).toHaveLength(2)
@@ -267,6 +275,7 @@ describe('real customer purchase pages', () => {
     expect(button).toBeEnabled()
     expect(window.getComputedStyle(button).pointerEvents).not.toBe('none')
     await user.click(button)
+    await user.click(await screen.findByRole('button', { name: /Xác nhận địa chỉ và gửi yêu cầu/ }))
 
     await waitFor(() => expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledTimes(1))
     expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledWith(expect.objectContaining({
@@ -300,7 +309,8 @@ describe('real customer purchase pages', () => {
     render(<RealCartAndDraftsPage routes={routes} customerId={12} />)
 
     const button = screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' })
-    await user.dblClick(button)
+    await user.click(button)
+    await user.dblClick(await screen.findByRole('button', { name: /Xác nhận địa chỉ và gửi yêu cầu/ }))
 
     expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Đang gửi yêu cầu...' })).toBeDisabled()
@@ -316,10 +326,10 @@ describe('real customer purchase pages', () => {
     render(<RealCartAndDraftsPage routes={routes} customerId={12} />)
     const button = screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' })
 
-    await user.click(button)
+    await submitWithAddress(user, button)
     await screen.findByRole('alert')
     const firstKey = portalApi.submitCustomerPurchaseRequest.mock.calls[0][0].idempotency_key
-    await user.click(button)
+    await user.click(screen.getByRole('button', { name: /Xác nhận địa chỉ và gửi yêu cầu/ }))
     await waitFor(() => expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledTimes(2))
 
     expect(portalApi.submitCustomerPurchaseRequest.mock.calls[1][0].idempotency_key).toBe(firstKey)
@@ -333,7 +343,7 @@ describe('real customer purchase pages', () => {
     const user = userEvent.setup()
     render(<RealCartAndDraftsPage routes={routes} customerId={12} navigate={navigate} />)
 
-    await user.click(screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/tai-khoan/don-mua-ho/chi-tiet?id=701'))
     expect(JSON.parse(localStorage.getItem('viettrung:customer-cart:v1:12')).items).toHaveLength(0)
@@ -347,7 +357,7 @@ describe('real customer purchase pages', () => {
     const user = userEvent.setup()
     render(<RealCartAndDraftsPage routes={routes} customerId={12} />)
 
-    await user.click(screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
 
     await waitFor(() => expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledTimes(1))
   })
@@ -364,14 +374,14 @@ describe('real customer purchase pages', () => {
     const user = userEvent.setup()
     render(<RealCartAndDraftsPage routes={routes} customerId={12} navigate={navigate} />)
 
-    await user.click(screen.getByRole('button', { name: 'Gửi 3 sản phẩm mua hộ' }))
+    await submitWithAddress(user, screen.getByRole('button', { name: 'Gửi 3 sản phẩm mua hộ' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1))
     addItem(12, { product_url: 'https://detail.tmall.com/item.htm?id=b1', platform: 'Tmall', title: 'B1', quantity: 1, selected_attributes: {}, sku_required: false })
     addItem(12, { product_url: 'https://detail.tmall.com/item.htm?id=b2', platform: 'Tmall', title: 'B2', quantity: 1, selected_attributes: {}, sku_required: false })
-    await user.click(await screen.findByRole('button', { name: 'Gửi 2 sản phẩm mua hộ' }))
+    await submitWithAddress(user, await screen.findByRole('button', { name: 'Gửi 2 sản phẩm mua hộ' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(2))
     addItem(12, { product_url: 'https://detail.1688.com/offer/c1.html', platform: '1688', title: 'C1', quantity: 1, selected_attributes: {}, sku_required: false })
-    await user.click(await screen.findByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, await screen.findByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(3))
 
     const keys = portalApi.submitCustomerPurchaseRequest.mock.calls.map(([payload]) => payload.idempotency_key)
@@ -391,7 +401,7 @@ describe('real customer purchase pages', () => {
     addItem(12, { product_url: 'https://item.taobao.com/item.htm?id=nav-a', platform: 'Taobao', title: 'Điều hướng A', quantity: 1, selected_attributes: {}, sku_required: false })
     const user = userEvent.setup()
     const firstPage = render(<RealCartAndDraftsPage routes={routes} customerId={12} navigate={navigate} />)
-    await user.click(screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1))
     firstPage.unmount()
 
@@ -399,7 +409,7 @@ describe('real customer purchase pages', () => {
     render(<RealCartAndDraftsPage routes={routes} customerId={12} navigate={navigate} />)
     const secondButton = screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' })
     expect(secondButton).toHaveAttribute('data-submit-state', 'idle')
-    await user.click(secondButton)
+    await submitWithAddress(user, secondButton)
 
     await waitFor(() => expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledTimes(2))
     expect(portalApi.submitCustomerPurchaseRequest.mock.calls[1][0].items[0].title).toBe('Quay lại B')
@@ -416,12 +426,12 @@ describe('real customer purchase pages', () => {
     render(<RealCartAndDraftsPage routes={routes} customerId={12} navigate={navigate} />)
     const firstButton = screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' })
 
-    await user.click(firstButton)
+    await submitWithAddress(user, firstButton)
     await screen.findByText('Mất phản hồi sau khi gửi.')
-    await user.click(firstButton)
+    await user.click(screen.getByRole('button', { name: /Xác nhận địa chỉ và gửi yêu cầu/ }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1))
     addItem(12, { product_url: 'https://item.taobao.com/item.htm?id=replay-b', platform: 'Taobao', title: 'Đơn mới B', quantity: 1, selected_attributes: {}, sku_required: false })
-    await user.click(await screen.findByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, await screen.findByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(2))
 
     const [firstKey, replayKey, nextKey] = portalApi.submitCustomerPurchaseRequest.mock.calls.map(([payload]) => payload.idempotency_key)
@@ -439,13 +449,13 @@ describe('real customer purchase pages', () => {
     const user = userEvent.setup()
     render(<RealCartAndDraftsPage routes={routes} customerId={12} navigate={navigate} />)
     await user.click(screen.getByRole('checkbox', { name: 'Chọn Kept B' }))
-    await user.click(screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1))
     expect(screen.getByText('Kept B')).toBeInTheDocument()
 
     addItem(12, { product_url: 'https://item.taobao.com/item.htm?id=new-c', platform: 'Taobao', title: 'New C', quantity: 1, selected_attributes: {}, sku_required: false })
     await user.click(screen.getByRole('checkbox', { name: 'Chọn Kept B' }))
-    await user.click(await screen.findByRole('button', { name: 'Gửi 2 sản phẩm mua hộ' }))
+    await submitWithAddress(user, await screen.findByRole('button', { name: 'Gửi 2 sản phẩm mua hộ' }))
     await waitFor(() => expect(portalApi.submitCustomerPurchaseRequest).toHaveBeenCalledTimes(2))
 
     expect(portalApi.submitCustomerPurchaseRequest.mock.calls[1][0].items.map((entry) => entry.title)).toEqual(['Kept B', 'New C'])
@@ -460,7 +470,7 @@ describe('real customer purchase pages', () => {
     const user = userEvent.setup()
     render(<RealCartAndDraftsPage routes={routes} customerId={12} />)
 
-    await user.click(screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
+    await submitWithAddress(user, screen.getByRole('button', { name: 'Gửi 1 sản phẩm mua hộ' }))
     await screen.findByText('Dừng tại mock.')
     window.removeEventListener('viettrung:cart-submit-debug', listener)
 

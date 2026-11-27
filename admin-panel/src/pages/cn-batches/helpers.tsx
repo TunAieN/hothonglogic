@@ -3,8 +3,6 @@ import dayjs from "dayjs";
 import type { CnBatchStatus, CnPackage } from "../../shared/types";
 import type { BatchApiRecord, BatchEditFormValues, BatchPackageRow, BatchShippingType, BatchUpdateInput, BatchViewModel } from "./types";
 
-const DEFAULT_RECEIVING_WAREHOUSE = "Kho Hà Nội (VN)";
-
 export const getBatchStatusTag = (status: CnBatchStatus) => {
   const config: Record<CnBatchStatus, { color: string; label: string }> = {
     pending: { color: "default", label: "Chờ xuất kho" },
@@ -25,6 +23,8 @@ export const getShippingTypeTag = (type: BatchShippingType) =>
 export const formatWeight = (weight?: number | null) => `${Number(weight ?? 0).toFixed(1)} kg`;
 
 export const formatVolume = (volume?: number | null) => `${Number(volume ?? 0).toFixed(2)} m³`;
+
+export const batchTime = (value?: string) => value ? dayjs(value).format("DD/MM/YYYY HH:mm") : "Chưa có";
 
 export const canEditBatch = (batch: BatchViewModel) =>
   batch.status === "pending"
@@ -82,7 +82,8 @@ export const mapApiBatchToViewModel = (record: BatchApiRecord): BatchViewModel =
     id: record.id,
     batchCode: record.batch_code,
     originWarehouseName: record.warehouse?.name ?? "Kho Trung Quốc",
-    receivingWarehouseName: record.destination_warehouse_name?.trim() || DEFAULT_RECEIVING_WAREHOUSE,
+    receivingWarehouseName: record.destination_warehouse?.name || record.destination_warehouse_name?.trim() || "",
+    receivingWarehouseId: record.destination_warehouse_id ?? undefined,
     status: record.status,
     shippingType: record.shipping_type ?? "normal",
     totalPackages: Number(record.total_packages ?? packages.length),

@@ -20,6 +20,10 @@ class PaymentTransaction extends Model
         'bank_transaction_code',
         'received_at',
         'confirmed_by',
+        'confirmation_source',
+        'provider',
+        'provider_transaction_id',
+        'verification_details',
         'status',
         'note',
         'proof_image_path',
@@ -28,6 +32,7 @@ class PaymentTransaction extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'received_at' => 'datetime',
+        'verification_details' => 'array',
     ];
 
     public function voucher()

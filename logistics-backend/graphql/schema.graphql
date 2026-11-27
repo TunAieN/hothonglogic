@@ -98,6 +98,22 @@ type Query {
     @guard(with: ["api"])
     @permission(requires: "customers.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@show")
+  vipTiers: [VipTier!]!
+    @guard(with: ["api"])
+    @permission(requires: "customers.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\VipPolicyResolver@tiers")
+  riskDepositPolicies: [RiskDepositPolicy!]!
+    @guard(with: ["api"])
+    @permission(requires: "orders.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\VipPolicyResolver@risks")
+  orderDepositPolicyPreview(order_id: ID!, risk_level: String): OrderDepositPolicyPreview!
+    @guard(with: ["api"])
+    @permission(requires: "orders.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@depositPolicyPreview")
+  vipPolicyHistory: [AuditLog!]!
+    @guard(with: ["api"])
+    @permission(requires: "audit_logs.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\VipPolicyResolver@history")
   customerAddresses(customer_id: ID!): [CustomerAddress!]!
     @guard(with: ["api"])
     @permission(requires: "payment_vouchers.read")
@@ -115,6 +131,10 @@ type Query {
     @guard(with: ["api"])
     @permission(requires: "orders.read")
     @find
+  taobaoPurchaseProgress(order_id: ID!): TaobaoPurchaseProgress!
+    @guard(with: ["api"])
+    @permission(requires: "orders.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\TaobaoPurchaseOrderResolver@progress")
 
   # =========================
   # China Warehouse
@@ -128,6 +148,34 @@ type Query {
     @guard(with: ["api"])
     @permission(requires: "cn_packages.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@show")
+  cnReceivingOptions: CnReceivingOptions!
+    @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@receivingOptions")
+  cnPackageTrackingValidation(tracking_number: String!, ignore_package_id: ID): CnPackageTrackingValidation!
+    @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@trackingInputValidation")
+  cnPackageReconciliationOrders(search: String!): [CnPackageReconciliationOrder!]!
+    @guard(with: ["api"])
+    @permission(requires: "cn_packages.update")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@reconciliationOrders")
+  cnTrackingPurchaseVerification(package_id: ID!): CnTrackingPurchaseVerification!
+    @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnTrackingPurchaseLinkResolver@show")
+  cnPackageInspectionReview(package_id: ID!, items: [OrderPackageItemInput!]): CnPackageInspectionReview!
+    @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnTrackingPurchaseLinkResolver@inspectionReview")
+  cnExpectedInboundTrackings(
+    filter: CnExpectedInboundFilterInput
+    first: Int = 10
+    page: Int = 1
+  ): CnExpectedInboundConnection!
+    @guard(with: ["api"])
+    @permission(requires: "cn_packages.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnExpectedInboundResolver@list")
 
   # =========================
   # China Batches
@@ -137,10 +185,22 @@ type Query {
     @guard(with: ["api"])
     @permission(requires: "cn_batches.read")
     @paginate(defaultCount: 20, builder: "App\\GraphQL\\Resolvers\\CnBatchResolver@list")
+  cnBatchesForPackages(warehouse_id: ID!, status: String = "pending", search: String, oldest_first: Boolean = false): [CnBatch!]!
+    @guard(with: ["api"])
+    @permission(requires: "cn_batches.read")
+    @paginate(defaultCount: 5, maxCount: 20, builder: "App\\GraphQL\\Resolvers\\CnBatchResolver@listForPackages")
+  cnBatchReceivingOptions(warehouse_id: ID!): CnBatchReceivingOptions!
+    @guard(with: ["api"])
+    @permission(requires: "cn_batches.create")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@receivingOptions")
   cnBatch(id: ID!): CnBatch
     @guard(with: ["api"])
     @permission(requires: "cn_batches.read")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@show")
+  cnBatchDispatchReview(id: ID!): CnBatchDispatchReview
+    @guard(with: ["api"])
+    @permission(requires: "cn_batches.read")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnBatchResolver@dispatchReview")
   cnBatchByCode(batch_code: String!): CnBatch
     @guard(with: ["api"])
     @permission(requires: "vn_warehouse.read")
@@ -327,6 +387,18 @@ type Mutation {
     @guard(with: ["api"])
     @permission(requires: "customers.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@update")
+  adjustCustomerVip(customer_id: ID!, vip_tier_id: ID!, reason: String!): Customer!
+    @guard(with: ["api"])
+    @permission(requires: "customer_vip.manage")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CustomerResolver@adjustVip")
+  updateVipTier(id: ID!, input: VipTierInput!): VipTier!
+    @guard(with: ["api"])
+    @permission(requires: "vip_policies.manage")
+    @field(resolver: "App\\GraphQL\\Resolvers\\VipPolicyResolver@updateTier")
+  updateRiskDepositPolicy(id: ID!, input: RiskDepositPolicyInput!): RiskDepositPolicy!
+    @guard(with: ["api"])
+    @permission(requires: "deposit_policies.manage")
+    @field(resolver: "App\\GraphQL\\Resolvers\\VipPolicyResolver@updateRisk")
   deleteCustomer(id: ID!): Customer
     @guard(with: ["api"])
     @permission(requires: "customers.delete")
@@ -373,6 +445,14 @@ type Mutation {
     @guard(with: ["api"])
     @permission(requires: "orders.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\OrderResolver@update")
+  saveTaobaoPurchaseProgress(order_id: ID!, input: TaobaoPurchaseProgressInput!): TaobaoPurchaseProgress!
+    @guard(with: ["api"])
+    @permission(requires: "orders.update")
+    @field(resolver: "App\\GraphQL\\Resolvers\\TaobaoPurchaseOrderResolver@save")
+  confirmTaobaoPurchases(order_id: ID!, input: TaobaoPurchaseProgressInput!): TaobaoPurchaseProgress!
+    @guard(with: ["api"])
+    @permission(requires: "orders.update")
+    @field(resolver: "App\\GraphQL\\Resolvers\\TaobaoPurchaseOrderResolver@confirm")
   confirmOrderDepositPayment(order_id: ID!, input: ConfirmOrderDepositPaymentInput!): Order!
     @guard(with: ["api"])
     @permission(requires: "payments.confirm")
@@ -402,7 +482,11 @@ type Mutation {
     @guard(with: ["api"])
     @permission(requires: "cn_packages.update")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@update")
-  confirmCnPackageItems(package_id: ID!, items: [OrderPackageItemInput!]!): CnPackage
+  verifyCnTrackingPurchases(input: CnTrackingPurchaseVerificationInput!): CnTrackingPurchaseVerificationResult!
+    @guard(with: ["api"])
+    @permission(requires: "orders.update")
+    @field(resolver: "App\\GraphQL\\Resolvers\\CnTrackingPurchaseLinkResolver@update")
+  confirmCnPackageItems(package_id: ID!, items: [OrderPackageItemInput!]!, inspection_note: String, expected_items: [OrderPackageItemInput!], preserve_unselected: Boolean = false): CnPackage
     @guard(with: ["api"])
     @permission(requires: "cn_packages.inspect")
     @field(resolver: "App\\GraphQL\\Resolvers\\CnPackageResolver@confirmItems")
@@ -497,6 +581,10 @@ type Mutation {
     @guard(with: ["api"])
     @permission(requires: "payments.confirm")
     @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@confirmTransaction")
+  sendDepositPaymentReminder(payment_voucher_id: ID!): CustomerNotification!
+    @guard(with: ["api"])
+    @permission(requires: "payments.confirm")
+    @field(resolver: "App\\GraphQL\\Resolvers\\PaymentVoucherResolver@sendReminder")
   issuePaymentVoucherInvoice(payment_voucher_id: ID!): Invoice!
     @guard(with: ["api"])
     @permission(requires: "invoices.create")
